@@ -1,0 +1,214 @@
+/* ===== 主布局样式 ===== */
+
+.main-layout {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+/* ===== 侧边栏 ===== */
+.sidebar {
+  width: 240px;
+  background: #f8f9fc;
+  border-right: 1px solid var(--color-border-light);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  z-index: 100;
+  flex-shrink: 0;
+}
+
+.sidebar.collapsed {
+  width: 72px;
+}
+
+/* Logo 区域 */
+.sidebar-header {
+  padding: 1.25rem 1rem;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.logo-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-light) 100%);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 12px rgba(79, 110, 247, 0.3);
+}
+
+.logo-text {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  letter-spacing: -0.02em;
+}
+
+/* 用户信息 */
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  margin: 0.5rem 0.75rem;
+  border-radius: var(--radius-md);
+  background: rgba(79, 110, 247, 0.06);
+  overflow: hidden;
+}
+
+.user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #e0e7ff, #c7d2fe);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--color-primary);
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.user-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-role {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+/* 导航菜单 */
+.sidebar-nav {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: 0.88rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all var(--transition-normal);
+  overflow: hidden;
+  white-space: nowrap;
+  position: relative;
+}
+
+.nav-item:hover {
+  background: rgba(79, 110, 247, 0.06);
+  color: var(--color-primary);
+}
+
+.nav-item.active {
+  background: rgba(79, 110, 247, 0.1);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 60%;
+  background: var(--color-primary);
+  border-radius: 0 3px 3px 0;
+}
+
+.nav-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 底部操作 */
+.sidebar-footer {
+  padding: 0.75rem;
+  border-top: 1px solid var(--color-border-light);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  background: none;
+  transition: all var(--transition-normal);
+  overflow: hidden;
+  white-space: nowrap;
+  width: 100%;
+  text-align: left;
+}
+
+.sidebar-btn:hover {
+  background: rgba(79, 110, 247, 0.06);
+  color: var(--color-text-secondary);
+}
+
+.logout-btn:hover {
+  background: rgba(239, 68, 68, 0.06);
+  color: var(--color-accent-error);
+}
+
+/* ===== 主内容区域 ===== */
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+  background: #ffffff;
+  min-width: 0;
+}
