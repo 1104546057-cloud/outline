@@ -1,19 +1,62 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import '../styles/DeviceControl.css'
 
+/**
+ * 真实无人车遥控页面
+ * 
+ * - 按住方向键持续发送 cmd_vel（每 180ms 一次）
+ * - 松开/离开时发送 stop
+ * - 支持速度滑块调节倍率
+ * - 显示连接状态和控制日志
+ * - 支持发送自定义 JSON 指令
+ */
 export default function DeviceControl() {
   const [devices, setDevices] = useState([])
   const [selectedDeviceId, setSelectedDeviceId] = useState('')
-  const [customCommand, setCustomCommand] = useState('')
-  const [customParams, setCustomParams] = useState('')
   const [logs, setLogs] = useState([])
-  
-  // Track currently pressed key for visual feedback
-  const [activeKey, setActiveKey] = useState(null)
+  const [controlConfig, setControlConfig] = useState({ maxLinear: 0.4, maxAngular: 1.2 })
+  const [speedRatio, setSpeedRatio] = useState(0.3) // 速度倍率 0~1
+  const [connectionStatus, setConnectionStatus] = useState('未检测') // 未检测 / 连接中 / 已连接 / 不可达
+  const [activeDirection, setActiveDirection] = useState(null) // 当前按住的方向
+  const [customCommand, setCustomCommand] = useState('{"type":"ping"}')
+
+  // 持续发送定时器
+  const sendIntervalRef = useRef(null)
+  // 标记组件是否已挂载
+  const mountedRef = useRef(true)
 
   useEffect(() => {
+    mountedRef.current = true
     fetchDevices()
+    fetchControlConfig()
+    // 定期刷新设备列表以获取最新遥测数据
+    const timer = setInterval(fetchDevices, 5000)
+    return () => {
+      mountedRef.current = false
+      stopSending()
+      clearInterval(timer)
+    }
   }, [])
+
+  // 切换设备时停止并重置连接状态
+  useEffect(() => {
+    stopSending()
+    setConnectionStatus('未检测')
+    setActiveDirection(null)
+  }, [selectedDeviceId])
+
+  // 页面离开时发送 stop
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (selectedDeviceId) {
+        // 使用 sendBeacon 确保页面关闭时也能发送
+        const body = JSON.stringify({ robotId: parseInt(selectedDeviceId) })
+        navigator.sendBeacon('/api/robot-control/stop', new Blob([body], { type: 'application/json' }))
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [selectedDeviceId])
 
   const fetchDevices = async () => {
     try {
@@ -22,9 +65,8 @@ export default function DeviceControl() {
         const data = await res.json()
         setDevices(data)
         if (data.length > 0 && !selectedDeviceId) {
-          // Select first online device if possible
           const onlineDev = data.find(d => d.status === 'online') || data[0]
-          setSelectedDeviceId(onlineDev.id)
+          setSelectedDeviceId(String(onlineDev.id))
         }
       }
     } catch (e) {
@@ -32,72 +74,206 @@ export default function DeviceControl() {
     }
   }
 
-  const addLog = (msg, type = 'success') => {
-    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false })
-    setLogs(prev => [{ time, msg, type }, ...prev].slice(0, 50))
+  const fetchControlConfig = async () => {
+    try {
+      const res = await fetch('/api/robot-control/config', { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json()
+        setControlConfig(data)
+      }
+    } catch (e) {
+      console.error(e)
+    }
   }
 
-  const sendCommand = useCallback(async (command, params = null) => {
+  const addLog = useCallback((msg, type = 'success') => {
+    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false })
+    setLogs(prev => [{ time, msg, type }, ...prev].slice(0, 80))
+  }, [])
+
+  // ===== 连接检测 =====
+  const handleTestConnection = async () => {
     if (!selectedDeviceId) {
       addLog('请先选择一个设备', 'error')
       return
     }
-
+    setConnectionStatus('连接中')
+    addLog('正在检测连接...')
     try {
-      const res = await fetch(`/api/devices/${selectedDeviceId}/control`, {
+      const res = await fetch(`/api/robot-control/status?robotId=${selectedDeviceId}`, { credentials: 'include' })
+      const data = await res.json()
+      if (res.ok && data.ok) {
+        setConnectionStatus('已连接')
+        addLog(`✅ 连接成功 → ${data.target.host}:${data.target.port}`)
+        // 刷新设备列表以获取更新后的在线状态
+        fetchDevices()
+      } else {
+        setConnectionStatus('不可达')
+        addLog(`❌ 连接失败: ${data.detail || '未知错误'}`, 'error')
+      }
+    } catch (e) {
+      setConnectionStatus('不可达')
+      addLog(`❌ 网络错误: ${e.message}`, 'error')
+    }
+  }
+
+  // ===== 发送 cmd_vel =====
+  const sendCmdVel = useCallback(async (linear, angular) => {
+    if (!selectedDeviceId) return
+    try {
+      const res = await fetch('/api/robot-control/cmd_vel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ command, params: params ? JSON.parse(params) : null })
+        body: JSON.stringify({
+          robotId: parseInt(selectedDeviceId),
+          linear,
+          angular,
+        })
       })
       if (res.ok) {
-        addLog(`成功发送指令: ${command}`)
+        const data = await res.json()
+        if (data.ok) {
+          addLog(`📡 cmd_vel v=${data.linear.toFixed(3)} w=${data.angular.toFixed(3)}`)
+        }
       } else {
         const err = await res.json()
-        addLog(`发送失败: ${err.detail || '未知错误'}`, 'error')
+        addLog(`❌ ${err.detail || '控制失败'}`, 'error')
+        stopSending()
       }
     } catch (e) {
-      addLog(`网络/参数解析错误: ${e.message}`, 'error')
+      addLog(`❌ 网络错误: ${e.message}`, 'error')
+      stopSending()
     }
-  }, [selectedDeviceId])
+  }, [selectedDeviceId, addLog])
 
-  // Keyboard controls for 9-grid
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Ignore if typing in input
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
-
-      const keyMap = {
-        '8': 'forward',
-        'Numpad8': 'forward',
-        '2': 'backward',
-        'Numpad2': 'backward',
-        '4': 'left',
-        'Numpad4': 'left',
-        '6': 'right',
-        'Numpad6': 'right',
-        '5': 'stop',
-        'Numpad5': 'stop',
+  // ===== 发送 stop =====
+  const sendStop = useCallback(async () => {
+    if (!selectedDeviceId) return
+    try {
+      const res = await fetch('/api/robot-control/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ robotId: parseInt(selectedDeviceId) })
+      })
+      if (res.ok) {
+        addLog('🛑 已发送停车指令')
+      } else {
+        const err = await res.json()
+        addLog(`❌ 停车失败: ${err.detail || ''}`, 'error')
       }
+    } catch (e) {
+      addLog(`❌ 停车网络错误: ${e.message}`, 'error')
+    }
+  }, [selectedDeviceId, addLog])
 
-      const cmd = keyMap[e.code] || keyMap[e.key]
-      if (cmd && activeKey !== cmd) {
-        setActiveKey(cmd)
-        sendCommand(cmd)
+  // ===== 停止持续发送 =====
+  const stopSending = useCallback(() => {
+    if (sendIntervalRef.current) {
+      clearInterval(sendIntervalRef.current)
+      sendIntervalRef.current = null
+    }
+    setActiveDirection(null)
+  }, [])
+
+  // ===== 方向控制：按下开始持续发送，松开发送 stop =====
+  const getDirectionValues = useCallback((direction) => {
+    const maxV = controlConfig.maxLinear * speedRatio
+    const maxW = controlConfig.maxAngular * speedRatio
+    switch (direction) {
+      case 'forward': return { linear: maxV, angular: 0 }
+      case 'backward': return { linear: -maxV, angular: 0 }
+      case 'left': return { linear: 0, angular: maxW }
+      case 'right': return { linear: 0, angular: -maxW }
+      case 'forward-left': return { linear: maxV, angular: maxW * 0.5 }
+      case 'forward-right': return { linear: maxV, angular: -maxW * 0.5 }
+      case 'backward-left': return { linear: -maxV, angular: maxW * 0.5 }
+      case 'backward-right': return { linear: -maxV, angular: -maxW * 0.5 }
+      default: return { linear: 0, angular: 0 }
+    }
+  }, [controlConfig, speedRatio])
+
+  const startDirection = useCallback((direction) => {
+    if (!selectedDeviceId || activeDirection === direction) return
+    stopSending()
+    setActiveDirection(direction)
+    const { linear, angular } = getDirectionValues(direction)
+    // 立即发送一次
+    sendCmdVel(linear, angular)
+    // 持续发送
+    sendIntervalRef.current = setInterval(() => {
+      const vals = getDirectionValues(direction)
+      sendCmdVel(vals.linear, vals.angular)
+    }, 180)
+  }, [selectedDeviceId, activeDirection, stopSending, getDirectionValues, sendCmdVel])
+
+  const stopDirection = useCallback(() => {
+    if (sendIntervalRef.current) {
+      stopSending()
+      sendStop()
+    }
+  }, [stopSending, sendStop])
+
+  // 急停
+  const handleEmergencyStop = useCallback(() => {
+    stopSending()
+    sendStop()
+    addLog('🚨 急停指令已发送', 'warning')
+  }, [stopSending, sendStop, addLog])
+
+  // ===== 发送自定义指令 =====
+  const handleCustomSend = async (e) => {
+    e.preventDefault()
+    if (!selectedDeviceId || !customCommand.trim()) return
+    addLog(`⇨ 发送: ${customCommand}`)
+    try {
+      const res = await fetch('/api/robot-control/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ robotId: parseInt(selectedDeviceId), command: customCommand })
+      })
+      const data = await res.json()
+      if (res.ok && data.ok) {
+        addLog(`✅ 响应: ${JSON.stringify(data.response)}`)
+        fetchDevices()
+      } else {
+        addLog(`❌ ${data.detail || '发送失败'}`, 'error')
+      }
+    } catch (err) {
+      addLog(`❌ 网络错误: ${err.message}`, 'error')
+    }
+  }
+
+  // ===== 键盘控制 =====
+  useEffect(() => {
+    const keyMap = {
+      'ArrowUp': 'forward', 'KeyW': 'forward', 'Numpad8': 'forward',
+      'ArrowDown': 'backward', 'KeyS': 'backward', 'Numpad2': 'backward',
+      'ArrowLeft': 'left', 'KeyA': 'left', 'Numpad4': 'left',
+      'ArrowRight': 'right', 'KeyD': 'right', 'Numpad6': 'right',
+      'Numpad7': 'forward-left', 'Numpad9': 'forward-right',
+      'Numpad1': 'backward-left', 'Numpad3': 'backward-right',
+      'Space': 'stop', 'Numpad5': 'stop',
+    }
+
+    const handleKeyDown = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return
+      const direction = keyMap[e.code]
+      if (!direction) return
+      e.preventDefault()
+      if (direction === 'stop') {
+        handleEmergencyStop()
+      } else {
+        startDirection(direction)
       }
     }
 
     const handleKeyUp = (e) => {
-      const keyMap = {
-        '8': 'forward', 'Numpad8': 'forward',
-        '2': 'backward', 'Numpad2': 'backward',
-        '4': 'left', 'Numpad4': 'left',
-        '6': 'right', 'Numpad6': 'right',
-        '5': 'stop', 'Numpad5': 'stop',
-      }
-      const cmd = keyMap[e.code] || keyMap[e.key]
-      if (cmd === activeKey) {
-        setActiveKey(null)
+      const direction = keyMap[e.code]
+      if (direction && direction !== 'stop' && direction === activeDirection) {
+        stopDirection()
       }
     }
 
@@ -107,149 +283,247 @@ export default function DeviceControl() {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
     }
-  }, [sendCommand, activeKey])
+  }, [startDirection, stopDirection, handleEmergencyStop, activeDirection])
 
-  const handleCustomSend = (e) => {
-    e.preventDefault()
-    if (!customCommand.trim()) return
-    
-    // Check if params is valid JSON if provided
-    if (customParams.trim()) {
-      try {
-        JSON.parse(customParams)
-      } catch (e) {
-        addLog('参数必须是合法的 JSON 格式', 'error')
-        return
-      }
-    }
-    
-    sendCommand(customCommand, customParams || null)
-  }
+  const selectedDevice = devices.find(d => String(d.id) === selectedDeviceId)
 
-  const handlePadClick = (cmd) => {
-    sendCommand(cmd)
+  const statusColorMap = {
+    '未检测': '#6b7280',
+    '连接中': '#f59e0b',
+    '已连接': '#22c55e',
+    '不可达': '#ef4444',
   }
 
   return (
     <div className="device-control-page">
       <div className="dc-header">
-        <h1>设备控制</h1>
-        <p>远程下发控制指令与遥控驾驶</p>
+        <h1>🕹️ 远程遥控无人车</h1>
+        <p>通过 TCP 协议向树莓派发送真实控制指令 · 按住方向键持续运动，松开停车</p>
       </div>
 
+      {/* 设备选择 + 连接状态 */}
       <div className="dc-selector-card">
-        <h2>目标设备</h2>
-        <select 
-          className="dc-select"
-          value={selectedDeviceId}
-          onChange={(e) => setSelectedDeviceId(e.target.value)}
-        >
-          {devices.length === 0 && <option value="">暂无可用设备</option>}
-          {devices.map(dev => (
-            <option key={dev.id} value={dev.id} disabled={dev.status !== 'online'}>
-              [{dev.status === 'online' ? '在线' : '离线'}] {dev.name} ({dev.type}) - {dev.ip_address}
-            </option>
-          ))}
-        </select>
+        <div className="dc-selector-row">
+          <div className="dc-selector-left">
+            <h2>目标设备</h2>
+            <select 
+              className="dc-select"
+              value={selectedDeviceId}
+              onChange={(e) => setSelectedDeviceId(e.target.value)}
+            >
+              {devices.length === 0 && <option value="">暂无可用设备</option>}
+              {devices.map(dev => (
+                <option key={dev.id} value={dev.id}>
+                  [{dev.status === 'online' ? '在线' : '离线'}] {dev.name} ({dev.type}) - {dev.ip_address}:{dev.port || 9000}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="dc-selector-right">
+            <button className="dc-btn-test" onClick={handleTestConnection} disabled={!selectedDeviceId}>
+              检测连接
+            </button>
+            <span className="dc-connection-status" style={{ color: statusColorMap[connectionStatus] }}>
+              ● {connectionStatus}
+            </span>
+          </div>
+        </div>
+        {selectedDevice && (
+          <div className="dc-device-info">
+            <span>🔋 {selectedDevice.battery != null ? `${selectedDevice.battery}%` : '--'}</span>
+            <span>📶 {selectedDevice.signal != null ? `${selectedDevice.signal}%` : '--'}</span>
+            <span>📍 {selectedDevice.lat && selectedDevice.lng ? `${selectedDevice.lat}, ${selectedDevice.lng}` : '无位置'}</span>
+            <span>⏱️ {selectedDevice.last_seen ? new Date(selectedDevice.last_seen).toLocaleString('zh-CN') : '从未上报'}</span>
+          </div>
+        )}
       </div>
 
+      {/* 两栏布局：左方向控制 / 右发送指令 */}
       <div className="dc-content-grid">
+        {/* 左：方向控制面板 */}
         <div className="dc-control-card">
-          <h3>🕹️ 九宫格遥控 (无人车)</h3>
-          <p className="dc-control-desc">支持鼠标点击，或使用键盘数字键 / 小键盘 (8, 2, 4, 6, 5) 进行快捷操控。</p>
+          <h3>🕹️ 方向控制</h3>
+          <p className="dc-control-desc">
+            按住方向键持续发送运动指令，松开自动停车。支持键盘 WASD / 方向键 / 小键盘。
+          </p>
           
+          {/* 速度滑块 */}
+          <div className="dc-speed-control">
+            <label>速度倍率: <strong>{(speedRatio * 100).toFixed(0)}%</strong></label>
+            <input 
+              type="range" 
+              min="0.05" max="1" step="0.05"
+              value={speedRatio}
+              onChange={e => setSpeedRatio(parseFloat(e.target.value))}
+              className="dc-speed-slider"
+            />
+            <div className="dc-speed-info">
+              <span>线速度上限: {(controlConfig.maxLinear * speedRatio).toFixed(2)} m/s</span>
+              <span>角速度上限: {(controlConfig.maxAngular * speedRatio).toFixed(2)} rad/s</span>
+            </div>
+          </div>
+
           <div className="dc-numpad-container">
             <div className="dc-numpad">
-              <div className="dc-num-btn invisible"></div>
+              {/* Row 1: forward-left, forward, forward-right */}
               <button 
-                className={`dc-num-btn ${activeKey === 'forward' ? 'active' : ''}`}
-                onClick={() => handlePadClick('forward')}
+                className={`dc-num-btn ${activeDirection === 'forward-left' ? 'active' : ''}`}
+                onPointerDown={() => startDirection('forward-left')}
+                onPointerUp={stopDirection}
+                onPointerLeave={stopDirection}
+                disabled={!selectedDeviceId}
+              >
+                <span className="dc-num-icon">↖️</span>
+                <span className="dc-num-key">7</span>
+              </button>
+              <button 
+                className={`dc-num-btn ${activeDirection === 'forward' ? 'active' : ''}`}
+                onPointerDown={() => startDirection('forward')}
+                onPointerUp={stopDirection}
+                onPointerLeave={stopDirection}
                 disabled={!selectedDeviceId}
               >
                 <span className="dc-num-icon">⬆️</span>
-                <span className="dc-num-key">8 前进</span>
+                <span className="dc-num-key">W / 8 前进</span>
               </button>
-              <div className="dc-num-btn invisible"></div>
-              
               <button 
-                className={`dc-num-btn ${activeKey === 'left' ? 'active' : ''}`}
-                onClick={() => handlePadClick('left')}
+                className={`dc-num-btn ${activeDirection === 'forward-right' ? 'active' : ''}`}
+                onPointerDown={() => startDirection('forward-right')}
+                onPointerUp={stopDirection}
+                onPointerLeave={stopDirection}
+                disabled={!selectedDeviceId}
+              >
+                <span className="dc-num-icon">↗️</span>
+                <span className="dc-num-key">9</span>
+              </button>
+              
+              {/* Row 2: left, stop, right */}
+              <button 
+                className={`dc-num-btn ${activeDirection === 'left' ? 'active' : ''}`}
+                onPointerDown={() => startDirection('left')}
+                onPointerUp={stopDirection}
+                onPointerLeave={stopDirection}
                 disabled={!selectedDeviceId}
               >
                 <span className="dc-num-icon">⬅️</span>
-                <span className="dc-num-key">4 左转</span>
+                <span className="dc-num-key">A / 4 左转</span>
               </button>
               <button 
-                className={`dc-num-btn stop ${activeKey === 'stop' ? 'active' : ''}`}
-                onClick={() => handlePadClick('stop')}
+                className="dc-num-btn stop"
+                onClick={handleEmergencyStop}
                 disabled={!selectedDeviceId}
               >
                 <span className="dc-num-icon">⏹️</span>
-                <span className="dc-num-key">5 停止</span>
+                <span className="dc-num-key">空格 停止</span>
               </button>
               <button 
-                className={`dc-num-btn ${activeKey === 'right' ? 'active' : ''}`}
-                onClick={() => handlePadClick('right')}
+                className={`dc-num-btn ${activeDirection === 'right' ? 'active' : ''}`}
+                onPointerDown={() => startDirection('right')}
+                onPointerUp={stopDirection}
+                onPointerLeave={stopDirection}
                 disabled={!selectedDeviceId}
               >
                 <span className="dc-num-icon">➡️</span>
-                <span className="dc-num-key">6 右转</span>
+                <span className="dc-num-key">D / 6 右转</span>
               </button>
               
-              <div className="dc-num-btn invisible"></div>
+              {/* Row 3: backward-left, backward, backward-right */}
               <button 
-                className={`dc-num-btn ${activeKey === 'backward' ? 'active' : ''}`}
-                onClick={() => handlePadClick('backward')}
+                className={`dc-num-btn ${activeDirection === 'backward-left' ? 'active' : ''}`}
+                onPointerDown={() => startDirection('backward-left')}
+                onPointerUp={stopDirection}
+                onPointerLeave={stopDirection}
+                disabled={!selectedDeviceId}
+              >
+                <span className="dc-num-icon">↙️</span>
+                <span className="dc-num-key">1</span>
+              </button>
+              <button 
+                className={`dc-num-btn ${activeDirection === 'backward' ? 'active' : ''}`}
+                onPointerDown={() => startDirection('backward')}
+                onPointerUp={stopDirection}
+                onPointerLeave={stopDirection}
                 disabled={!selectedDeviceId}
               >
                 <span className="dc-num-icon">⬇️</span>
-                <span className="dc-num-key">2 后退</span>
+                <span className="dc-num-key">S / 2 后退</span>
               </button>
-              <div className="dc-num-btn invisible"></div>
+              <button 
+                className={`dc-num-btn ${activeDirection === 'backward-right' ? 'active' : ''}`}
+                onPointerDown={() => startDirection('backward-right')}
+                onPointerUp={stopDirection}
+                onPointerLeave={stopDirection}
+                disabled={!selectedDeviceId}
+              >
+                <span className="dc-num-icon">↘️</span>
+                <span className="dc-num-key">3</span>
+              </button>
             </div>
           </div>
+
+          {/* 急停按钮 */}
+          <button className="dc-btn-emergency" onClick={handleEmergencyStop} disabled={!selectedDeviceId}>
+            🚨 急停 (Emergency Stop)
+          </button>
         </div>
 
+        {/* 右：发送特定指令 */}
         <div className="dc-control-card">
           <h3>📝 发送特定指令</h3>
-          <p className="dc-control-desc">向下位机发送特定的文本指令与自定义参数 (JSON格式)。</p>
+          <p className="dc-control-desc">直接输入 JSON 指令通过 TCP 发送到设备端口，设备需支持对应的指令类型。</p>
           
           <form className="dc-custom-form" onSubmit={handleCustomSend}>
             <div className="dc-input-group">
-              <label>指令代码 (Command)</label>
-              <input 
-                type="text" 
-                className="dc-input" 
-                placeholder="例如: take_photo, return_home..." 
+              <label>指令代码 (JSON)</label>
+              <input
+                type="text"
+                className="dc-input"
                 value={customCommand}
                 onChange={e => setCustomCommand(e.target.value)}
-                required
+                placeholder='{"type":"ping"}'
+                disabled={!selectedDeviceId}
               />
             </div>
-            <div className="dc-input-group">
-              <label>附加参数 (JSON格式, 可选)</label>
-              <input 
-                type="text" 
-                className="dc-input" 
-                placeholder='例如: {"resolution": "1080p"}' 
-                value={customParams}
-                onChange={e => setCustomParams(e.target.value)}
-              />
-            </div>
-            <button type="submit" className="dc-btn-send" disabled={!selectedDeviceId || !customCommand.trim()}>
-              发送指令
+            <button 
+              type="submit" 
+              className="dc-btn-send"
+              disabled={!selectedDeviceId || !customCommand.trim()}
+            >
+              发送指令到设备
             </button>
           </form>
+
+          <div className="dc-preset-commands">
+            <label>快捷指令</label>
+            <div className="dc-preset-list">
+              {[
+                { label: 'Ping', cmd: '{"type":"ping"}' },
+                { label: 'Stop', cmd: '{"type":"stop"}' },
+                { label: '前进 0.1', cmd: '{"type":"cmd_vel","v":0.1,"w":0}' },
+              ].map((preset, i) => (
+                <button 
+                  key={i} 
+                  className="dc-preset-btn"
+                  type="button"
+                  disabled={!selectedDeviceId}
+                  onClick={() => {
+                    setCustomCommand(preset.cmd)
+                  }}
+                >{preset.label}</button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
+      {/* 终端日志（全宽） */}
       <div className="dc-log-container">
         <div className="dc-log-header">
-          <h3>终端日志</h3>
+          <h3>控制日志</h3>
           <button className="dc-btn-clear" onClick={() => setLogs([])}>清空日志</button>
         </div>
         <div className="dc-logs">
-          {logs.length === 0 && <span style={{color: '#475569'}}>暂无日志...</span>}
+          {logs.length === 0 && <span style={{color: '#94a3b8'}}>暂无日志... 请先选择设备并检测连接</span>}
           {logs.map((log, idx) => (
             <div className="dc-log-item" key={idx}>
               <span className="dc-log-time">[{log.time}]</span>

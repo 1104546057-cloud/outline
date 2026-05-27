@@ -6,138 +6,17 @@ import '../styles/Dashboard.css'
  * 数据看板页面
  *
  * 展示设备总览信息、地图标注、设备统计和设备列表
- * 参考图片风格：左侧统计面板 + 中间地图 + 右侧设备列表
+ * 从 /api/devices 获取真实设备数据
  */
-
-// ===== 硬编码设备数据 =====
-const mockDevices = [
-  {
-    id: 'UAV-001',
-    name: '侦察无人机 Alpha',
-    type: 'drone',
-    typeLabel: '无人机',
-    status: 'online',
-    statusLabel: '在线',
-    battery: 87,
-    health: 95,
-    signal: 92,
-    speed: 12.5,
-    lat: 22.349278,
-    lng: 113.584101,
-    location: '软工学院上空',
-  },
-  {
-    id: 'UAV-002',
-    name: '运输无人机 Beta',
-    type: 'drone',
-    typeLabel: '无人机',
-    status: 'online',
-    statusLabel: '在线',
-    battery: 65,
-    health: 88,
-    signal: 85,
-    speed: 8.3,
-    lat: 22.348278,
-    lng: 113.586101,
-    location: '教学楼附近',
-  },
-  {
-    id: 'UAV-003',
-    name: '巡检无人机 Gamma',
-    type: 'drone',
-    typeLabel: '无人机',
-    status: 'offline',
-    statusLabel: '离线',
-    battery: 12,
-    health: 72,
-    signal: 0,
-    speed: 0,
-    lat: 22.350278,
-    lng: 113.582101,
-    location: '操场区域',
-  },
-  {
-    id: 'UGV-001',
-    name: '巡逻无人车 Delta',
-    type: 'car',
-    typeLabel: '无人车',
-    status: 'online',
-    statusLabel: '在线',
-    battery: 78,
-    health: 91,
-    signal: 88,
-    speed: 5.2,
-    lat: 22.347278,
-    lng: 113.585101,
-    location: '校区南门',
-  },
-  {
-    id: 'UGV-002',
-    name: '运输无人车 Echo',
-    type: 'car',
-    typeLabel: '无人车',
-    status: 'warning',
-    statusLabel: '告警',
-    battery: 34,
-    health: 65,
-    signal: 72,
-    speed: 3.1,
-    lat: 22.351278,
-    lng: 113.583101,
-    location: '校区北门',
-  },
-  {
-    id: 'USV-001',
-    name: '监测无人船 Foxtrot',
-    type: 'ship',
-    typeLabel: '无人船',
-    status: 'online',
-    statusLabel: '在线',
-    battery: 92,
-    health: 98,
-    signal: 95,
-    speed: 6.7,
-    lat: 22.352278,
-    lng: 113.589101,
-    location: '情侣北路海域',
-  },
-  {
-    id: 'USV-002',
-    name: '巡航无人船 Golf',
-    type: 'ship',
-    typeLabel: '无人船',
-    status: 'online',
-    statusLabel: '在线',
-    battery: 73,
-    health: 85,
-    signal: 80,
-    speed: 4.5,
-    lat: 22.346278,
-    lng: 113.590101,
-    location: '唐家湾海域',
-  },
-  {
-    id: 'UAV-004',
-    name: '测绘无人机 Hotel',
-    type: 'drone',
-    typeLabel: '无人机',
-    status: 'online',
-    statusLabel: '在线',
-    battery: 54,
-    health: 82,
-    signal: 78,
-    speed: 15.0,
-    lat: 22.345278,
-    lng: 113.584101,
-    location: '附属第一医院',
-  },
-]
 
 // 设备类型图标映射
 const deviceTypeIcons = {
-  drone: '✈️',
-  car: '🚗',
-  ship: '🚢',
+  '无人机': '✈️',
+  '无人车': '🚗',
+  '无人船': '🚢',
+  'drone': '✈️',
+  'car': '🚗',
+  'ship': '🚢',
 }
 
 // 状态颜色映射
@@ -147,25 +26,80 @@ const statusColors = {
   warning: '#f59e0b',
 }
 
+// 获取设备类型图标
+const getTypeIcon = (type) => {
+  if (!type) return '🤖'
+  for (const [key, icon] of Object.entries(deviceTypeIcons)) {
+    if (type.includes(key)) return icon
+  }
+  return '🤖'
+}
+
+// 获取设备类型标签
+const getTypeLabel = (type) => {
+  if (!type) return '未知'
+  if (type.includes('车')) return '无人车'
+  if (type.includes('机')) return '无人机'
+  if (type.includes('船')) return '无人船'
+  return type
+}
+
+// 获取状态标签
+const getStatusLabel = (status) => {
+  if (status === 'online') return '在线'
+  if (status === 'warning') return '告警'
+  return '离线'
+}
+
+// 获取设备类型的量词
+const getTypeUnit = (type) => {
+  if (!type) return '台'
+  if (type.includes('机')) return '架'
+  if (type.includes('车')) return '辆'
+  if (type.includes('船')) return '艘'
+  return '台'
+}
+
 function Dashboard() {
+  const [devices, setDevices] = useState([])
   const [selectedDevice, setSelectedDevice] = useState(null)
   const [currentTime, setCurrentTime] = useState(new Date())
   const mapContainerRef = useRef(null)
   const mapInstanceRef = useRef(null)
+  const markersRef = useRef([])
 
-  // 统计数据
-  const totalDevices = mockDevices.length
-  const onlineDevices = mockDevices.filter(d => d.status === 'online').length
-  const offlineDevices = mockDevices.filter(d => d.status === 'offline').length
-  const warningDevices = mockDevices.filter(d => d.status === 'warning').length
+  // 从 API 获取设备数据
+  const fetchDevices = async () => {
+    try {
+      const res = await fetch('/api/devices', { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json()
+        setDevices(data)
+      }
+    } catch (e) {
+      console.error('获取设备数据失败:', e)
+    }
+  }
 
-  const droneCount = mockDevices.filter(d => d.type === 'drone').length
-  const carCount = mockDevices.filter(d => d.type === 'car').length
-  const shipCount = mockDevices.filter(d => d.type === 'ship').length
+  useEffect(() => {
+    fetchDevices()
+    const timer = setInterval(fetchDevices, 5000)
+    return () => clearInterval(timer)
+  }, [])
 
-  const droneOnline = mockDevices.filter(d => d.type === 'drone' && d.status === 'online').length
-  const carOnline = mockDevices.filter(d => d.type === 'car' && d.status === 'online').length
-  const shipOnline = mockDevices.filter(d => d.type === 'ship' && d.status === 'online').length
+  // 统计数据（从真实数据计算）
+  const totalDevices = devices.length
+  const onlineDevices = devices.filter(d => d.status === 'online').length
+  const offlineDevices = devices.filter(d => d.status === 'offline').length
+  const warningDevices = devices.filter(d => d.status === 'warning').length
+
+  const droneCount = devices.filter(d => d.type && d.type.includes('机')).length
+  const carCount = devices.filter(d => d.type && d.type.includes('车')).length
+  const shipCount = devices.filter(d => d.type && d.type.includes('船')).length
+
+  const droneOnline = devices.filter(d => d.type && d.type.includes('机') && d.status === 'online').length
+  const carOnline = devices.filter(d => d.type && d.type.includes('车') && d.status === 'online').length
+  const shipOnline = devices.filter(d => d.type && d.type.includes('船') && d.status === 'online').length
 
   // 实时时钟
   useEffect(() => {
@@ -180,45 +114,23 @@ function Dashboard() {
     };
 
     AMapLoader.load({
-      key: import.meta.env.VITE_AMAP_API_KEY, // 申请好的Web端开发者Key，首次调用 load 时必填
-      version: '2.0', // 指定要加载的 JSAPI 的版本，缺省时默认为 1.4.15
-      plugins: [], //需要使用的的插件列表
+      key: import.meta.env.VITE_AMAP_API_KEY,
+      version: '2.0',
+      plugins: [],
     })
       .then((AMap) => {
         if (!mapContainerRef.current) return
 
         const map = new AMap.Map(mapContainerRef.current, {
           zoom: 15,
-          center: [113.584101, 22.349278], // 中山大学珠海校区
+          center: [113.584101, 22.349278],
           mapStyle: 'amap://styles/light',
           viewMode: '2D',
         })
 
         mapInstanceRef.current = map
-
-        // 添加设备标记
-        mockDevices.forEach((device) => {
-          // 创建自定义标记内容
-          const markerContent = document.createElement('div')
-          markerContent.className = `map-marker marker-${device.type} marker-status-${device.status}`
-          markerContent.innerHTML = `<span class="marker-icon">${deviceTypeIcons[device.type]}</span>`
-
-          const marker = new AMap.Marker({
-            position: [device.lng, device.lat],
-            content: markerContent,
-            offset: new AMap.Pixel(-16, -16),
-            title: device.name,
-          })
-
-          marker.on('click', () => {
-            setSelectedDevice(device)
-          })
-
-          map.add(marker)
-        })
       })
       .catch((e) => {
-        // 地图加载失败时显示备用内容
         console.error('高德地图加载失败:', e)
       })
 
@@ -229,11 +141,50 @@ function Dashboard() {
     }
   }, [])
 
+  // 当设备数据变化时更新地图标记
+  useEffect(() => {
+    if (!mapInstanceRef.current) return
+    const map = mapInstanceRef.current
+    // 移除旧标记
+    markersRef.current.forEach(m => map.remove(m))
+    markersRef.current = []
+    // 添加新标记
+    const AMap = window.AMap
+    if (!AMap) return
+    devices.forEach((device) => {
+      if (!device.lat || !device.lng) return
+      const lat = parseFloat(device.lat)
+      const lng = parseFloat(device.lng)
+      if (isNaN(lat) || isNaN(lng)) return
+
+      const markerContent = document.createElement('div')
+      markerContent.className = `map-marker marker-status-${device.status}`
+      markerContent.innerHTML = `<span class="marker-icon">${getTypeIcon(device.type)}</span>`
+
+      const marker = new AMap.Marker({
+        position: [lng, lat],
+        content: markerContent,
+        offset: new AMap.Pixel(-16, -16),
+        title: device.name,
+      })
+
+      marker.on('click', () => {
+        setSelectedDevice(device)
+      })
+
+      map.add(marker)
+      markersRef.current.push(marker)
+    })
+  }, [devices])
+
   // 监听选中设备的变化，联动放大并定位地图
   useEffect(() => {
-    if (selectedDevice && mapInstanceRef.current) {
-      // 放大级别为 18，并在第三个参数传入 true 以启用动画过渡
-      mapInstanceRef.current.setZoomAndCenter(18, [selectedDevice.lng, selectedDevice.lat], true)
+    if (selectedDevice && mapInstanceRef.current && selectedDevice.lat && selectedDevice.lng) {
+      const lat = parseFloat(selectedDevice.lat)
+      const lng = parseFloat(selectedDevice.lng)
+      if (!isNaN(lat) && !isNaN(lng)) {
+        mapInstanceRef.current.setZoomAndCenter(18, [lng, lat], true)
+      }
     }
   }, [selectedDevice])
 
@@ -384,7 +335,12 @@ function Dashboard() {
             <span className="device-count">{totalDevices} 台设备</span>
           </div>
           <div className="device-list">
-            {mockDevices.map((device) => (
+            {devices.length === 0 && (
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                暂无设备数据
+              </div>
+            )}
+            {devices.map((device) => (
               <div
                 key={device.id}
                 className={`device-card ${selectedDevice?.id === device.id ? 'selected' : ''}`}
@@ -393,31 +349,23 @@ function Dashboard() {
               >
                 <div className="device-card-top">
                   <div className="device-type-badge">
-                    <span className="device-type-icon">{deviceTypeIcons[device.type]}</span>
-                    <span className="device-type-name">{device.typeLabel}</span>
+                    <span className="device-type-icon">{getTypeIcon(device.type)}</span>
+                    <span className="device-type-name">{getTypeLabel(device.type)}</span>
                   </div>
                   <span
                     className="device-status-dot"
-                    style={{ background: statusColors[device.status] }}
-                    title={device.statusLabel}
+                    style={{ background: statusColors[device.status] || statusColors.offline }}
+                    title={getStatusLabel(device.status)}
                   ></span>
                 </div>
                 <div className="device-card-name">{device.name}</div>
-                <div className="device-card-id">{device.id}</div>
+                <div className="device-card-id">{device.ip_address}:{device.port || 9000}</div>
                 <div className="device-card-location">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
                     <circle cx="12" cy="10" r="3"></circle>
                   </svg>
-                  <span>{device.location}</span>
-                </div>
-                <div className="device-card-coords" style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.25rem' }}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="2" y1="12" x2="22" y2="12"></line>
-                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-                  </svg>
-                  <span style={{ fontFamily: 'monospace' }}>{device.lng.toFixed(6)},{device.lat.toFixed(6)}</span>
+                  <span>{device.lat && device.lng ? `${device.lat}, ${device.lng}` : '暂无位置信息'}</span>
                 </div>
                 <div className="device-card-metrics">
                   <div className="metric" title="电量">
@@ -425,7 +373,7 @@ function Dashboard() {
                       <rect x="1" y="6" width="18" height="12" rx="2" ry="2"></rect>
                       <line x1="23" y1="13" x2="23" y2="11"></line>
                     </svg>
-                    <span style={{ color: getBatteryColor(device.battery) }}>{device.battery}%</span>
+                    <span style={{ color: getBatteryColor(device.battery) }}>{device.battery != null ? `${device.battery}%` : '--'}</span>
                   </div>
                   <div className="metric" title="信号">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -434,13 +382,13 @@ function Dashboard() {
                       <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
                       <line x1="12" y1="20" x2="12.01" y2="20"></line>
                     </svg>
-                    <span>{device.signal}%</span>
+                    <span>{device.signal != null ? `${device.signal}%` : '--'}</span>
                   </div>
                   <div className="metric" title="速度">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
                     </svg>
-                    <span>{device.speed}m/s</span>
+                    <span>{device.speed || '0 m/s'}</span>
                   </div>
                 </div>
               </div>

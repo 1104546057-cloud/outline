@@ -29,7 +29,7 @@ DATABASE_URL = f"mysql+pymysql://{DB_USER}:{quote_plus(DB_PASSWORD)}@{DB_HOST}:{
 # 创建数据库引擎
 engine = create_engine(
     DATABASE_URL,
-    echo=True,  # 开发阶段打印 SQL 语句，生产环境应设为 False
+    echo=False,  # 关闭 SQL 日志输出
     pool_size=5,  # 连接池大小
     max_overflow=10,  # 超出连接池大小时最多可以额外创建的连接数
     pool_recycle=3600,  # 连接回收时间（秒），避免 MySQL 8小时超时断开
