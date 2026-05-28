@@ -360,3 +360,26 @@
   background: #dc2626;
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
+
+/* ===== 响应式设计 ===== */
+@media (max-width: 768px) {
+  .cluster-management {
+    padding: 1rem;
+  }
+  
+  .cm-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  
+  .cm-btn-create {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .cm-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}

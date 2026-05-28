@@ -673,3 +673,35 @@
 .um-table-container::-webkit-scrollbar-thumb:hover {
   background: var(--color-text-placeholder);
 }
+
+/* ===== 响应式设计 ===== */
+@media (max-width: 768px) {
+  .um-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+    height: auto;
+  }
+  
+  .um-header-right {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .um-search {
+    width: 100%;
+  }
+  
+  .um-search input {
+    width: 100%;
+  }
+  
+  .um-stats {
+    flex-direction: column;
+  }
+  
+  .btn-primary {
+    justify-content: center;
+  }
+}

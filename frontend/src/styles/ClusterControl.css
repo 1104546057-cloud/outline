@@ -985,19 +985,44 @@
 
 
 /* ===== 全宽终端日志 ===== */
-
 .cc-log-container {
-
   background: #ffffff;
-
   border: 1px solid #e2e8f0;
-
   border-radius: 12px;
-
   padding: 1.5rem;
-
   margin-top: 1.5rem;
-
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
 
+/* ===== 响应式设计 ===== */
+@media (max-width: 768px) {
+  .cluster-control-page {
+    padding: 1rem;
+  }
+  .cc-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .cc-selector-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+  }
+  .cc-selector-left {
+    min-width: unset;
+  }
+  .cc-selector-right {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .cc-btn-test {
+    width: 100%;
+  }
+  .cc-numpad {
+    max-width: 100%;
+  }
+  .cc-device-info {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
 }

@@ -669,3 +669,37 @@
   background: #dc2626;
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
+
+/* ===== 响应式设计 ===== */
+@media (max-width: 768px) {
+  .device-management {
+    padding: 1rem;
+  }
+  
+  .dm-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  
+  .dm-header-actions {
+    width: 100%;
+    display: flex;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  
+  .dm-device-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  
+  .dm-device-stats {
+    grid-template-columns: 1fr;
+  }
+  
+  .dm-btn-scan, .dm-btn-add {
+    flex: 1;
+    justify-content: center;
+  }
+}

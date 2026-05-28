@@ -508,3 +508,36 @@
   margin-top: 1.5rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
+
+/* ===== 响应式设计 ===== */
+@media (max-width: 768px) {
+  .device-control-page {
+    padding: 1rem;
+  }
+  .dc-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .dc-selector-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+  }
+  .dc-selector-left {
+    min-width: unset;
+  }
+  .dc-selector-right {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .dc-btn-test {
+    width: 100%;
+  }
+  .dc-numpad {
+    max-width: 100%;
+  }
+  .dc-device-info {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}
