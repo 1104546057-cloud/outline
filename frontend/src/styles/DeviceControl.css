@@ -6,20 +6,25 @@
 }
 
 .dc-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
   margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border-light);
 }
 
-.dc-header h1 {
-  font-size: 1.6rem;
+.dc-header .page-title {
+  font-size: 1.3rem;
   font-weight: 700;
-  color: #0f172a;
-  margin: 0 0 0.3rem;
+  color: var(--color-text-primary);
+  margin: 0;
+  letter-spacing: -0.02em;
 }
 
-.dc-header p {
-  color: #64748b;
-  font-size: 0.88rem;
-  margin: 0;
+.dc-header .page-subtitle {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
 }
 
 /* ===== 设备选择器 ===== */

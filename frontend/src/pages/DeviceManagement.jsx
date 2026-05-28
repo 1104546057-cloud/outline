@@ -4,6 +4,7 @@ import '../styles/DeviceManagement.css'
 export default function DeviceManagement() {
   const [devices, setDevices] = useState([])
   const [loading, setLoading] = useState(true)
+  const [deleteConfirm, setDeleteConfirm] = useState(null)
   
   // scan modal
   const [showScanModal, setShowScanModal] = useState(false)
@@ -158,10 +159,10 @@ export default function DeviceManagement() {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('确定删除该设备吗？')) return
     try {
       const res = await fetch(`/api/devices/${id}`, { method: 'DELETE', credentials: 'include' })
       if (res.ok) {
+        setDeleteConfirm(null)
         fetchDevices()
       }
     } catch (e) {
@@ -272,9 +273,9 @@ export default function DeviceManagement() {
   return (
     <div className="device-management">
       <div className="dm-header">
-        <div>
-          <h1>设备管理</h1>
-          <p>管理您的无人集群设备 · 支持真实设备接入</p>
+        <div className="dm-header-left">
+          <h1 className="page-title">设备管理</h1>
+          <span className="page-subtitle">管理您的无人集群设备 · 支持真实设备接入</span>
         </div>
         <div className="dm-header-actions">
           <button className="dm-btn-add" onClick={() => { setShowAddModal(true); setAddError('') }}>
@@ -349,7 +350,7 @@ export default function DeviceManagement() {
               <button className="dm-btn-icon edit" onClick={() => handleEdit(dev)}>
                 ✏️ 编辑
               </button>
-              <button className="dm-btn-icon delete" onClick={() => handleDelete(dev.id)}>
+              <button className="dm-btn-icon delete" onClick={() => setDeleteConfirm(dev)}>
                 🗑️ 删除
               </button>
             </div>
@@ -549,6 +550,31 @@ export default function DeviceManagement() {
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 删除设备确认弹窗（统一风格） */}
+      {deleteConfirm && (
+        <div className="dm-modal-overlay" onClick={() => setDeleteConfirm(null)}>
+          <div className="dm-modal dm-delete-modal" onClick={e => e.stopPropagation()}>
+            <div className="dm-delete-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="15" y1="9" x2="9" y2="15"></line>
+                <line x1="9" y1="9" x2="15" y2="15"></line>
+              </svg>
+            </div>
+            <h3>确认删除</h3>
+            <p>确定要删除设备 <strong>{deleteConfirm.name}</strong> 吗？此操作不可撤销。</p>
+            <div className="dm-modal-footer" style={{ justifyContent: 'center', background: 'transparent', borderTop: 'none', padding: '0' }}>
+              <button className="dm-btn-cancel" onClick={() => setDeleteConfirm(null)}>
+                取消
+              </button>
+              <button className="dm-btn-delete" onClick={() => handleDelete(deleteConfirm.id)}>
+                确认删除
+              </button>
             </div>
           </div>
         </div>

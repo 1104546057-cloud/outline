@@ -131,7 +131,7 @@ function MainLayout() {
         <div className="sidebar-header">
           <div className="sidebar-logo">
             <span className="logo-icon">🛰️</span>
-            {!sidebarCollapsed && <span className="logo-text">集群管理平台</span>}
+            <span className="logo-text">集群管理平台</span>
           </div>
         </div>
 
@@ -143,12 +143,10 @@ function MainLayout() {
               <circle cx="12" cy="7" r="4"></circle>
             </svg>
           </div>
-          {!sidebarCollapsed && (
-            <div className="user-info">
-              <span className="user-name">{user.nickname || user.username || '管理员'}</span>
-              <span className="user-role">系统管理员</span>
-            </div>
-          )}
+          <div className="user-info">
+            <span className="user-name">{user.nickname || user.username || '管理员'}</span>
+            <span className="user-role">系统管理员</span>
+          </div>
         </div>
 
         {/* 导航菜单 */}
@@ -164,7 +162,7 @@ function MainLayout() {
               title={sidebarCollapsed ? item.label : ''}
             >
               <span className="nav-icon">{item.icon}</span>
-              {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
+              <span className="nav-label">{item.label}</span>
             </NavLink>
           ))}
         </nav>

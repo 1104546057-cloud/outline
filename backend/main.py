@@ -1382,6 +1382,9 @@ async def proxy_camera_stream(
 
     设备端运行 mjpg_streamer，在 8080 端口提供 MJPEG 流。
     本接口通过后端代理转发，确保前端访问需要经过 JWT 鉴权。
+
+    使用独立的 httpx.AsyncClient 实例避免与其他请求共享连接池，
+    从而解决多路视频流并发时阻塞的问题。
     """
     import httpx
     from starlette.responses import StreamingResponse
@@ -1395,22 +1398,29 @@ async def proxy_camera_stream(
     camera_url = f"http://{device.ip_address}:{CAMERA_STREAM_PORT}/?action=stream"
 
     async def stream_generator():
-        """异步读取 MJPEG 流并逐块转发"""
+        """异步读取 MJPEG 流并逐块转发，每路流独立创建连接"""
+        client = None
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(
-                connect=5.0, read=None, write=5.0, pool=5.0
-            )) as client:
-                async with client.stream("GET", camera_url) as response:
-                    if response.status_code != 200:
-                        return
-                    async for chunk in response.aiter_bytes(chunk_size=4096):
-                        yield chunk
+            # 每路视频流创建独立的 httpx 客户端，避免连接池竞争
+            client = httpx.AsyncClient(
+                timeout=httpx.Timeout(connect=5.0, read=None, write=5.0, pool=None),
+                limits=httpx.Limits(max_connections=1, max_keepalive_connections=1),
+            )
+            async with client.stream("GET", camera_url) as response:
+                if response.status_code != 200:
+                    print(f"[{datetime.now()}] 摄像头流代理: 设备 {device_id} 返回 HTTP {response.status_code}")
+                    return
+                async for chunk in response.aiter_bytes(chunk_size=8192):
+                    yield chunk
         except (httpx.ConnectError, httpx.ReadTimeout, httpx.ConnectTimeout) as exc:
             print(f"[{datetime.now()}] 摄像头流代理失败 (设备 {device_id}): {exc}")
             return
         except Exception as exc:
             print(f"[{datetime.now()}] 摄像头流代理异常 (设备 {device_id}): {exc}")
             return
+        finally:
+            if client:
+                await client.aclose()
 
     return StreamingResponse(
         stream_generator(),
@@ -1420,6 +1430,7 @@ async def proxy_camera_stream(
             "Pragma": "no-cache",
             "Expires": "0",
             "X-Content-Type-Options": "nosniff",
+            "X-Accel-Buffering": "no",
         },
     )
 

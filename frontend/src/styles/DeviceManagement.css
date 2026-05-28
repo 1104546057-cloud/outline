@@ -11,20 +11,29 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border-light);
 }
 
-.dm-header h1 {
-  font-size: 2rem;
+.dm-header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.dm-header h1,
+.dm-header .page-title {
+  font-size: 1.3rem;
   font-weight: 700;
-  margin: 0 0 0.5rem 0;
-  color: #0f172a;
+  margin: 0;
+  color: var(--color-text-primary);
+  letter-spacing: -0.02em;
 }
 
-.dm-header p {
-  color: #64748b;
-  margin: 0;
-  font-size: 1rem;
+.dm-header .page-subtitle {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
 }
 
 .dm-btn-scan {
@@ -49,7 +58,7 @@
 
 .dm-device-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
   gap: 1.5rem;
 }
 
@@ -489,7 +498,7 @@
 /* 扩展遥测信息区域 */
 .dm-device-extra {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.5rem;
   margin-bottom: 1rem;
 }
@@ -502,6 +511,11 @@
   font-size: 0.75rem;
   font-weight: 500;
   border: 1px solid #bfdbfe;
+  flex: 1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 表单提示文字 */
@@ -615,4 +629,43 @@
 .dm-token-status.inactive {
   background: #fee2e2;
   color: #991b1b;
+}
+
+/* 删除确认弹窗 */
+.dm-delete-modal {
+  text-align: center;
+  padding: 2rem 1.5rem;
+}
+
+.dm-delete-icon {
+  margin-bottom: 1rem;
+}
+
+.dm-delete-modal h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 0.5rem;
+}
+
+.dm-delete-modal p {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin: 0 0 1.5rem;
+}
+
+.dm-btn-delete {
+  padding: 0.6rem 1.25rem;
+  background: #ef4444;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 500;
+}
+
+.dm-btn-delete:hover {
+  background: #dc2626;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }

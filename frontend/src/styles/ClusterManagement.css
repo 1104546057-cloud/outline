@@ -6,21 +6,29 @@
 .cm-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
-  margin-bottom: 2rem;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border-light);
 }
 
-.cm-header h1 {
-  font-size: 1.8rem;
-  color: #1e293b;
-  margin: 0 0 0.5rem 0;
-  font-weight: 600;
+.cm-header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
 }
 
-.cm-header p {
-  color: #64748b;
+.cm-header .page-title {
+  font-size: 1.3rem;
+  font-weight: 700;
   margin: 0;
-  font-size: 0.95rem;
+  color: var(--color-text-primary);
+  letter-spacing: -0.02em;
+}
+
+.cm-header .page-subtitle {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
 }
 
 .cm-btn-create {
@@ -311,4 +319,44 @@
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+/* 删除确认弹窗 */
+.cm-delete-modal {
+  text-align: center;
+  padding: 2rem 1.5rem;
+}
+
+.cm-delete-icon {
+  margin-bottom: 1rem;
+}
+
+.cm-delete-modal h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 0.5rem;
+}
+
+.cm-delete-modal p {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin: 0 0 1.5rem;
+  line-height: 1.5;
+}
+
+.cm-btn-danger {
+  padding: 0.6rem 1.25rem;
+  background: #ef4444;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.cm-btn-danger:hover {
+  background: #dc2626;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }

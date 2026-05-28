@@ -297,8 +297,8 @@ export default function DeviceControl() {
   return (
     <div className="device-control-page">
       <div className="dc-header">
-        <h1>🕹️ 远程遥控无人车</h1>
-        <p>通过 TCP 协议向树莓派发送真实控制指令 · 按住方向键持续运动，松开停车</p>
+        <h1 className="page-title">🕹️ 远程遥控无人车</h1>
+        <span className="page-subtitle">通过 TCP 协议向树莓派发送真实控制指令 · 按住方向键持续运动，松开停车</span>
       </div>
 
       {/* 设备选择 + 连接状态 */}

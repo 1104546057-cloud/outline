@@ -208,8 +208,8 @@ function LiveVideo() {
     <div className="live-video-page" id="live-video-page">
       {/* 页头 */}
       <div className="lv-header">
-        <h1>📹 实时画面</h1>
-        <p>查看无人设备摄像头实时视频流</p>
+        <h1 className="page-title">📹 实时画面</h1>
+        <span className="page-subtitle">查看无人设备摄像头实时视频流</span>
       </div>
 
       {/* 工具栏 */}

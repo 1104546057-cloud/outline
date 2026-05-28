@@ -11,6 +11,12 @@ export default function ClusterManagement() {
   const [editingCluster, setEditingCluster] = useState(null)
   const [formData, setFormData] = useState({ name: '', description: '' })
 
+  // Delete Cluster Confirm
+  const [deleteClusterConfirm, setDeleteClusterConfirm] = useState(null)
+
+  // Remove Device from Cluster Confirm
+  const [removeDeviceConfirm, setRemoveDeviceConfirm] = useState(null)
+
   // Add Device Modal
   const [showAddDeviceModal, setShowAddDeviceModal] = useState(false)
   const [selectedClusterForDevice, setSelectedClusterForDevice] = useState(null)
@@ -73,10 +79,10 @@ export default function ClusterManagement() {
   }
 
   const handleDeleteCluster = async (id) => {
-    if (!confirm('确定删除该集群吗？其包含的设备关联也会被解除（设备本身不会被删除）。')) return
     try {
       const res = await fetch(`/api/clusters/${id}`, { method: 'DELETE', credentials: 'include' })
       if (res.ok) {
+        setDeleteClusterConfirm(null)
         fetchClusters()
       }
     } catch (e) {
@@ -98,13 +104,15 @@ export default function ClusterManagement() {
 
   // Device Management within Cluster
   const handleRemoveDevice = async (clusterId, deviceId) => {
-    if (!confirm('确定将该设备从集群中移除吗？')) return
     try {
       const res = await fetch(`/api/clusters/${clusterId}/devices/${deviceId}`, {
         method: 'DELETE',
         credentials: 'include'
       })
-      if (res.ok) fetchClusters()
+      if (res.ok) {
+        setRemoveDeviceConfirm(null)
+        fetchClusters()
+      }
     } catch (e) {
       console.error(e)
     }
@@ -151,9 +159,9 @@ export default function ClusterManagement() {
   return (
     <div className="cluster-management">
       <div className="cm-header">
-        <div>
-          <h1>集群管理</h1>
-          <p>编组无人设备，实现异构设备的协同工作</p>
+        <div className="cm-header-left">
+          <h1 className="page-title">集群管理</h1>
+          <span className="page-subtitle">编组无人设备，实现异构设备的协同工作</span>
         </div>
         <button className="cm-btn-create" onClick={openCreateModal}>
           <span>➕</span> 创建新集群
@@ -170,7 +178,7 @@ export default function ClusterManagement() {
               </div>
               <div className="cm-actions">
                 <button className="cm-btn-icon edit" onClick={() => openEditModal(cluster)} title="编辑">✏️</button>
-                <button className="cm-btn-icon delete" onClick={() => handleDeleteCluster(cluster.id)} title="删除">🗑️</button>
+                <button className="cm-btn-icon delete" onClick={() => setDeleteClusterConfirm(cluster)} title="删除">🗑️</button>
               </div>
             </div>
 
@@ -184,7 +192,7 @@ export default function ClusterManagement() {
                     <span className={`cm-device-status ${dev.status}`}></span>
                     <span>{dev.name} ({dev.type})</span>
                   </div>
-                  <button className="cm-btn-remove-device" onClick={() => handleRemoveDevice(cluster.id, dev.id)} title="移除设备">×</button>
+                  <button className="cm-btn-remove-device" onClick={() => setRemoveDeviceConfirm({ clusterId: cluster.id, device: dev })} title="移除设备">×</button>
                 </div>
               ))}
               {cluster.devices.length === 0 && (
@@ -265,6 +273,48 @@ export default function ClusterManagement() {
                 <button type="submit" className="cm-btn-submit" disabled={getAvailableDevicesForCluster(selectedClusterForDevice).length === 0}>添加</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 删除集群确认弹窗 */}
+      {deleteClusterConfirm && (
+        <div className="cm-modal-overlay" onClick={() => setDeleteClusterConfirm(null)}>
+          <div className="cm-modal cm-delete-modal" onClick={e => e.stopPropagation()}>
+            <div className="cm-delete-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="15" y1="9" x2="9" y2="15"></line>
+                <line x1="9" y1="9" x2="15" y2="15"></line>
+              </svg>
+            </div>
+            <h3>确认删除</h3>
+            <p>确定要删除集群 <strong>{deleteClusterConfirm.name}</strong> 吗？其包含的设备关联也会被解除（设备本身不会被删除）。</p>
+            <div className="cm-modal-footer" style={{ justifyContent: 'center', borderTop: 'none', marginTop: '0' }}>
+              <button className="cm-btn-cancel" onClick={() => setDeleteClusterConfirm(null)}>取消</button>
+              <button className="cm-btn-danger" onClick={() => handleDeleteCluster(deleteClusterConfirm.id)}>确认删除</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 移除设备确认弹窗 */}
+      {removeDeviceConfirm && (
+        <div className="cm-modal-overlay" onClick={() => setRemoveDeviceConfirm(null)}>
+          <div className="cm-modal cm-delete-modal" onClick={e => e.stopPropagation()}>
+            <div className="cm-delete-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+            </div>
+            <h3>确认移除</h3>
+            <p>确定将设备 <strong>{removeDeviceConfirm.device.name}</strong> 从集群中移除吗？</p>
+            <div className="cm-modal-footer" style={{ justifyContent: 'center', borderTop: 'none', marginTop: '0' }}>
+              <button className="cm-btn-cancel" onClick={() => setRemoveDeviceConfirm(null)}>取消</button>
+              <button className="cm-btn-danger" onClick={() => handleRemoveDevice(removeDeviceConfirm.clusterId, removeDeviceConfirm.device.id)}>确认移除</button>
+            </div>
           </div>
         </div>
       )}

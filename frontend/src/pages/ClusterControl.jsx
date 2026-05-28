@@ -246,8 +246,8 @@ export default function ClusterControl() {
   return (
     <div className="cluster-control-page">
       <div className="cc-header">
-        <h1>🚀 远程集群控制</h1>
-        <p>通过 TCP 协议向集群内所有在线设备下发同步控制指令</p>
+        <h1 className="page-title">🚀 远程集群控制</h1>
+        <span className="page-subtitle">通过 TCP 协议向集群内所有在线设备下发同步控制指令</span>
       </div>
 
       <div className="cc-selector-card">

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import '../styles/Login.css'
 
@@ -9,7 +9,21 @@ function Login() {
   const [rememberMe, setRememberMe] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [modalType, setModalType] = useState(null) // 'forgot' 或 'register'
   const navigate = useNavigate()
+
+  // 初始化时读取「记住我」保存的凭证
+  useEffect(() => {
+    const saved = localStorage.getItem('dwc_remember')
+    if (saved) {
+      try {
+        const { username: savedUser, password: savedPass } = JSON.parse(saved)
+        setUsername(savedUser || '')
+        setPassword(savedPass || '')
+        setRememberMe(true)
+      } catch { /* ignore */ }
+    }
+  }, [])
 
   // 处理登录提交
   const handleLogin = async (e) => {
@@ -47,6 +61,15 @@ function Login() {
           nickname: data.nickname,
           token: data.token,
         }))
+        // 「记住我」持久化
+        if (rememberMe) {
+          localStorage.setItem('dwc_remember', JSON.stringify({
+            username: username.trim(),
+            password: password,
+          }))
+        } else {
+          localStorage.removeItem('dwc_remember')
+        }
         navigate('/dashboard')
       } else {
         setError(data.detail || '用户名或密码错误')
@@ -92,7 +115,7 @@ function Login() {
       <div className="login-form-area">
         <div className="login-topbar">
           <span>还没有账号？</span>
-          <a href="#register" id="register-link">注册账号</a>
+          <a href="#register" id="register-link" onClick={(e) => { e.preventDefault(); setModalType('register'); }}>注册账号</a>
         </div>
 
         <div className="login-form-container">
@@ -191,9 +214,14 @@ function Login() {
                 />
                 <span>记住我</span>
               </label>
-              <a href="#forgot" className="forgot-password" id="forgot-password-link">
+              <button
+                type="button"
+                className="forgot-password"
+                id="forgot-password-link"
+                onClick={() => setModalType('forgot')}
+              >
                 忘记密码？
-              </a>
+              </button>
             </div>
 
             {/* 登录按钮 */}
@@ -213,6 +241,32 @@ function Login() {
           © 2026 异构无人集群管理平台 · 技术支持
         </div>
       </div>
+
+      {/* ===== 提示弹窗（统一风格） ===== */}
+      {modalType && (
+        <div className="modal-overlay" onClick={() => setModalType(null)}>
+          <div className="modal-content delete-modal" onClick={(e) => e.stopPropagation()} id="contact-admin-modal">
+            <div className="delete-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+            </div>
+            <h3>{modalType === 'forgot' ? '忘记密码' : '注册账号'}</h3>
+            <p>
+              {modalType === 'forgot' 
+                ? '请联系系统管理员重置您的密码。' 
+                : '系统暂未开放自主注册，请联系系统管理员分配账号。'}
+            </p>
+            <div className="modal-actions">
+              <button className="btn-primary" onClick={() => setModalType(null)}>
+                我知道了
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
