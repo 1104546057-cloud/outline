@@ -18,9 +18,11 @@ import time
 import hashlib
 import secrets
 import threading
+import asyncio
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from typing import Optional, Any
+from fastapi.concurrency import run_in_threadpool
 
 from database import get_db
 from models import User, Device, Cluster, DeviceTelemetry, DeviceToken
@@ -43,7 +45,14 @@ DEVICE_ONLINE_TIMEOUT_SECONDS = int(os.getenv("DEVICE_ONLINE_TIMEOUT_SECONDS", "
 
 # TCP 连接池（缓存到树莓派控制服务的 TCP 连接）
 _robot_control_state: dict[str, Any] = {"connections": {}}
-_robot_control_lock = threading.Lock()
+_robot_control_locks_lock = threading.Lock()
+_robot_control_locks = {}
+
+def _get_robot_lock(key: str) -> threading.Lock:
+    with _robot_control_locks_lock:
+        if key not in _robot_control_locks:
+            _robot_control_locks[key] = threading.Lock()
+        return _robot_control_locks[key]
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
@@ -326,8 +335,9 @@ def send_robot_control_message(host: str, port: int, payload: dict, expected_typ
     向树莓派控制服务发送消息并等待响应。
     支持缓存连接自动重连一次。
     """
-    with _robot_control_lock:
-        key = _target_key(host, port)
+    key = _target_key(host, port)
+    lock = _get_robot_lock(key)
+    with lock:
         has_cached = key in _robot_control_state["connections"]
         for attempt in range(2 if has_cached else 1):
             try:
@@ -767,7 +777,7 @@ async def robot_control_status(
         raise HTTPException(status_code=422, detail="请选择一个设备")
     
     host, port = resolve_device_target(robotId, db)
-    response = send_robot_control_message(host, port, {"type": "ping"}, "pong")
+    response = await run_in_threadpool(send_robot_control_message, host, port, {"type": "ping"}, "pong")
     
     # TCP ping 成功 → 标记设备在线
     device = db.query(Device).filter(Device.id == robotId).first()
@@ -795,7 +805,8 @@ async def robot_control_cmd_vel(
     host, port = resolve_device_target(cmd.robotId, db)
     linear = normalize_control_value(cmd.linear, ROBOT_CONTROL_MAX_LINEAR, "linear")
     angular = normalize_control_value(cmd.angular, ROBOT_CONTROL_MAX_ANGULAR, "angular")
-    response = send_robot_control_message(
+    response = await run_in_threadpool(
+        send_robot_control_message,
         host, port,
         {"type": "cmd_vel", "v": linear, "w": angular},
         "ack"
@@ -831,7 +842,7 @@ async def robot_control_stop(
         raise HTTPException(status_code=422, detail="请选择一个设备")
     
     host, port = resolve_device_target(cmd.robotId, db)
-    response = send_robot_control_message(host, port, {"type": "stop"}, "ack")
+    response = await run_in_threadpool(send_robot_control_message, host, port, {"type": "stop"}, "ack")
     
     # TCP 指令成功 → 更新设备在线状态
     device = db.query(Device).filter(Device.id == cmd.robotId).first()
@@ -870,7 +881,7 @@ async def robot_control_send(
     expected = "pong" if msg_type == "ping" else "ack"
     
     host, port = resolve_device_target(cmd.robotId, db)
-    response = send_robot_control_message(host, port, payload, expected)
+    response = await run_in_threadpool(send_robot_control_message, host, port, payload, expected)
     
     # 成功发送指令 → 标记设备在线
     device = db.query(Device).filter(Device.id == cmd.robotId).first()
@@ -1206,18 +1217,28 @@ async def cluster_control_cmd_vel(
     angular = normalize_control_value(cmd.angular, ROBOT_CONTROL_MAX_ANGULAR, "angular")
     
     results = []
-    for device in online_devices:
+    
+    async def _send_to_device(device):
         try:
-            response = send_robot_control_message(
+            response = await run_in_threadpool(
+                send_robot_control_message,
                 device.ip_address, device.port or 9000,
                 {"type": "cmd_vel", "v": linear, "w": angular},
                 "ack"
             )
             print(f"[{datetime.now()}] Cluster {cluster_id} Device {device.id} Response: {response}")
-            device.last_seen = datetime.now()
-            results.append({"device_id": device.id, "ok": True, "response": response})
+            return {"device": device, "device_id": device.id, "ok": True, "response": response}
         except HTTPException as exc:
-            results.append({"device_id": device.id, "ok": False, "error": exc.detail})
+            return {"device": device, "device_id": device.id, "ok": False, "error": exc.detail}
+
+    tasks = [_send_to_device(d) for d in online_devices]
+    outcomes = await asyncio.gather(*tasks)
+
+    for outcome in outcomes:
+        device = outcome.pop("device")
+        if outcome["ok"]:
+            device.last_seen = datetime.now()
+        results.append(outcome)
     
     db.commit()
     success_count = sum(1 for r in results if r["ok"])
@@ -1240,18 +1261,28 @@ async def cluster_control_stop(
         raise HTTPException(status_code=400, detail="集群中没有在线的设备")
     
     results = []
-    for device in online_devices:
+
+    async def _send_to_device(device):
         try:
-            response = send_robot_control_message(
+            response = await run_in_threadpool(
+                send_robot_control_message,
                 device.ip_address, device.port or 9000,
                 {"type": "stop"},
                 "ack"
             )
             print(f"[{datetime.now()}] Cluster {cluster_id} Device {device.id} Response: {response}")
-            device.last_seen = datetime.now()
-            results.append({"device_id": device.id, "ok": True, "response": response})
+            return {"device": device, "device_id": device.id, "ok": True, "response": response}
         except HTTPException as exc:
-            results.append({"device_id": device.id, "ok": False, "error": exc.detail})
+            return {"device": device, "device_id": device.id, "ok": False, "error": exc.detail}
+
+    tasks = [_send_to_device(d) for d in online_devices]
+    outcomes = await asyncio.gather(*tasks)
+
+    for outcome in outcomes:
+        device = outcome.pop("device")
+        if outcome["ok"]:
+            device.last_seen = datetime.now()
+        results.append(outcome)
             
     db.commit()
     success_count = sum(1 for r in results if r["ok"])
@@ -1289,18 +1320,28 @@ async def cluster_control_send(
         raise HTTPException(status_code=400, detail="集群中没有在线的设备")
 
     results = []
-    for device in online_devices:
+
+    async def _send_to_device(device):
         try:
-            response = send_robot_control_message(
+            response = await run_in_threadpool(
+                send_robot_control_message,
                 device.ip_address, device.port or 9000,
                 payload,
                 expected
             )
             print(f"[{datetime.now()}] Cluster {cluster_id} Device {device.id} Response: {response}")
-            device.last_seen = datetime.now()
-            results.append({"device_id": device.id, "ok": True, "response": response})
+            return {"device": device, "device_id": device.id, "ok": True, "response": response}
         except HTTPException as exc:
-            results.append({"device_id": device.id, "ok": False, "error": exc.detail})
+            return {"device": device, "device_id": device.id, "ok": False, "error": exc.detail}
+
+    tasks = [_send_to_device(d) for d in online_devices]
+    outcomes = await asyncio.gather(*tasks)
+
+    for outcome in outcomes:
+        device = outcome.pop("device")
+        if outcome["ok"]:
+            device.last_seen = datetime.now()
+        results.append(outcome)
             
     db.commit()
     success_count = sum(1 for r in results if r["ok"])
