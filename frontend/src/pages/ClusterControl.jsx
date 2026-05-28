@@ -252,7 +252,7 @@ export default function ClusterControl() {
 
       <div className="cc-selector-card">
         <h2>目标集群</h2>
-        <select 
+        <select
           className="cc-select"
           value={selectedClusterId}
           onChange={(e) => setSelectedClusterId(e.target.value)}
@@ -282,11 +282,11 @@ export default function ClusterControl() {
           <p className="cc-control-desc">
             按住方向键持续发送集群运动指令，松开自动停车。
           </p>
-          
+
           <div className="cc-speed-control">
             <label>统一速度倍率: <strong>{(speedRatio * 100).toFixed(0)}%</strong></label>
-            <input 
-              type="range" 
+            <input
+              type="range"
               min="0.05" max="1" step="0.05"
               value={speedRatio}
               onChange={e => setSpeedRatio(parseFloat(e.target.value))}
@@ -297,7 +297,7 @@ export default function ClusterControl() {
           <div className="cc-numpad-container">
             <div className="cc-numpad">
               {/* Row 1 */}
-              <button 
+              <button
                 className={`cc-num-btn ${activeDirection === 'forward-left' ? 'active' : ''}`}
                 onPointerDown={() => startDirection('forward-left')}
                 onPointerUp={stopDirection}
@@ -307,7 +307,7 @@ export default function ClusterControl() {
                 <span className="cc-num-icon">↖️</span>
                 <span className="cc-num-key">7</span>
               </button>
-              <button 
+              <button
                 className={`cc-num-btn ${activeDirection === 'forward' ? 'active' : ''}`}
                 onPointerDown={() => startDirection('forward')}
                 onPointerUp={stopDirection}
@@ -317,7 +317,7 @@ export default function ClusterControl() {
                 <span className="cc-num-icon">⬆️</span>
                 <span className="cc-num-key">W / 8 前进</span>
               </button>
-              <button 
+              <button
                 className={`cc-num-btn ${activeDirection === 'forward-right' ? 'active' : ''}`}
                 onPointerDown={() => startDirection('forward-right')}
                 onPointerUp={stopDirection}
@@ -327,9 +327,9 @@ export default function ClusterControl() {
                 <span className="cc-num-icon">↗️</span>
                 <span className="cc-num-key">9</span>
               </button>
-              
+
               {/* Row 2 */}
-              <button 
+              <button
                 className={`cc-num-btn ${activeDirection === 'left' ? 'active' : ''}`}
                 onPointerDown={() => startDirection('left')}
                 onPointerUp={stopDirection}
@@ -339,7 +339,7 @@ export default function ClusterControl() {
                 <span className="cc-num-icon">⬅️</span>
                 <span className="cc-num-key">A / 4 左转</span>
               </button>
-              <button 
+              <button
                 className="cc-num-btn stop"
                 onClick={handleEmergencyStop}
                 disabled={!selectedClusterId}
@@ -347,7 +347,7 @@ export default function ClusterControl() {
                 <span className="cc-num-icon">⏹️</span>
                 <span className="cc-num-key">空格 停止</span>
               </button>
-              <button 
+              <button
                 className={`cc-num-btn ${activeDirection === 'right' ? 'active' : ''}`}
                 onPointerDown={() => startDirection('right')}
                 onPointerUp={stopDirection}
@@ -357,9 +357,9 @@ export default function ClusterControl() {
                 <span className="cc-num-icon">➡️</span>
                 <span className="cc-num-key">D / 6 右转</span>
               </button>
-              
+
               {/* Row 3 */}
-              <button 
+              <button
                 className={`cc-num-btn ${activeDirection === 'backward-left' ? 'active' : ''}`}
                 onPointerDown={() => startDirection('backward-left')}
                 onPointerUp={stopDirection}
@@ -369,7 +369,7 @@ export default function ClusterControl() {
                 <span className="cc-num-icon">↙️</span>
                 <span className="cc-num-key">1</span>
               </button>
-              <button 
+              <button
                 className={`cc-num-btn ${activeDirection === 'backward' ? 'active' : ''}`}
                 onPointerDown={() => startDirection('backward')}
                 onPointerUp={stopDirection}
@@ -379,7 +379,7 @@ export default function ClusterControl() {
                 <span className="cc-num-icon">⬇️</span>
                 <span className="cc-num-key">S / 2 后退</span>
               </button>
-              <button 
+              <button
                 className={`cc-num-btn ${activeDirection === 'backward-right' ? 'active' : ''}`}
                 onPointerDown={() => startDirection('backward-right')}
                 onPointerUp={stopDirection}
@@ -401,7 +401,7 @@ export default function ClusterControl() {
         <div className="cc-control-card">
           <h3>📝 广播特定指令</h3>
           <p className="cc-control-desc">向集群内所有在线设备广播特定的 TCP JSON 指令。</p>
-          
+
           <form className="cc-custom-form" onSubmit={handleCustomSend}>
             <div className="cc-input-group">
               <label>指令代码 (JSON)</label>
@@ -414,8 +414,8 @@ export default function ClusterControl() {
                 disabled={!selectedClusterId}
               />
             </div>
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               className="cc-btn-send"
               disabled={!selectedClusterId || !customCommand.trim()}
             >
@@ -431,8 +431,8 @@ export default function ClusterControl() {
                 { label: 'Stop All', cmd: '{"type":"stop"}' },
                 { label: '群体前进 0.1', cmd: '{"type":"cmd_vel","v":0.1,"w":0}' },
               ].map((preset, i) => (
-                <button 
-                  key={i} 
+                <button
+                  key={i}
                   className="cc-preset-btn"
                   type="button"
                   disabled={!selectedClusterId}
@@ -453,7 +453,7 @@ export default function ClusterControl() {
           <button className="cc-btn-clear" onClick={() => setLogs([])}>清空日志</button>
         </div>
         <div className="cc-logs">
-          {logs.length === 0 && <span style={{color: '#94a3b8'}}>暂无日志...</span>}
+          {logs.length === 0 && <span style={{ color: '#94a3b8' }}>暂无日志...</span>}
           {logs.map((log, idx) => (
             <div className="cc-log-item" key={idx}>
               <span className="cc-log-time">[{log.time}]</span>

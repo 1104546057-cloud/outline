@@ -559,7 +559,7 @@ async def list_devices(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """获取所有设备列表（需登录），自动更新在线状态"""
+    """获取所有设备列表，并自动更新在线状态（需登录）"""
     # 根据 last_seen 自动更新在线/离线状态
     update_device_online_status(db)
     devices = db.query(Device).order_by(Device.id.asc()).all()
@@ -644,7 +644,7 @@ async def delete_device(
 @app.get("/api/wifi/scan")
 async def scan_wifi(subnet: str = "192.168.31.0/24", current_user: User = Depends(get_current_user)):
     """
-    使用 nmap 扫描局域网内的设备 IP。
+    使用 nmap 扫描局域网内的设备 IP（需登录）。
     支持前端传入自定义扫描网段，并提供 ARP 缓存表读取作为备用/降级机制。
     """
     import subprocess
@@ -759,7 +759,7 @@ async def robot_control_status(
     current_user: User = Depends(get_current_user),
 ):
     """
-    检测无人车控制服务是否可达。
+    检测无人车控制服务是否可达（需登录）。
     向树莓派发送 ping 消息，等待 pong 响应。
     连接成功后自动将设备标记为在线并更新 last_seen。
     """
@@ -786,7 +786,7 @@ async def robot_control_cmd_vel(
     current_user: User = Depends(get_current_user),
 ):
     """
-    发送线速度和角速度控制指令到树莓派。
+    发送线速度和角速度控制指令到树莓派（需登录）。
     速度值会被后端限幅，防止异常请求绕过前端限制。
     """
     if cmd.robotId is None:
@@ -824,7 +824,7 @@ async def robot_control_stop(
     current_user: User = Depends(get_current_user),
 ):
     """
-    发送停车指令到树莓派。
+    发送停车指令到树莓派（需登录）。
     松开按键、切换设备、离开页面时都应调用此接口。
     """
     if cmd.robotId is None:
@@ -850,7 +850,7 @@ async def robot_control_send(
     current_user: User = Depends(get_current_user),
 ):
     """
-    向设备发送自定义 TCP JSON 指令。
+    向设备发送自定义 TCP JSON 指令（需登录）。
     前端直接传入完整的 JSON 字符串，后端转发到设备 TCP 端口。
     """
     if cmd.robotId is None:
@@ -891,7 +891,7 @@ async def robot_control_send(
 async def robot_control_config(
     current_user: User = Depends(get_current_user),
 ):
-    """返回控制参数配置，供前端使用"""
+    """返回控制参数配置，供前端使用（需登录）"""
     return {
         "maxLinear": ROBOT_CONTROL_MAX_LINEAR,
         "maxAngular": ROBOT_CONTROL_MAX_ANGULAR,
@@ -984,7 +984,7 @@ async def get_device_telemetry(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """获取设备的遥测记录历史"""
+    """获取设备的遥测记录历史（需登录）"""
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="设备不存在")
@@ -1017,7 +1017,7 @@ async def list_device_tokens(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """获取设备的认证 Token 列表"""
+    """获取设备的认证 Token 列表（需登录）"""
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="设备不存在")
@@ -1044,7 +1044,7 @@ async def create_device_token(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """为设备生成新的认证 Token"""
+    """为设备生成新的认证 Token（需登录）"""
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="设备不存在")
@@ -1148,7 +1148,7 @@ async def add_device_to_cluster(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """向集群中添加设备"""
+    """向集群中添加设备（需登录）"""
     cluster = db.query(Cluster).filter(Cluster.id == cluster_id).first()
     if not cluster:
         raise HTTPException(status_code=404, detail="集群不存在")
@@ -1172,7 +1172,7 @@ async def remove_device_from_cluster(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """从集群移除设备"""
+    """从集群移除设备（需登录）"""
     cluster = db.query(Cluster).filter(Cluster.id == cluster_id).first()
     if not cluster:
         raise HTTPException(status_code=404, detail="集群不存在")
@@ -1193,7 +1193,7 @@ async def cluster_control_cmd_vel(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """向集群中的在线设备批量发送运动指令"""
+    """向集群中的在线设备批量发送运动指令（需登录）"""
     cluster = db.query(Cluster).filter(Cluster.id == cluster_id).first()
     if not cluster:
         raise HTTPException(status_code=404, detail="集群不存在")
@@ -1230,7 +1230,7 @@ async def cluster_control_stop(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """向集群中的在线设备批量发送停车指令"""
+    """向集群中的在线设备批量发送停车指令（需登录）"""
     cluster = db.query(Cluster).filter(Cluster.id == cluster_id).first()
     if not cluster:
         raise HTTPException(status_code=404, detail="集群不存在")
@@ -1268,7 +1268,7 @@ async def cluster_control_send(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """向集群下发特定的 TCP JSON 指令"""
+    """向集群下发特定的 TCP JSON 指令（需登录）"""
     cluster = db.query(Cluster).filter(Cluster.id == cluster_id).first()
     if not cluster:
         raise HTTPException(status_code=404, detail="集群不存在")
@@ -1363,3 +1363,111 @@ async def iot_telemetry(
     db.commit()
     
     return {"ok": True, "message": "Telemetry received"}
+
+
+# ===== 摄像头视频流代理接口 =====
+
+# 摄像头服务端口（mjpg_streamer 默认 8080）
+CAMERA_STREAM_PORT = int(os.getenv("CAMERA_STREAM_PORT", "8080"))
+
+
+@app.get("/api/devices/{device_id}/camera/stream")
+async def proxy_camera_stream(
+    device_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    代理转发设备的 MJPEG 摄像头视频流（需登录）
+
+    设备端运行 mjpg_streamer，在 8080 端口提供 MJPEG 流。
+    本接口通过后端代理转发，确保前端访问需要经过 JWT 鉴权。
+    """
+    import httpx
+    from starlette.responses import StreamingResponse
+
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="设备不存在")
+    if not device.ip_address:
+        raise HTTPException(status_code=422, detail="设备未配置 IP 地址")
+
+    camera_url = f"http://{device.ip_address}:{CAMERA_STREAM_PORT}/?action=stream"
+
+    async def stream_generator():
+        """异步读取 MJPEG 流并逐块转发"""
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(
+                connect=5.0, read=None, write=5.0, pool=5.0
+            )) as client:
+                async with client.stream("GET", camera_url) as response:
+                    if response.status_code != 200:
+                        return
+                    async for chunk in response.aiter_bytes(chunk_size=4096):
+                        yield chunk
+        except (httpx.ConnectError, httpx.ReadTimeout, httpx.ConnectTimeout) as exc:
+            print(f"[{datetime.now()}] 摄像头流代理失败 (设备 {device_id}): {exc}")
+            return
+        except Exception as exc:
+            print(f"[{datetime.now()}] 摄像头流代理异常 (设备 {device_id}): {exc}")
+            return
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="multipart/x-mixed-replace; boundary=boundarydonotcross",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@app.get("/api/devices/{device_id}/camera/snapshot")
+async def proxy_camera_snapshot(
+    device_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    获取设备摄像头的单帧快照（JPEG 图片）（需登录）
+
+    通过后端代理从 mjpg_streamer 的 ?action=snapshot 接口获取。
+    用于截图保存等功能。
+    """
+    import httpx
+
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="设备不存在")
+    if not device.ip_address:
+        raise HTTPException(status_code=422, detail="设备未配置 IP 地址")
+
+    snapshot_url = f"http://{device.ip_address}:{CAMERA_STREAM_PORT}/?action=snapshot"
+
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=10.0)) as client:
+            response = await client.get(snapshot_url)
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"摄像头快照获取失败 (HTTP {response.status_code})"
+                )
+            return Response(
+                content=response.content,
+                media_type="image/jpeg",
+                headers={
+                    "Content-Disposition": f"attachment; filename=snapshot_{device_id}_{int(time.time())}.jpg",
+                    "Cache-Control": "no-cache",
+                },
+            )
+    except httpx.ConnectError:
+        raise HTTPException(status_code=502, detail="无法连接到设备摄像头服务")
+    except httpx.ReadTimeout:
+        raise HTTPException(status_code=504, detail="摄像头响应超时")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"摄像头快照获取异常: {exc}")
+

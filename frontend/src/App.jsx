@@ -7,6 +7,7 @@ import DeviceManagement from './pages/DeviceManagement'
 import DeviceControl from './pages/DeviceControl'
 import ClusterManagement from './pages/ClusterManagement'
 import ClusterControl from './pages/ClusterControl'
+import LiveVideo from './pages/LiveVideo'
 import PlaceholderPage from './pages/PlaceholderPage'
 
 /**
@@ -63,6 +64,7 @@ function App() {
           <Route path="device-control" element={<DeviceControl />} />
           <Route path="cluster" element={<ClusterManagement />} />
           <Route path="cluster-control" element={<ClusterControl />} />
+          <Route path="live-video" element={<LiveVideo />} />
         </Route>
 
         {/* 其他路径重定向到登录 */}

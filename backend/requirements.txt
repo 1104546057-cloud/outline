@@ -7,3 +7,4 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.2.1
 python-dotenv
 PyJWT==2.10.1
+httpx>=0.27.0

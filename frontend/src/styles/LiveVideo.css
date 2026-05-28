@@ -1,0 +1,603 @@
+/* ===== 实时画面页面样式 ===== */
+
+.live-video-page {
+  padding: 1.5rem 2rem;
+  max-width: 1600px;
+  margin: 0 auto;
+  animation: lv-fadeIn 0.4s ease-out;
+}
+
+.lv-header {
+  margin-bottom: 1.5rem;
+}
+
+.lv-header h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 0.3rem;
+}
+
+.lv-header p {
+  color: #64748b;
+  font-size: 0.88rem;
+  margin: 0;
+}
+
+/* ===== 工具栏 ===== */
+.lv-toolbar {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.lv-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.lv-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.lv-device-select {
+  padding: 0.55rem 1rem;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #1e293b;
+  font-size: 0.88rem;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 200px;
+}
+
+.lv-device-select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.lv-btn {
+  padding: 0.55rem 1rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+  background: #ffffff;
+  color: #475569;
+}
+
+.lv-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.lv-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.lv-btn-primary {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+  border: none;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+}
+
+.lv-btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+}
+
+.lv-btn-danger {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: white;
+  border: none;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);
+}
+
+.lv-btn-danger:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+}
+
+.lv-layout-btns {
+  display: flex;
+  gap: 4px;
+  background: #f1f5f9;
+  padding: 3px;
+  border-radius: 8px;
+}
+
+.lv-layout-btn {
+  padding: 0.4rem 0.7rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: transparent;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.lv-layout-btn.active {
+  background: #ffffff;
+  color: #1e293b;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  font-weight: 600;
+}
+
+.lv-layout-btn:hover:not(.active) {
+  color: #334155;
+}
+
+/* ===== 视频网格 ===== */
+.lv-video-grid {
+  display: grid;
+  gap: 1rem;
+  min-height: 400px;
+}
+
+.lv-video-grid.layout-1 {
+  grid-template-columns: 1fr;
+}
+
+.lv-video-grid.layout-2 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.lv-video-grid.layout-4 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.lv-video-grid.layout-6 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.lv-video-grid.layout-9 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+/* ===== 视频卡片 ===== */
+.lv-video-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.lv-video-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.lv-video-card.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  border-radius: 0;
+  border: none;
+}
+
+.lv-video-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid #f1f5f9;
+  background: #fafbfd;
+}
+
+.lv-video-card-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.lv-video-card-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.lv-video-card-ip {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.lv-video-card-status {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.lv-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.lv-status-dot.online {
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+  animation: lv-pulse 2s infinite;
+}
+
+.lv-status-dot.offline {
+  background: #94a3b8;
+}
+
+.lv-status-dot.loading {
+  background: #f59e0b;
+  animation: lv-pulse 1s infinite;
+}
+
+.lv-status-dot.error {
+  background: #ef4444;
+}
+
+.lv-video-card-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.lv-card-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.lv-card-btn:hover {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.lv-card-btn:active {
+  transform: scale(0.93);
+}
+
+/* ===== 视频容器 ===== */
+.lv-video-container {
+  position: relative;
+  background: #0f172a;
+  flex: 1;
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.lv-video-card.fullscreen .lv-video-container {
+  min-height: unset;
+}
+
+.lv-video-stream {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* ===== 占位状态 ===== */
+.lv-video-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  color: #475569;
+  padding: 2rem;
+  text-align: center;
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+}
+
+.lv-placeholder-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: rgba(79, 110, 247, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4f6ef7;
+}
+
+.lv-placeholder-text {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #475569;
+}
+
+.lv-placeholder-hint {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+/* ===== 加载状态 ===== */
+.lv-loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  z-index: 10;
+}
+
+.lv-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(255, 255, 255, 0.15);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: lv-spin 0.8s linear infinite;
+}
+
+.lv-loading-text {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.85rem;
+}
+
+/* ===== 错误状态 ===== */
+.lv-error-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  z-index: 10;
+  padding: 1.5rem;
+}
+
+.lv-error-icon {
+  color: #ef4444;
+}
+
+.lv-error-text {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.85rem;
+  text-align: center;
+  max-width: 280px;
+}
+
+.lv-error-retry {
+  padding: 0.4rem 1rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: white;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.lv-error-retry:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ===== 视频信息覆盖层 ===== */
+.lv-video-overlay-info {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0.5rem 0.8rem;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.6));
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+.lv-video-resolution {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.75);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.lv-video-fps {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.75);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.lv-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  padding: 0.2rem 0.5rem;
+  background: rgba(239, 68, 68, 0.9);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+  z-index: 5;
+}
+
+.lv-live-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: white;
+  animation: lv-pulse 1.5s infinite;
+}
+
+/* ===== 空状态 ===== */
+.lv-empty-state {
+  background: #ffffff;
+  border: 2px dashed #e2e8f0;
+  border-radius: 16px;
+  padding: 4rem 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  text-align: center;
+  min-height: 400px;
+}
+
+.lv-empty-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(79, 110, 247, 0.08), rgba(79, 110, 247, 0.15));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4f6ef7;
+}
+
+.lv-empty-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.lv-empty-desc {
+  font-size: 0.88rem;
+  color: #94a3b8;
+  max-width: 320px;
+  line-height: 1.6;
+}
+
+/* ===== 截图 Toast ===== */
+.lv-toast {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  padding: 0.8rem 1.2rem;
+  background: #1e293b;
+  color: white;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  z-index: 2000;
+  animation: lv-slideUp 0.3s ease-out;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.lv-toast.success {
+  background: linear-gradient(135deg, #059669, #047857);
+}
+
+.lv-toast.error {
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+}
+
+/* ===== 动画 ===== */
+@keyframes lv-fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes lv-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes lv-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes lv-slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 1024px) {
+  .lv-video-grid.layout-6,
+  .lv-video-grid.layout-9 {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .lv-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .lv-toolbar-left,
+  .lv-toolbar-right {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .live-video-page {
+    padding: 1rem;
+  }
+
+  .lv-video-grid.layout-2,
+  .lv-video-grid.layout-4,
+  .lv-video-grid.layout-6,
+  .lv-video-grid.layout-9 {
+    grid-template-columns: 1fr;
+  }
+
+  .lv-toolbar-left {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .lv-device-select {
+    min-width: unset;
+  }
+}
