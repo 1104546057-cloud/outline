@@ -28,20 +28,28 @@ const statusColors = {
 
 // 获取设备类型图标
 const getTypeIcon = (type) => {
-  if (!type) return '🤖'
+  if (!type) return '🚗'
   for (const [key, icon] of Object.entries(deviceTypeIcons)) {
     if (type.includes(key)) return icon
   }
-  return '🤖'
+  return '🚗'
+}
+
+// 获取地图标记的背景色样式类
+const getTypeClass = (type) => {
+  if (!type) return 'marker-car'
+  if (type.includes('机') || type.includes('drone')) return 'marker-drone'
+  if (type.includes('船') || type.includes('ship')) return 'marker-ship'
+  return 'marker-car' // 默认无人车
 }
 
 // 获取设备类型标签
 const getTypeLabel = (type) => {
-  if (!type) return '未知'
-  if (type.includes('车')) return '无人车'
+  if (!type) return '无人车'
   if (type.includes('机')) return '无人机'
   if (type.includes('船')) return '无人船'
-  return type
+  if (type.includes('车')) return '无人车'
+  return '无人车' // 默认返回无人车
 }
 
 // 获取状态标签
@@ -53,17 +61,18 @@ const getStatusLabel = (status) => {
 
 // 获取设备类型的量词
 const getTypeUnit = (type) => {
-  if (!type) return '台'
+  if (!type) return '辆'
   if (type.includes('机')) return '架'
-  if (type.includes('车')) return '辆'
   if (type.includes('船')) return '艘'
-  return '台'
+  if (type.includes('车')) return '辆'
+  return '辆' // 默认量词
 }
 
 function Dashboard() {
   const [devices, setDevices] = useState([])
   const [selectedDevice, setSelectedDevice] = useState(null)
   const [currentTime, setCurrentTime] = useState(new Date())
+  const [mapLoaded, setMapLoaded] = useState(false) // 新增：跟踪地图是否加载完成
   const mapContainerRef = useRef(null)
   const mapInstanceRef = useRef(null)
   const markersRef = useRef([])
@@ -129,6 +138,7 @@ function Dashboard() {
         })
 
         mapInstanceRef.current = map
+        setMapLoaded(true) // 地图加载完成，触发渲染标记
       })
       .catch((e) => {
         console.error('高德地图加载失败:', e)
@@ -158,7 +168,7 @@ function Dashboard() {
       if (isNaN(lat) || isNaN(lng)) return
 
       const markerContent = document.createElement('div')
-      markerContent.className = `map-marker marker-status-${device.status}`
+      markerContent.className = `map-marker marker-status-${device.status} ${getTypeClass(device.type)}`
       markerContent.innerHTML = `<span class="marker-icon">${getTypeIcon(device.type)}</span>`
 
       const marker = new AMap.Marker({
@@ -182,7 +192,7 @@ function Dashboard() {
       map.add(marker)
       markersRef.current.push(marker)
     })
-  }, [devices])
+  }, [devices, mapLoaded]) // 添加 mapLoaded 作为依赖
 
   // 监听选中设备的变化，联动放大并定位地图
   useEffect(() => {
