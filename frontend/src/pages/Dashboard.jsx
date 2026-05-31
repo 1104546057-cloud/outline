@@ -162,10 +162,17 @@ function Dashboard() {
       markerContent.innerHTML = `<span class="marker-icon">${getTypeIcon(device.type)}</span>`
 
       const marker = new AMap.Marker({
-        position: [lng, lat],
+        position: [lng, lat], // 初始暂存 WGS84，随后异步更新
         content: markerContent,
         offset: new AMap.Pixel(-16, -16),
         title: device.name,
+      })
+
+      // 调用高德 API 将 WGS84(gps) 转为 GCJ02(高德坐标)，解决几百米偏移问题
+      AMap.convertFrom([lng, lat], 'gps', (status, result) => {
+        if (result.info === 'ok') {
+          marker.setPosition(result.locations[0])
+        }
       })
 
       marker.on('click', () => {
@@ -183,7 +190,14 @@ function Dashboard() {
       const lat = parseFloat(selectedDevice.lat)
       const lng = parseFloat(selectedDevice.lng)
       if (!isNaN(lat) && !isNaN(lng)) {
-        mapInstanceRef.current.setZoomAndCenter(18, [lng, lat], true)
+        const AMap = window.AMap
+        if (AMap) {
+          AMap.convertFrom([lng, lat], 'gps', (status, result) => {
+            if (result.info === 'ok') {
+              mapInstanceRef.current.setZoomAndCenter(18, result.locations[0], true)
+            }
+          })
+        }
       }
     }
   }, [selectedDevice])

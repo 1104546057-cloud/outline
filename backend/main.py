@@ -314,7 +314,9 @@ def _read_robot_message(active_socket: socket.socket, key: str) -> dict:
         buf += chunk
     line, buf = buf.split(b"\n", 1)
     conn["buffer"] = buf
-    return json.loads(line.decode("utf-8"))
+    parsed = json.loads(line.decode("utf-8"))
+    print(f"[{datetime.now()}] [TCP RECV] from {key} -> {parsed}", flush=True)
+    return parsed
 
 
 def _send_robot_message_once(host: str, port: int, payload: dict, expected_type: str) -> dict:
@@ -322,6 +324,7 @@ def _send_robot_message_once(host: str, port: int, payload: dict, expected_type:
     key = _target_key(host, port)
     active_socket = _get_robot_socket(host, port)
     data = (json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8")
+    print(f"[{datetime.now()}] [TCP SEND] to {key} -> {payload}", flush=True)
     active_socket.sendall(data)
     deadline = time.time() + ROBOT_CONTROL_TIMEOUT_SECONDS
     while time.time() < deadline:
@@ -387,6 +390,7 @@ def _register_device_tcp(host: str, port: int, register_payload: dict) -> dict:
         sock.settimeout(ROBOT_CONTROL_TIMEOUT_SECONDS + 2)
         # 发送 register 消息
         data = (json.dumps(register_payload, separators=(",", ":")) + "\n").encode("utf-8")
+        print(f"[{datetime.now()}] [TCP SEND] to {host}:{port} (Register) -> {register_payload}", flush=True)
         sock.sendall(data)
 
         # 读取响应
@@ -402,6 +406,7 @@ def _register_device_tcp(host: str, port: int, register_payload: dict) -> dict:
 
         line, _ = buf.split(b"\n", 1)
         response = json.loads(line.decode("utf-8"))
+        print(f"[{datetime.now()}] [TCP RECV] from {host}:{port} (Register) -> {response}", flush=True)
         return response
     finally:
         try:
@@ -877,8 +882,10 @@ async def robot_control_status(
     if robotId is None:
         raise HTTPException(status_code=422, detail="请选择一个设备")
     
+    print(f"[{datetime.now()}] [HTTP REQ] GET /api/robot-control/status?robotId={robotId}", flush=True)
     host, port = resolve_device_target(robotId, db)
     response = await run_in_threadpool(send_robot_control_message, host, port, {"type": "ping"}, "pong")
+    print(f"[{datetime.now()}] [HTTP RES] /api/robot-control/status -> {response}", flush=True)
     
     # TCP ping 成功 → 标记设备在线
     device = db.query(Device).filter(Device.id == robotId).first()
@@ -903,6 +910,7 @@ async def robot_control_cmd_vel(
     if cmd.robotId is None:
         raise HTTPException(status_code=422, detail="请选择一个设备")
     
+    print(f"[{datetime.now()}] [HTTP REQ] POST /api/robot-control/cmd_vel Body: {cmd.dict()}", flush=True)
     host, port = resolve_device_target(cmd.robotId, db)
     linear = normalize_control_value(cmd.linear, ROBOT_CONTROL_MAX_LINEAR, "linear")
     angular = normalize_control_value(cmd.angular, ROBOT_CONTROL_MAX_ANGULAR, "angular")
@@ -912,6 +920,7 @@ async def robot_control_cmd_vel(
         {"type": "cmd_vel", "v": linear, "w": angular},
         "ack"
     )
+    print(f"[{datetime.now()}] [HTTP RES] /api/robot-control/cmd_vel -> {response}", flush=True)
     
     # TCP 指令成功 → 更新设备在线状态
     device = db.query(Device).filter(Device.id == cmd.robotId).first()
@@ -942,8 +951,10 @@ async def robot_control_stop(
     if cmd.robotId is None:
         raise HTTPException(status_code=422, detail="请选择一个设备")
     
+    print(f"[{datetime.now()}] [HTTP REQ] POST /api/robot-control/stop Body: {cmd.dict()}", flush=True)
     host, port = resolve_device_target(cmd.robotId, db)
     response = await run_in_threadpool(send_robot_control_message, host, port, {"type": "stop"}, "ack")
+    print(f"[{datetime.now()}] [HTTP RES] /api/robot-control/stop -> {response}", flush=True)
     
     # TCP 指令成功 → 更新设备在线状态
     device = db.query(Device).filter(Device.id == cmd.robotId).first()
@@ -968,6 +979,8 @@ async def robot_control_send(
     if cmd.robotId is None:
         raise HTTPException(status_code=422, detail="请选择一个设备")
     
+    print(f"[{datetime.now()}] [HTTP REQ] POST /api/robot-control/send Body: {cmd.dict()}", flush=True)
+    
     # 解析用户输入的 JSON 指令
     try:
         payload = json.loads(cmd.command)
@@ -983,6 +996,7 @@ async def robot_control_send(
     
     host, port = resolve_device_target(cmd.robotId, db)
     response = await run_in_threadpool(send_robot_control_message, host, port, payload, expected)
+    print(f"[{datetime.now()}] [HTTP RES] /api/robot-control/send -> {response}", flush=True)
     
     # 成功发送指令 → 标记设备在线
     device = db.query(Device).filter(Device.id == cmd.robotId).first()

@@ -707,8 +707,8 @@ def serial_probe_supported() -> bool:
 def get_gps_report(
     *,
     timeout: int = 5,
-    serial_device: str = "",
-    serial_baud: int = 9600,
+    serial_device: str = "/dev/ttyUSB0",
+    serial_baud: int = 38400,
     include_serial_fallback: bool = False,
     auto_probe_serial: bool = False,
 ) -> Dict[str, Any]:

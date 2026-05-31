@@ -60,8 +60,21 @@ make
 sudo make install
 cd ../..
 
-echo ">>> 3. 安装 GPS 工具..."
+echo ">>> 3. 安装 GPS 工具并配置..."
 sudo apt-get -y install gpsd gpsd-clients
+
+echo ">> 配置 /etc/default/gpsd..."
+sudo tee /etc/default/gpsd > /dev/null << 'EOF'
+# /etc/default/gpsd
+START_DAEMON="true"
+GPSD_OPTIONS="-n -s 38400"
+DEVICES="/dev/ttyUSB0"
+USBAUTO="true"
+GPSD_SOCKET="/var/run/gpsd.sock"
+EOF
+
+sudo systemctl restart gpsd
+sudo systemctl enable gpsd
 
 echo ">>> 4. 配置服务..."
 
