@@ -1,0 +1,12 @@
+[Unit]
+Description=DevicesWebControl Robot Control Server
+
+[Service]
+ExecStart=/usr/bin/python3 /home/pi/DevicesWebControl/robot_control_server.py
+WorkingDirectory=/home/pi/DevicesWebControl/
+Restart=always
+User=pi
+Group=pi
+
+[Install]
+WantedBy=multi-user.target

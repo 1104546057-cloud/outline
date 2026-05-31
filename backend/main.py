@@ -33,7 +33,7 @@ load_dotenv()
 # JWT 配置
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dwc-default-secret-key")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "10080"))
 
 # 机器人控制配置
 ROBOT_CONTROL_MAX_LINEAR = float(os.getenv("ROBOT_CONTROL_MAX_LINEAR", "0.4"))
@@ -164,6 +164,8 @@ class DeviceCreate(BaseModel):
     type: str
     ip_address: str
     port: int = 9000
+    password: str  # 设备连接密码，用于向设备注册并获取 token
+    server_address: str  # 后端服务器地址（设备通过此地址上报遥测数据）
 
 
 class DeviceUpdate(BaseModel):
@@ -359,6 +361,53 @@ def normalize_control_value(value: Any, limit: float, field: str) -> float:
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=f"{field} 必须是数字。") from exc
     return max(-limit, min(limit, parsed))
+
+
+def _register_device_tcp(host: str, port: int, register_payload: dict) -> dict:
+    """
+    通过独立的 TCP 连接向设备 robot_control_server 发送 register 消息并读取响应。
+
+    注册流程（参照 robot_control_server.py 的 handle_client）：
+    1. 建立 TCP 连接
+    2. 发送 {"type":"register", "password":"...", "server_address":"..."}\n
+    3. 读取 {"type":"register_result", "ok":true/false, "token":"...", ...}\n
+    4. 关闭连接
+
+    不复用连接池，因为注册只在添加设备时执行一次。
+    """
+    try:
+        sock = socket.create_connection((host, port), timeout=ROBOT_CONTROL_TIMEOUT_SECONDS)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"无法连接到设备 {host}:{port}，请检查设备是否在线",
+        ) from exc
+
+    try:
+        sock.settimeout(ROBOT_CONTROL_TIMEOUT_SECONDS + 2)
+        # 发送 register 消息
+        data = (json.dumps(register_payload, separators=(",", ":")) + "\n").encode("utf-8")
+        sock.sendall(data)
+
+        # 读取响应
+        buf = b""
+        deadline = time.time() + ROBOT_CONTROL_TIMEOUT_SECONDS + 2
+        while b"\n" not in buf:
+            if time.time() > deadline:
+                raise HTTPException(status_code=504, detail="设备注册响应超时")
+            chunk = sock.recv(4096)
+            if not chunk:
+                raise HTTPException(status_code=502, detail="设备连接在等待注册响应时断开")
+            buf += chunk
+
+        line, _ = buf.split(b"\n", 1)
+        response = json.loads(line.decode("utf-8"))
+        return response
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
 
 
 def resolve_device_target(device_id: int, db: Session) -> tuple[str, int]:
@@ -582,7 +631,15 @@ async def create_device(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """添加设备（需登录）"""
+    """
+    添加设备（需登录）。
+
+    流程：
+    1. 通过 TCP 连接到设备的 robot_control_server
+    2. 发送 register 消息（携带连接密码和本后端 server_address）
+    3. 设备验证密码后生成 token 并返回
+    4. 后端将设备信息和 token 存入数据库
+    """
     existing = db.query(Device).filter(Device.ip_address == device_data.ip_address).first()
     if existing:
         raise HTTPException(status_code=400, detail="该IP地址的设备已存在")
@@ -592,18 +649,61 @@ async def create_device(
     if port < 1 or port > 65535:
         raise HTTPException(status_code=422, detail="端口号必须在 1 到 65535 之间")
 
+    # ---- 通过 TCP 向设备注册，获取 token ----
+    register_payload = {
+        "type": "register",
+        "password": device_data.password,
+        "server_address": device_data.server_address,
+    }
+
+    try:
+        register_response = await run_in_threadpool(
+            _register_device_tcp,
+            device_data.ip_address,
+            port,
+            register_payload,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"无法连接到设备 {device_data.ip_address}:{port}，请检查设备是否在线: {exc}",
+        )
+
+    if not register_response.get("ok"):
+        err_msg = register_response.get("err", "注册失败")
+        raise HTTPException(status_code=400, detail=f"设备注册失败: {err_msg}")
+
+    device_token = register_response.get("token", "")
+    if not device_token:
+        raise HTTPException(status_code=502, detail="设备注册成功但未返回 token")
+
+    # ---- 存入数据库 ----
     new_device = Device(
         name=device_data.name,
         type=device_data.type,
         ip_address=device_data.ip_address,
         port=port,
-        status="offline",
+        status="online",
+        last_seen=datetime.now(),
         health=100,
         speed="0 m/s",
     )
     db.add(new_device)
     db.commit()
     db.refresh(new_device)
+
+    # 将设备返回的 token 存入 device_tokens 表
+    new_token = DeviceToken(
+        device_id=new_device.id,
+        token=device_token,
+        note=f"设备注册时自动生成，由 {current_user.username} 添加",
+        is_active=True,
+    )
+    db.add(new_token)
+    db.commit()
+
     return _build_device_response(new_device, db)
 
 

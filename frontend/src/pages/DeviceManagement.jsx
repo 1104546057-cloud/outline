@@ -40,7 +40,17 @@ export default function DeviceManagement() {
   
   // add device modal (手动添加)
   const [showAddModal, setShowAddModal] = useState(false)
-  const [addFormData, setAddFormData] = useState({ name: '', type: '无人车', ip_address: '', port: 9000 })
+  const defaultServerAddr = () => {
+    // 优先使用缓存的地址，否则根据当前浏览器访问的主机推断
+    try {
+      const cached = localStorage.getItem('dwc_server_address')
+      if (cached) return cached
+    } catch (e) { /* ignore */ }
+    const host = window.location.hostname
+    return `http://${host}:8000`
+  }
+  const [addFormData, setAddFormData] = useState({ name: '', type: '无人车', ip_address: '', port: 9000, password: '123456', server_address: defaultServerAddr() })
+  const [addSubmitting, setAddSubmitting] = useState(false)
   const [addError, setAddError] = useState('')
 
   // edit modal
@@ -52,7 +62,6 @@ export default function DeviceManagement() {
   const [showTokenModal, setShowTokenModal] = useState(false)
   const [tokenDevice, setTokenDevice] = useState(null)
   const [tokens, setTokens] = useState([])
-  const [newToken, setNewToken] = useState('')
   
   // API Fetch
   const fetchDevices = async () => {
@@ -109,35 +118,29 @@ export default function DeviceManagement() {
     }
   }
 
-  const handleAddFromScan = async (deviceInfo) => {
-    try {
-      const res = await fetch('/api/devices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          name: deviceInfo.ssid,
-          type: deviceInfo.type,
-          ip_address: deviceInfo.ip,
-          port: 9000,
-        })
-      })
-      if (res.ok) {
-        setShowScanModal(false)
-        fetchDevices()
-      } else {
-        const err = await res.json()
-        alert(err.detail || '添加失败或设备已存在')
-      }
-    } catch (e) {
-      console.error(e)
-      alert('网络错误')
-    }
+  const handleAddFromScan = (deviceInfo) => {
+    // 关闭扫描弹窗，打开添加设备弹窗并自动填入扫描到的设备名称和IP
+    setShowScanModal(false)
+    setAddFormData({
+      name: deviceInfo.ssid,
+      type: deviceInfo.type,
+      ip_address: deviceInfo.ip,
+      port: 9000,
+      password: '123456',
+      server_address: defaultServerAddr(),
+    })
+    setAddError('')
+    setShowAddModal(true)
   }
 
   const handleManualAdd = async (e) => {
     e.preventDefault()
     setAddError('')
+    if (!addFormData.password.trim()) {
+      setAddError('请输入设备连接密码')
+      return
+    }
+    setAddSubmitting(true)
     try {
       const res = await fetch('/api/devices', {
         method: 'POST',
@@ -146,8 +149,10 @@ export default function DeviceManagement() {
         body: JSON.stringify(addFormData)
       })
       if (res.ok) {
+        // 缓存成功使用的服务器地址
+        try { localStorage.setItem('dwc_server_address', addFormData.server_address) } catch (e) { /* ignore */ }
         setShowAddModal(false)
-        setAddFormData({ name: '', type: '无人车', ip_address: '', port: 9000 })
+        setAddFormData({ name: '', type: '无人车', ip_address: '', port: 9000, password: '123456', server_address: defaultServerAddr() })
         fetchDevices()
       } else {
         const err = await res.json()
@@ -155,6 +160,8 @@ export default function DeviceManagement() {
       }
     } catch (e) {
       setAddError('网络错误')
+    } finally {
+      setAddSubmitting(false)
     }
   }
 
@@ -197,32 +204,11 @@ export default function DeviceManagement() {
   const handleShowTokens = async (device) => {
     setTokenDevice(device)
     setShowTokenModal(true)
-    setNewToken('')
     try {
       const res = await fetch(`/api/devices/${device.id}/tokens`, { credentials: 'include' })
       if (res.ok) {
         const data = await res.json()
         setTokens(data)
-      }
-    } catch (e) {
-      console.error(e)
-    }
-  }
-
-  const handleCreateToken = async () => {
-    try {
-      const res = await fetch(`/api/devices/${tokenDevice.id}/tokens`, {
-        method: 'POST',
-        credentials: 'include',
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setNewToken(data.token)
-        // 刷新 token 列表
-        const listRes = await fetch(`/api/devices/${tokenDevice.id}/tokens`, { credentials: 'include' })
-        if (listRes.ok) {
-          setTokens(await listRes.json())
-        }
       }
     } catch (e) {
       console.error(e)
@@ -361,23 +347,23 @@ export default function DeviceManagement() {
         )}
       </div>
 
-      {/* 手动添加设备弹窗 */}
+      {/* 添加设备弹窗（手动添加 / 扫描后添加共用） */}
       {showAddModal && (
-        <div className="dm-modal-overlay" onClick={() => setShowAddModal(false)}>
+        <div className="dm-modal-overlay" onClick={() => !addSubmitting && setShowAddModal(false)}>
           <div className="dm-modal" onClick={e => e.stopPropagation()}>
             <div className="dm-modal-header">
               <h2>添加新设备</h2>
-              <button className="dm-modal-close" onClick={() => setShowAddModal(false)}>✕</button>
+              <button className="dm-modal-close" onClick={() => !addSubmitting && setShowAddModal(false)}>✕</button>
             </div>
             <form onSubmit={handleManualAdd}>
               <div className="dm-modal-body">
                 <div className="dm-form-group">
                   <label>设备名称</label>
-                  <input type="text" value={addFormData.name} onChange={e => setAddFormData({...addFormData, name: e.target.value})} placeholder="例：巡逻无人车 01" required />
+                  <input type="text" value={addFormData.name} onChange={e => setAddFormData({...addFormData, name: e.target.value})} placeholder="例：巡逻无人车 01" required disabled={addSubmitting} />
                 </div>
                 <div className="dm-form-group">
                   <label>设备类型</label>
-                  <select value={addFormData.type} onChange={e => setAddFormData({...addFormData, type: e.target.value})}>
+                  <select value={addFormData.type} onChange={e => setAddFormData({...addFormData, type: e.target.value})} disabled={addSubmitting}>
                     <option value="无人车">无人车</option>
                     <option value="无人机">无人机</option>
                     <option value="无人船">无人船</option>
@@ -386,18 +372,30 @@ export default function DeviceManagement() {
                 </div>
                 <div className="dm-form-group">
                   <label>IP 地址</label>
-                  <input type="text" value={addFormData.ip_address} onChange={e => setAddFormData({...addFormData, ip_address: e.target.value})} placeholder="例：192.168.31.200" required />
+                  <input type="text" value={addFormData.ip_address} onChange={e => setAddFormData({...addFormData, ip_address: e.target.value})} placeholder="例：192.168.31.200" required disabled={addSubmitting} />
                 </div>
                 <div className="dm-form-group">
                   <label>控制服务端口号</label>
-                  <input type="number" value={addFormData.port} onChange={e => setAddFormData({...addFormData, port: parseInt(e.target.value) || 9000})} placeholder="缺省为 9000" min="1" max="65535" />
+                  <input type="number" value={addFormData.port} onChange={e => setAddFormData({...addFormData, port: parseInt(e.target.value) || 9000})} placeholder="缺省为 9000" min="1" max="65535" disabled={addSubmitting} />
                   <span className="dm-form-hint">树莓派控制服务默认监听 9000 端口</span>
+                </div>
+                <div className="dm-form-group">
+                  <label>连接密码 <span style={{ color: '#ef4444', fontSize: '0.75rem' }}>*必填</span></label>
+                  <input type="password" value={addFormData.password} onChange={e => setAddFormData({...addFormData, password: e.target.value})} placeholder="输入设备连接密码" required disabled={addSubmitting} autoComplete="off" />
+                  <span className="dm-form-hint">设备端预设的连接密码，用于验证身份并获取通信令牌</span>
+                </div>
+                <div className="dm-form-group">
+                  <label>上报服务器地址 <span style={{ color: '#ef4444', fontSize: '0.75rem' }}>*必填</span></label>
+                  <input type="text" value={addFormData.server_address} onChange={e => setAddFormData({...addFormData, server_address: e.target.value})} placeholder="例：http://192.168.31.28:8000" required disabled={addSubmitting} />
+                  <span className="dm-form-hint">设备将通过此地址上报遥测数据，请填写后端服务器的局域网 IP</span>
                 </div>
                 {addError && <p className="dm-form-error">{addError}</p>}
               </div>
               <div className="dm-modal-footer">
-                <button type="button" className="dm-btn-cancel" onClick={() => setShowAddModal(false)}>取消</button>
-                <button type="submit" className="dm-btn-submit">添加设备</button>
+                <button type="button" className="dm-btn-cancel" onClick={() => setShowAddModal(false)} disabled={addSubmitting}>取消</button>
+                <button type="submit" className="dm-btn-submit" disabled={addSubmitting}>
+                  {addSubmitting ? '正在连接设备...' : '添加设备'}
+                </button>
               </div>
             </form>
           </div>
@@ -515,28 +513,19 @@ export default function DeviceManagement() {
         </div>
       )}
 
-      {/* Token 管理弹窗 */}
+      {/* Token 查看弹窗（只读） */}
       {showTokenModal && (
         <div className="dm-modal-overlay" onClick={() => setShowTokenModal(false)}>
           <div className="dm-modal dm-modal-wide" onClick={e => e.stopPropagation()}>
             <div className="dm-modal-header">
-              <h2>🔑 设备 Token 管理 - {tokenDevice?.name}</h2>
+              <h2>🔑 设备 Token - {tokenDevice?.name}</h2>
               <button className="dm-modal-close" onClick={() => setShowTokenModal(false)}>✕</button>
             </div>
             <div className="dm-modal-body">
-              <p className="dm-token-desc">设备 Token 用于树莓派 IoT 客户端向后端上报遥测数据的认证凭证。</p>
-              <button className="dm-btn-submit" onClick={handleCreateToken} style={{ marginBottom: '1rem' }}>
-                生成新 Token
-              </button>
-              {newToken && (
-                <div className="dm-token-new">
-                  <p>✅ 新 Token 已生成（请妥善保存，仅显示一次）：</p>
-                  <code className="dm-token-code">{newToken}</code>
-                </div>
-              )}
+              <p className="dm-token-desc">设备 Token 在添加设备时自动生成，用于设备 IoT 客户端向后端上报遥测数据的认证凭证。</p>
               <div className="dm-token-list">
                 {tokens.length === 0 ? (
-                  <p style={{ color: '#94a3b8' }}>暂无 Token，请点击上方按钮生成</p>
+                  <p style={{ color: '#94a3b8' }}>暂无 Token，设备注册时将自动生成</p>
                 ) : tokens.map(t => (
                   <div className="dm-token-item" key={t.id}>
                     <code className="dm-token-value">{t.token}</code>
