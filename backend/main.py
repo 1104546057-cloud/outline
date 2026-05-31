@@ -429,9 +429,10 @@ def update_device_online_status(db: Session) -> None:
         Device.last_seen < cutoff,
         Device.status == "online"
     ).update({"status": "offline"}, synchronize_session="fetch")
-    # 将从未上报过的设备保持离线
+    # 将从未上报过，但添加时间已经超过超时的设备标记为离线
     db.query(Device).filter(
         Device.last_seen == None,
+        Device.created_at < cutoff,
         Device.status == "online"
     ).update({"status": "offline"}, synchronize_session="fetch")
     db.commit()
@@ -686,7 +687,7 @@ async def create_device(
         ip_address=device_data.ip_address,
         port=port,
         status="online",
-        last_seen=datetime.now(),
+        last_seen=None,
         health=100,
         speed="0 m/s",
     )

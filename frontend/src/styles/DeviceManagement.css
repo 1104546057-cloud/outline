@@ -498,7 +498,7 @@
 /* 扩展遥测信息区域 */
 .dm-device-extra {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 1rem;
 }
@@ -511,11 +511,9 @@
   font-size: 0.75rem;
   font-weight: 500;
   border: 1px solid #bfdbfe;
-  flex: 1;
-  text-align: center;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex-grow: 1;
+  text-align: center;
 }
 
 /* 表单提示文字 */
@@ -670,6 +668,256 @@
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
+/* ===== 系统监控面板 ===== */
+
+.dm-expand-btn {
+  width: 100%;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 0.5rem;
+  font-size: 0.82rem;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 500;
+  margin-bottom: 1rem;
+}
+
+.dm-expand-btn:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #3b82f6;
+}
+
+.dm-sys-panel {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  animation: dmSysPanelIn 0.3s ease-out;
+}
+
+@keyframes dmSysPanelIn {
+  0% { opacity: 0; max-height: 0; transform: translateY(-8px); }
+  100% { opacity: 1; max-height: 2000px; transform: translateY(0); }
+}
+
+.dm-sys-section {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+}
+
+.dm-sys-section-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.dm-sys-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.3rem;
+}
+
+.dm-sys-label {
+  font-size: 0.78rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.dm-sys-value {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #334155;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+/* 进度条 */
+.dm-sys-bar-track {
+  width: 100%;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 0.4rem;
+}
+
+.dm-sys-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s ease, background 0.4s ease;
+}
+
+/* CPU 多核心 */
+.dm-sys-cores {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.4rem 0;
+}
+
+.dm-sys-core {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.dm-sys-core-label {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  width: 24px;
+  flex-shrink: 0;
+  text-align: right;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.dm-sys-core-bar-track {
+  flex: 1;
+  height: 4px;
+  background: #e2e8f0;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.dm-sys-core-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.6s ease, background 0.4s ease;
+}
+
+.dm-sys-core-pct {
+  font-size: 0.68rem;
+  color: #94a3b8;
+  width: 32px;
+  flex-shrink: 0;
+  text-align: right;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+/* 元信息 */
+.dm-sys-meta {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.3rem;
+}
+
+.dm-sys-meta span {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  background: #f1f5f9;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+}
+
+/* 网络网卡 */
+.dm-sys-nic {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.dm-sys-nic:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.dm-sys-nic-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600 !important;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.dm-sys-nic-status {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+}
+
+.dm-sys-nic-status.up {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.dm-sys-nic-status.down {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.dm-sys-nic-stats {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.3rem;
+  align-items: center;
+}
+
+.dm-sys-nic-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: #475569;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.dm-sys-nic-arrow {
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.dm-sys-nic-arrow.up {
+  color: #22c55e;
+}
+
+.dm-sys-nic-arrow.down {
+  color: #3b82f6;
+}
+
+.dm-sys-nic-err {
+  font-size: 0.72rem;
+  color: #ef4444;
+  font-weight: 500;
+}
+
+/* 系统信息网格 */
+.dm-sys-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.dm-sys-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.dm-sys-info-label {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.dm-sys-info-value {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #334155;
+}
+
 /* ===== 响应式设计 ===== */
 @media (max-width: 768px) {
   .device-management {
@@ -701,5 +949,9 @@
   .dm-btn-scan, .dm-btn-add {
     flex: 1;
     justify-content: center;
+  }
+
+  .dm-sys-info-grid {
+    grid-template-columns: 1fr;
   }
 }

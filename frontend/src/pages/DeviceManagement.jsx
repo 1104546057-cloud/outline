@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import '../styles/DeviceManagement.css'
 
 export default function DeviceManagement() {
@@ -62,6 +62,9 @@ export default function DeviceManagement() {
   const [showTokenModal, setShowTokenModal] = useState(false)
   const [tokenDevice, setTokenDevice] = useState(null)
   const [tokens, setTokens] = useState([])
+  
+  // expanded device detail panel
+  const [expandedDeviceId, setExpandedDeviceId] = useState(null)
   
   // API Fetch
   const fetchDevices = async () => {
@@ -229,7 +232,7 @@ export default function DeviceManagement() {
   }
 
   const formatLastSeen = (lastSeen) => {
-    if (!lastSeen) return '从未上报'
+    if (!lastSeen) return '等待上报'
     const date = new Date(lastSeen)
     const now = new Date()
     const diffSec = Math.floor((now - date) / 1000)
@@ -244,16 +247,253 @@ export default function DeviceManagement() {
     if (!extra) return null
     const items = []
     if (extra.cpu_temp_c !== undefined) {
-      items.push({ label: '🌡️ CPU', value: `${extra.cpu_temp_c}°C` })
+      const temp = extra.cpu_temp_c
+      const tempColor = temp > 70 ? '#ef4444' : temp > 55 ? '#f59e0b' : '#22c55e'
+      items.push({ label: '🌡️ CPU', value: `${temp}°C`, color: tempColor })
+    }
+    if (extra.cpu && extra.cpu.total !== undefined) {
+      items.push({ label: '⚙️ CPU', value: `${extra.cpu.total}%` })
+    }
+    if (extra.memory && extra.memory.physical) {
+      items.push({ label: '💾 内存', value: `${extra.memory.physical.percent}%` })
+    }
+    if (extra.system && extra.system.uptime) {
+      items.push({ label: '⏱️ 运行', value: extra.system.uptime })
     }
     if (extra.gps) {
       const gpsStatus = extra.gps.status === 'fix' ? '已定位' : '未定位'
       items.push({ label: '📡 GPS', value: gpsStatus })
     }
-    if (extra.locationSource) {
-      items.push({ label: '📍 定位源', value: extra.locationSource })
-    }
     return items.length > 0 ? items : null
+  }
+
+  const formatBytes = useCallback((bytes) => {
+    if (bytes === 0) return '0 B'
+    const units = ['B', 'KB', 'MB', 'GB', 'TB']
+    const i = Math.floor(Math.log(bytes) / Math.log(1024))
+    return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`
+  }, [])
+
+  const toggleExpanded = (deviceId) => {
+    setExpandedDeviceId(prev => prev === deviceId ? null : deviceId)
+  }
+
+  const renderSystemPanel = (device) => {
+    const extra = device.extra
+    if (!extra) return null
+    const sections = []
+
+    // CPU 详情
+    if (extra.cpu) {
+      const cpu = extra.cpu
+      sections.push(
+        <div className="dm-sys-section" key="cpu">
+          <div className="dm-sys-section-title">⚙️ CPU 监控</div>
+          <div className="dm-sys-row">
+            <span className="dm-sys-label">总使用率</span>
+            <span className="dm-sys-value">{cpu.total}%</span>
+          </div>
+          <div className="dm-sys-bar-track">
+            <div className="dm-sys-bar-fill" style={{ width: `${Math.min(100, cpu.total)}%`, background: cpu.total > 80 ? '#ef4444' : cpu.total > 50 ? '#f59e0b' : '#22c55e' }} />
+          </div>
+          {cpu.per_core && (
+            <div className="dm-sys-cores">
+              {cpu.per_core.map((val, i) => (
+                <div className="dm-sys-core" key={i}>
+                  <span className="dm-sys-core-label">核{i}</span>
+                  <div className="dm-sys-core-bar-track">
+                    <div className="dm-sys-core-bar-fill" style={{ width: `${Math.min(100, val)}%`, background: val > 80 ? '#ef4444' : val > 50 ? '#f59e0b' : '#3b82f6' }} />
+                  </div>
+                  <span className="dm-sys-core-pct">{val}%</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="dm-sys-meta">
+            {cpu.core_count && <span>核心数: {cpu.core_count}</span>}
+            {cpu.freq_current_mhz && <span>频率: {cpu.freq_current_mhz} MHz</span>}
+            {extra.cpu_temp_c !== undefined && <span>温度: {extra.cpu_temp_c}°C</span>}
+          </div>
+        </div>
+      )
+    }
+
+    // 内存详情
+    if (extra.memory) {
+      const mem = extra.memory
+      sections.push(
+        <div className="dm-sys-section" key="memory">
+          <div className="dm-sys-section-title">💾 内存监控</div>
+          {mem.physical && (
+            <>
+              <div className="dm-sys-row">
+                <span className="dm-sys-label">物理内存</span>
+                <span className="dm-sys-value">{mem.physical.used_gb} / {mem.physical.total_gb} GB ({mem.physical.percent}%)</span>
+              </div>
+              <div className="dm-sys-bar-track">
+                <div className="dm-sys-bar-fill" style={{ width: `${Math.min(100, mem.physical.percent)}%`, background: mem.physical.percent > 85 ? '#ef4444' : mem.physical.percent > 60 ? '#f59e0b' : '#3b82f6' }} />
+              </div>
+            </>
+          )}
+          {mem.swap && mem.swap.total_gb > 0 && (
+            <>
+              <div className="dm-sys-row" style={{ marginTop: '0.5rem' }}>
+                <span className="dm-sys-label">Swap</span>
+                <span className="dm-sys-value">{mem.swap.used_gb} / {mem.swap.total_gb} GB ({mem.swap.percent}%)</span>
+              </div>
+              <div className="dm-sys-bar-track">
+                <div className="dm-sys-bar-fill" style={{ width: `${Math.min(100, mem.swap.percent)}%`, background: '#a855f7' }} />
+              </div>
+            </>
+          )}
+        </div>
+      )
+    }
+
+    // 磁盘详情
+    if (extra.disk && extra.disk.length > 0) {
+      sections.push(
+        <div className="dm-sys-section" key="disk">
+          <div className="dm-sys-section-title">💿 磁盘监控</div>
+          {extra.disk.map((d, i) => (
+            <div key={i} style={{ marginBottom: i < extra.disk.length - 1 ? '0.6rem' : 0 }}>
+              <div className="dm-sys-row">
+                <span className="dm-sys-label">{d.mountpoint}</span>
+                <span className="dm-sys-value">{d.used_gb} / {d.total_gb} GB ({d.percent}%)</span>
+              </div>
+              <div className="dm-sys-bar-track">
+                <div className="dm-sys-bar-fill" style={{ width: `${Math.min(100, d.percent)}%`, background: d.percent > 90 ? '#ef4444' : d.percent > 70 ? '#f59e0b' : '#06b6d4' }} />
+              </div>
+              <div className="dm-sys-meta">
+                <span>{d.device}</span>
+                <span>{d.fstype}</span>
+                <span>可用: {d.free_gb} GB</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )
+    }
+
+    // 网络详情
+    if (extra.network) {
+      sections.push(
+        <div className="dm-sys-section" key="network">
+          <div className="dm-sys-section-title">🌐 网络监控</div>
+          {Object.entries(extra.network).map(([nic, stats]) => (
+            <div key={nic} className="dm-sys-nic">
+              <div className="dm-sys-row">
+                <span className="dm-sys-label dm-sys-nic-name">
+                  {nic}
+                  {stats.is_up !== undefined && (
+                    <span className={`dm-sys-nic-status ${stats.is_up ? 'up' : 'down'}`}>
+                      {stats.is_up ? 'UP' : 'DOWN'}
+                    </span>
+                  )}
+                </span>
+                {stats.speed_mbps > 0 && <span className="dm-sys-value">{stats.speed_mbps} Mbps</span>}
+              </div>
+              <div className="dm-sys-nic-stats">
+                <div className="dm-sys-nic-stat">
+                  <span className="dm-sys-nic-arrow up">↑</span>
+                  <span>{formatBytes(stats.bytes_sent)}</span>
+                </div>
+                <div className="dm-sys-nic-stat">
+                  <span className="dm-sys-nic-arrow down">↓</span>
+                  <span>{formatBytes(stats.bytes_recv)}</span>
+                </div>
+                {(stats.errin > 0 || stats.errout > 0) && (
+                  <span className="dm-sys-nic-err">错误: {stats.errin + stats.errout}</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )
+    }
+
+    // 硬件与外设详情
+    if (extra.hardware || (extra.usb_devices && extra.usb_devices.length > 0)) {
+      sections.push(
+        <div className="dm-sys-section" key="hardware">
+          <div className="dm-sys-section-title">🔌 硬件与外设</div>
+          {extra.hardware && (
+            <div className="dm-sys-info-grid" style={{ marginBottom: '0.75rem' }}>
+              {Array.isArray(extra.hardware) 
+                ? extra.hardware.map((item, index) => (
+                    <div className="dm-sys-info-item" key={index}>
+                      <span className="dm-sys-info-label">{item.label}</span>
+                      <span className="dm-sys-info-value" style={{ fontSize: '0.72rem', wordBreak: 'break-all' }}>{item.value}</span>
+                    </div>
+                  ))
+                : Object.entries(extra.hardware).map(([key, value]) => (
+                    <div className="dm-sys-info-item" key={key}>
+                      <span className="dm-sys-info-label">{key}</span>
+                      <span className="dm-sys-info-value" style={{ fontSize: '0.72rem', wordBreak: 'break-all' }}>{value}</span>
+                    </div>
+                  ))
+              }
+            </div>
+          )}
+          {extra.hw_diagram && (
+            <div>
+              <div className="dm-sys-label" style={{ marginBottom: '0.4rem' }}>主板引脚结构图</div>
+              <div style={{ padding: '0.75rem', background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#334155', borderRadius: '8px', overflowX: 'auto', fontSize: '0.7rem', fontFamily: "'JetBrains Mono', 'Consolas', monospace", whiteSpace: 'pre', lineHeight: '1.2' }}>
+                {extra.hw_diagram}
+              </div>
+            </div>
+          )}
+          {extra.usb_devices && extra.usb_devices.length > 0 && (
+            <div>
+              <div className="dm-sys-label" style={{ marginBottom: '0.4rem', borderTop: '1px solid #f1f5f9', paddingTop: '0.6rem' }}>USB 外设列表</div>
+              <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.72rem', color: '#475569', fontFamily: "'JetBrains Mono', 'Consolas', monospace" }}>
+                {extra.usb_devices.map((dev, i) => (
+                  <li key={i} style={{ marginBottom: '0.2rem' }}>{dev}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    // 系统信息
+    if (extra.system) {
+      const sys = extra.system
+      sections.push(
+        <div className="dm-sys-section" key="system">
+          <div className="dm-sys-section-title">🖥️ 系统信息</div>
+          <div className="dm-sys-info-grid">
+            {sys.hostname && (
+              <div className="dm-sys-info-item">
+                <span className="dm-sys-info-label">主机名</span>
+                <span className="dm-sys-info-value">{sys.hostname}</span>
+              </div>
+            )}
+            {sys.uptime && (
+              <div className="dm-sys-info-item">
+                <span className="dm-sys-info-label">运行时长</span>
+                <span className="dm-sys-info-value">{sys.uptime}</span>
+              </div>
+            )}
+            {sys.boot_time && (
+              <div className="dm-sys-info-item">
+                <span className="dm-sys-info-label">启动时间</span>
+                <span className="dm-sys-info-value">{new Date(sys.boot_time).toLocaleString('zh-CN')}</span>
+              </div>
+            )}
+            {sys.load_avg && (
+              <div className="dm-sys-info-item">
+                <span className="dm-sys-info-label">系统负载</span>
+                <span className="dm-sys-info-value">{sys.load_avg['1min']} / {sys.load_avg['5min']} / {sys.load_avg['15min']}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    return sections.length > 0 ? sections : null
   }
 
   return (
@@ -316,13 +556,30 @@ export default function DeviceManagement() {
               </div>
             </div>
 
-            {/* 扩展遥测信息（CPU温度、GPS状态等） */}
+            {/* 扩展遥测摘要信息 */}
             {getExtraInfo(dev) && (
               <div className="dm-device-extra">
                 {getExtraInfo(dev).map((item, i) => (
-                  <span key={i} className="dm-extra-tag">{item.label}: {item.value}</span>
+                  <span key={i} className="dm-extra-tag" style={item.color ? { color: item.color, borderColor: item.color + '33' } : {}}>{item.label}: {item.value}</span>
                 ))}
               </div>
+            )}
+
+            {/* 系统监控详情面板 */}
+            {dev.extra && (dev.extra.cpu || dev.extra.memory || dev.extra.disk || dev.extra.network || dev.extra.system || dev.extra.hardware || dev.extra.usb_devices) && (
+              <>
+                <button
+                  className="dm-expand-btn"
+                  onClick={() => toggleExpanded(dev.id)}
+                >
+                  {expandedDeviceId === dev.id ? '▲ 收起系统监控' : '▼ 展开系统监控'}
+                </button>
+                {expandedDeviceId === dev.id && (
+                  <div className="dm-sys-panel">
+                    {renderSystemPanel(dev)}
+                  </div>
+                )}
+              </>
             )}
 
             <div className="dm-device-gps">

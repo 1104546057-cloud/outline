@@ -38,6 +38,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+
 # ── 日志 ──────────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -170,6 +176,216 @@ def read_signal() -> Optional[int]:
     except Exception:
         pass
     return None
+
+
+# ── 系统信息采集（基于 psutil，适用于树莓派）─────────────────────────────────
+
+def read_cpu_info() -> Optional[Dict[str, Any]]:
+    """读取 CPU 使用率、核心数、频率等信息。"""
+    if not PSUTIL_AVAILABLE:
+        return None
+    try:
+        per_core = psutil.cpu_percent(interval=0.5, percpu=True)
+        total = psutil.cpu_percent(interval=0)
+        core_count = psutil.cpu_count(logical=True)
+        freq = psutil.cpu_freq()
+        data: Dict[str, Any] = {
+            "total": total,
+            "per_core": per_core,
+            "core_count": core_count,
+        }
+        if freq:
+            data["freq_current_mhz"] = round(freq.current, 1)
+            if freq.max:
+                data["freq_max_mhz"] = round(freq.max, 1)
+        return data
+    except Exception:
+        return None
+
+
+def read_memory_info() -> Optional[Dict[str, Any]]:
+    """读取物理内存和 Swap 使用情况。"""
+    if not PSUTIL_AVAILABLE:
+        return None
+    try:
+        mem = psutil.virtual_memory()
+        swap = psutil.swap_memory()
+        return {
+            "physical": {
+                "total_gb": round(mem.total / (1024 ** 3), 2),
+                "used_gb": round(mem.used / (1024 ** 3), 2),
+                "available_gb": round(mem.available / (1024 ** 3), 2),
+                "percent": mem.percent,
+            },
+            "swap": {
+                "total_gb": round(swap.total / (1024 ** 3), 2),
+                "used_gb": round(swap.used / (1024 ** 3), 2),
+                "percent": swap.percent,
+            },
+        }
+    except Exception:
+        return None
+
+
+def read_disk_info() -> Optional[List[Dict[str, Any]]]:
+    """读取磁盘分区使用情况。"""
+    if not PSUTIL_AVAILABLE:
+        return None
+    try:
+        disk_data: List[Dict[str, Any]] = []
+        partitions = psutil.disk_partitions(all=False)
+        for part in partitions:
+            try:
+                usage = psutil.disk_usage(part.mountpoint)
+                disk_data.append({
+                    "device": part.device,
+                    "mountpoint": part.mountpoint,
+                    "fstype": part.fstype,
+                    "total_gb": round(usage.total / (1024 ** 3), 2),
+                    "used_gb": round(usage.used / (1024 ** 3), 2),
+                    "free_gb": round(usage.free / (1024 ** 3), 2),
+                    "percent": usage.percent,
+                })
+            except (PermissionError, OSError):
+                continue
+        return disk_data if disk_data else None
+    except Exception:
+        return None
+
+
+def read_network_info() -> Optional[Dict[str, Any]]:
+    """读取网络 IO 流量统计。"""
+    if not PSUTIL_AVAILABLE:
+        return None
+    try:
+        counters = psutil.net_io_counters(pernic=True)
+        network_data: Dict[str, Any] = {}
+        for nic_name, stats in counters.items():
+            if nic_name == "lo":
+                continue
+            network_data[nic_name] = {
+                "bytes_sent": stats.bytes_sent,
+                "bytes_recv": stats.bytes_recv,
+                "packets_sent": stats.packets_sent,
+                "packets_recv": stats.packets_recv,
+                "errin": stats.errin,
+                "errout": stats.errout,
+            }
+        # 网卡状态
+        if_stats = psutil.net_if_stats()
+        for nic_name in network_data:
+            if nic_name in if_stats:
+                network_data[nic_name]["is_up"] = if_stats[nic_name].isup
+                if if_stats[nic_name].speed:
+                    network_data[nic_name]["speed_mbps"] = if_stats[nic_name].speed
+        return network_data if network_data else None
+    except Exception:
+        return None
+
+
+def read_system_info() -> Optional[Dict[str, Any]]:
+    """读取系统基础信息：启动时间、运行时长、负载、主机名。"""
+    try:
+        data: Dict[str, Any] = {}
+        if PSUTIL_AVAILABLE:
+            boot_ts = psutil.boot_time()
+            uptime_sec = time.time() - boot_ts
+            hours = int(uptime_sec // 3600)
+            minutes = int((uptime_sec % 3600) // 60)
+            data["boot_time"] = datetime.fromtimestamp(boot_ts).isoformat(timespec="seconds")
+            data["uptime"] = f"{hours}h {minutes}m"
+            data["uptime_seconds"] = int(uptime_sec)
+        # 系统负载（仅 Linux/Unix）
+        if hasattr(os, "getloadavg"):
+            load = os.getloadavg()
+            data["load_avg"] = {
+                "1min": round(load[0], 2),
+                "5min": round(load[1], 2),
+                "15min": round(load[2], 2),
+            }
+        # 主机名
+        try:
+            data["hostname"] = os.uname().nodename
+        except AttributeError:
+            import platform
+            data["hostname"] = platform.node()
+        return data if data else None
+    except Exception:
+        return None
+
+
+def read_pi_hardware() -> Optional[Dict[str, Any]]:
+    """尝试使用 pinout 命令读取树莓派硬件详情（型号、SoC、RAM等）以及引脚图"""
+    try:
+        out = subprocess.check_output(["pinout"], text=True, stderr=subprocess.DEVNULL, timeout=5)
+        hw_list = []
+        diagram_lines = []
+        is_diagram = False
+        
+        for line in out.splitlines():
+            stripped = line.strip()
+            if not is_diagram:
+                # 空行或者以 ,--- 开头表示属性读取结束，图形开始
+                if not stripped or stripped.startswith(",---"):
+                    is_diagram = True
+                    if stripped:
+                        diagram_lines.append(line)
+                    continue
+                    
+                if ":" in stripped:
+                    parts = stripped.split(":", 1)
+                    if len(parts) == 2:
+                        key = parts[0].strip()
+                        val = parts[1].strip()
+                        hw_list.append({"label": key, "value": val})
+            else:
+                # 收集图形行，但忽略末尾的帮助文档链接
+                if "For further information" in line or "pinout.xyz" in line:
+                    continue
+                diagram_lines.append(line)
+                
+        # 移除末尾多余的空行
+        while diagram_lines and not diagram_lines[-1].strip():
+            diagram_lines.pop()
+            
+        diagram = "\n".join(diagram_lines) if diagram_lines else None
+        
+        if hw_list or diagram:
+            return {"info": hw_list if hw_list else None, "diagram": diagram}
+        return None
+    except Exception:
+        # 降级：如果 pinout 失败，仅读取 model 文件
+        try:
+            model = _read_file("/sys/firmware/devicetree/base/model")
+            if model:
+                return {"info": [{"label": "Description", "value": model.strip('\x00')}], "diagram": None}
+        except Exception:
+            pass
+        return None
+
+
+def read_usb_devices() -> Optional[List[str]]:
+    """读取 USB 外设列表，过滤掉基础 Hub"""
+    try:
+        out = subprocess.check_output(["lsusb"], text=True, stderr=subprocess.DEVNULL, timeout=3)
+        devices = []
+        for line in out.splitlines():
+            # 过滤掉系统自带的 root hub 和常见内置 hub
+            if "Linux Foundation" in line or "root hub" in line:
+                continue
+            # 提取名称，例如从: "Bus 001 Device 004: ID 32e6:9005 icSpring icspring camera" 中提取
+            try:
+                if "ID " in line:
+                    name = line.split("ID ")[1].split(" ", 1)[1].strip()
+                else:
+                    name = line.split(":", 2)[2].strip()
+                if name:
+                    devices.append(name)
+            except IndexError:
+                pass
+        return devices if devices else None
+    except Exception:
+        return None
 
 
 def parse_bool(value: Any, default: bool = False) -> bool:
@@ -706,6 +922,39 @@ def collect_telemetry(cfg: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, A
             "wifiScanStatus": network_report.get("wifiScanStatus"),
         }
     extra["locationSource"] = location_report["source"] if location_report.get("lat") is not None else "none"
+
+    # ── 新增：系统状态信息采集（基于 psutil）──
+    cpu_info = read_cpu_info()
+    if cpu_info is not None:
+        extra["cpu"] = cpu_info
+
+    memory_info = read_memory_info()
+    if memory_info is not None:
+        extra["memory"] = memory_info
+
+    disk_info = read_disk_info()
+    if disk_info is not None:
+        extra["disk"] = disk_info
+
+    network_info = read_network_info()
+    if network_info is not None:
+        extra["network"] = network_info
+
+    system_info = read_system_info()
+    if system_info is not None:
+        extra["system"] = system_info
+
+    hw_data = read_pi_hardware()
+    if hw_data is not None:
+        if hw_data.get("info"):
+            extra["hardware"] = hw_data["info"]
+        if hw_data.get("diagram"):
+            extra["hw_diagram"] = hw_data["diagram"]
+
+    usb_devs = read_usb_devices()
+    if usb_devs is not None:
+        extra["usb_devices"] = usb_devs
+
     if extra:
         payload["extra"] = extra
 
