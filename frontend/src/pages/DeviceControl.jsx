@@ -38,11 +38,16 @@ export default function DeviceControl() {
     }
   }, [])
 
-  // 切换设备时停止并重置连接状态
+  // 切换设备时停止、重置状态，并自动检测连接
   useEffect(() => {
     stopSending()
-    setConnectionStatus('未检测')
     setActiveDirection(null)
+    if (selectedDeviceId) {
+      handleTestConnection()
+    } else {
+      setConnectionStatus('未检测')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDeviceId])
 
   // 页面离开时发送 stop
