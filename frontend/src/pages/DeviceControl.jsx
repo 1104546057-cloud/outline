@@ -4,11 +4,11 @@ import '../styles/DeviceControl.css'
 /**
  * 真实无人车遥控页面
  * 
+ * - 左侧：选中设备的实时摄像头画面
+ * - 右侧：方向控制 + 自定义指令 + 日志
  * - 按住方向键持续发送 cmd_vel（每 180ms 一次）
  * - 松开/离开时发送 stop
  * - 支持速度滑块调节倍率
- * - 显示连接状态和控制日志
- * - 支持发送自定义 JSON 指令
  */
 export default function DeviceControl() {
   const [devices, setDevices] = useState([])
@@ -19,11 +19,15 @@ export default function DeviceControl() {
   const [connectionStatus, setConnectionStatus] = useState('未检测') // 未检测 / 连接中 / 已连接 / 不可达
   const [activeDirection, setActiveDirection] = useState(null) // 当前按住的方向
   const [customCommand, setCustomCommand] = useState('{"type":"ping"}')
+  const [cameraStatus, setCameraStatus] = useState('loading') // loading / streaming / error
+  const [cameraError, setCameraError] = useState('')
 
   // 持续发送定时器
   const sendIntervalRef = useRef(null)
   // 标记组件是否已挂载
   const mountedRef = useRef(true)
+  const imgRef = useRef(null)
+  const retryTimerRef = useRef(null)
 
   useEffect(() => {
     mountedRef.current = true
@@ -35,6 +39,7 @@ export default function DeviceControl() {
       mountedRef.current = false
       stopSending()
       clearInterval(timer)
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
     }
   }, [])
 
@@ -42,6 +47,8 @@ export default function DeviceControl() {
   useEffect(() => {
     stopSending()
     setActiveDirection(null)
+    setCameraStatus('loading')
+    setCameraError('')
     if (selectedDeviceId) {
       handleTestConnection()
     } else {
@@ -290,6 +297,57 @@ export default function DeviceControl() {
     }
   }, [startDirection, stopDirection, handleEmergencyStop, activeDirection])
 
+  // ===== 摄像头画面控制 =====
+  const streamUrl = selectedDeviceId ? `/api/devices/${selectedDeviceId}/camera/stream` : ''
+
+  const handleCameraLoad = () => {
+    setCameraStatus('streaming')
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current)
+      retryTimerRef.current = null
+    }
+  }
+
+  const handleCameraError = () => {
+    setCameraStatus('error')
+    setCameraError('无法连接到摄像头，请确认设备已开启摄像头服务')
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+    retryTimerRef.current = setTimeout(() => {
+      retryCameraStream()
+    }, 5000)
+  }
+
+  const retryCameraStream = () => {
+    setCameraStatus('loading')
+    setCameraError('')
+    if (imgRef.current) {
+      imgRef.current.src = `${streamUrl}?t=${Date.now()}`
+    }
+  }
+
+  const captureSnapshot = async () => {
+    if (!selectedDeviceId) return
+    const device = devices.find(d => String(d.id) === selectedDeviceId)
+    if (!device) return
+    try {
+      const res = await fetch(`/api/devices/${selectedDeviceId}/camera/snapshot`, { credentials: 'include' })
+      if (!res.ok) throw new Error('截图失败')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      a.download = `${device.name}_${timestamp}.jpg`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      addLog('📷 截图已保存')
+    } catch (err) {
+      addLog(`❌ 截图失败: ${err.message}`, 'error')
+    }
+  }
+
   const selectedDevice = devices.find(d => String(d.id) === selectedDeviceId)
 
   const statusColorMap = {
@@ -343,179 +401,269 @@ export default function DeviceControl() {
         )}
       </div>
 
-      {/* 两栏布局：左方向控制 / 右发送指令 */}
-      <div className="dc-content-grid">
-        {/* 左：方向控制面板 */}
-        <div className="dc-control-card">
-          <h3>🕹️ 方向控制</h3>
-          <p className="dc-control-desc">
-            按住方向键持续发送运动指令，松开自动停车。支持键盘 WASD / 方向键 / 小键盘。
-          </p>
-          
-          {/* 速度滑块 */}
-          <div className="dc-speed-control">
-            <label>速度倍率: <strong>{(speedRatio * 100).toFixed(0)}%</strong></label>
-            <input 
-              type="range" 
-              min="0.05" max="1" step="0.05"
-              value={speedRatio}
-              onChange={e => setSpeedRatio(parseFloat(e.target.value))}
-              className="dc-speed-slider"
-            />
-            <div className="dc-speed-info">
-              <span>线速度上限: {(controlConfig.maxLinear * speedRatio).toFixed(2)} m/s</span>
-              <span>角速度上限: {(controlConfig.maxAngular * speedRatio).toFixed(2)} rad/s</span>
+      {/* ===== 新布局：左侧摄像头画面 + 右侧控制面板 ===== */}
+      <div className="dc-main-layout">
+        {/* 左侧：实时摄像头画面 */}
+        <div className="dc-camera-panel">
+          <div className="dc-camera-card">
+            <div className="dc-camera-header">
+              <div className="dc-camera-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                </svg>
+                <span>设备实时画面</span>
+                {cameraStatus === 'streaming' && (
+                  <span className="dc-live-badge">
+                    <span className="dc-live-dot"></span>
+                    LIVE
+                  </span>
+                )}
+              </div>
+              <div className="dc-camera-actions">
+                <button 
+                  className="dc-camera-btn" 
+                  onClick={captureSnapshot} 
+                  disabled={cameraStatus !== 'streaming'}
+                  title="截图保存"
+                >
+                  📷
+                </button>
+                <button 
+                  className="dc-camera-btn" 
+                  onClick={retryCameraStream}
+                  title="重新连接"
+                >
+                  🔄
+                </button>
+              </div>
+            </div>
+            <div className="dc-camera-viewport">
+              {selectedDeviceId ? (
+                <>
+                  <img
+                    ref={imgRef}
+                    className="dc-camera-stream"
+                    src={streamUrl}
+                    alt={`${selectedDevice?.name || '设备'} 摄像头`}
+                    onLoad={handleCameraLoad}
+                    onError={handleCameraError}
+                    style={{ display: cameraStatus === 'streaming' ? 'block' : 'none' }}
+                  />
+                  {cameraStatus === 'loading' && (
+                    <div className="dc-camera-overlay">
+                      <div className="dc-camera-spinner"></div>
+                      <div className="dc-camera-overlay-text">正在连接摄像头...</div>
+                    </div>
+                  )}
+                  {cameraStatus === 'error' && (
+                    <div className="dc-camera-overlay error">
+                      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="15" y1="9" x2="9" y2="15"></line>
+                        <line x1="9" y1="9" x2="15" y2="15"></line>
+                      </svg>
+                      <div className="dc-camera-overlay-text">{cameraError}</div>
+                      <button className="dc-camera-retry-btn" onClick={retryCameraStream}>
+                        重新连接
+                      </button>
+                    </div>
+                  )}
+                  {/* 底部信息条 */}
+                  {cameraStatus === 'streaming' && (
+                    <div className="dc-camera-info-bar">
+                      <span>640×480</span>
+                      <span>15 fps</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="dc-camera-overlay">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{opacity: 0.4}}>
+                    <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                  </svg>
+                  <div className="dc-camera-overlay-text">请先选择一个设备</div>
+                </div>
+              )}
             </div>
           </div>
-
-          <div className="dc-numpad-container">
-            <div className="dc-numpad">
-              {/* Row 1: forward-left, forward, forward-right */}
-              <button 
-                className={`dc-num-btn ${activeDirection === 'forward-left' ? 'active' : ''}`}
-                onPointerDown={() => startDirection('forward-left')}
-                onPointerUp={stopDirection}
-                onPointerLeave={stopDirection}
-                disabled={!selectedDeviceId}
-              >
-                <span className="dc-num-icon">↖️</span>
-                <span className="dc-num-key">7</span>
-              </button>
-              <button 
-                className={`dc-num-btn ${activeDirection === 'forward' ? 'active' : ''}`}
-                onPointerDown={() => startDirection('forward')}
-                onPointerUp={stopDirection}
-                onPointerLeave={stopDirection}
-                disabled={!selectedDeviceId}
-              >
-                <span className="dc-num-icon">⬆️</span>
-                <span className="dc-num-key">W / 8 前进</span>
-              </button>
-              <button 
-                className={`dc-num-btn ${activeDirection === 'forward-right' ? 'active' : ''}`}
-                onPointerDown={() => startDirection('forward-right')}
-                onPointerUp={stopDirection}
-                onPointerLeave={stopDirection}
-                disabled={!selectedDeviceId}
-              >
-                <span className="dc-num-icon">↗️</span>
-                <span className="dc-num-key">9</span>
-              </button>
-              
-              {/* Row 2: left, stop, right */}
-              <button 
-                className={`dc-num-btn ${activeDirection === 'left' ? 'active' : ''}`}
-                onPointerDown={() => startDirection('left')}
-                onPointerUp={stopDirection}
-                onPointerLeave={stopDirection}
-                disabled={!selectedDeviceId}
-              >
-                <span className="dc-num-icon">⬅️</span>
-                <span className="dc-num-key">A / 4 左转</span>
-              </button>
-              <button 
-                className="dc-num-btn stop"
-                onClick={handleEmergencyStop}
-                disabled={!selectedDeviceId}
-              >
-                <span className="dc-num-icon">⏹️</span>
-                <span className="dc-num-key">空格 停止</span>
-              </button>
-              <button 
-                className={`dc-num-btn ${activeDirection === 'right' ? 'active' : ''}`}
-                onPointerDown={() => startDirection('right')}
-                onPointerUp={stopDirection}
-                onPointerLeave={stopDirection}
-                disabled={!selectedDeviceId}
-              >
-                <span className="dc-num-icon">➡️</span>
-                <span className="dc-num-key">D / 6 右转</span>
-              </button>
-              
-              {/* Row 3: backward-left, backward, backward-right */}
-              <button 
-                className={`dc-num-btn ${activeDirection === 'backward-left' ? 'active' : ''}`}
-                onPointerDown={() => startDirection('backward-left')}
-                onPointerUp={stopDirection}
-                onPointerLeave={stopDirection}
-                disabled={!selectedDeviceId}
-              >
-                <span className="dc-num-icon">↙️</span>
-                <span className="dc-num-key">1</span>
-              </button>
-              <button 
-                className={`dc-num-btn ${activeDirection === 'backward' ? 'active' : ''}`}
-                onPointerDown={() => startDirection('backward')}
-                onPointerUp={stopDirection}
-                onPointerLeave={stopDirection}
-                disabled={!selectedDeviceId}
-              >
-                <span className="dc-num-icon">⬇️</span>
-                <span className="dc-num-key">S / 2 后退</span>
-              </button>
-              <button 
-                className={`dc-num-btn ${activeDirection === 'backward-right' ? 'active' : ''}`}
-                onPointerDown={() => startDirection('backward-right')}
-                onPointerUp={stopDirection}
-                onPointerLeave={stopDirection}
-                disabled={!selectedDeviceId}
-              >
-                <span className="dc-num-icon">↘️</span>
-                <span className="dc-num-key">3</span>
-              </button>
-            </div>
-          </div>
-
-          {/* 急停按钮 */}
-          <button className="dc-btn-emergency" onClick={handleEmergencyStop} disabled={!selectedDeviceId}>
-            🚨 急停 (Emergency Stop)
-          </button>
         </div>
 
-        {/* 右：发送特定指令 */}
-        <div className="dc-control-card">
-          <h3>📝 发送特定指令</h3>
-          <p className="dc-control-desc">直接输入 JSON 指令通过 TCP 发送到设备端口，设备需支持对应的指令类型。</p>
-          
-          <form className="dc-custom-form" onSubmit={handleCustomSend}>
-            <div className="dc-input-group">
-              <label>指令代码 (JSON)</label>
-              <input
-                type="text"
-                className="dc-input"
-                value={customCommand}
-                onChange={e => setCustomCommand(e.target.value)}
-                placeholder='{"type":"ping"}'
-                disabled={!selectedDeviceId}
+        {/* 右侧：控制面板 */}
+        <div className="dc-control-panel">
+          {/* 方向控制 */}
+          <div className="dc-control-card">
+            <h3>🕹️ 方向控制</h3>
+            <p className="dc-control-desc">
+              按住方向键持续发送运动指令，松开自动停车。支持键盘 WASD / 方向键 / 小键盘。
+            </p>
+            
+            {/* 速度滑块 */}
+            <div className="dc-speed-control">
+              <label>速度倍率: <strong>{(speedRatio * 100).toFixed(0)}%</strong></label>
+              <input 
+                type="range" 
+                min="0.05" max="1" step="0.05"
+                value={speedRatio}
+                onChange={e => setSpeedRatio(parseFloat(e.target.value))}
+                className="dc-speed-slider"
               />
+              <div className="dc-speed-info">
+                <span>线速度上限: {(controlConfig.maxLinear * speedRatio).toFixed(2)} m/s</span>
+                <span>角速度上限: {(controlConfig.maxAngular * speedRatio).toFixed(2)} rad/s</span>
+              </div>
             </div>
-            <button 
-              type="submit" 
-              className="dc-btn-send"
-              disabled={!selectedDeviceId || !customCommand.trim()}
-            >
-              发送指令到设备
-            </button>
-          </form>
 
-          <div className="dc-preset-commands">
-            <label>快捷指令</label>
-            <div className="dc-preset-list">
-              {[
-                { label: 'Ping', cmd: '{"type":"ping"}' },
-                { label: 'Stop', cmd: '{"type":"stop"}' },
-                { label: '前进 0.1', cmd: '{"type":"cmd_vel","v":0.1,"w":0}' },
-              ].map((preset, i) => (
+            <div className="dc-numpad-container">
+              <div className="dc-numpad">
+                {/* Row 1: forward-left, forward, forward-right */}
                 <button 
-                  key={i} 
-                  className="dc-preset-btn"
-                  type="button"
+                  className={`dc-num-btn ${activeDirection === 'forward-left' ? 'active' : ''}`}
+                  onPointerDown={() => startDirection('forward-left')}
+                  onPointerUp={stopDirection}
+                  onPointerLeave={stopDirection}
                   disabled={!selectedDeviceId}
-                  onClick={() => {
-                    setCustomCommand(preset.cmd)
-                  }}
-                >{preset.label}</button>
-              ))}
+                >
+                  <span className="dc-num-icon">↖️</span>
+                  <span className="dc-num-key">7</span>
+                </button>
+                <button 
+                  className={`dc-num-btn ${activeDirection === 'forward' ? 'active' : ''}`}
+                  onPointerDown={() => startDirection('forward')}
+                  onPointerUp={stopDirection}
+                  onPointerLeave={stopDirection}
+                  disabled={!selectedDeviceId}
+                >
+                  <span className="dc-num-icon">⬆️</span>
+                  <span className="dc-num-key">W / 8 前进</span>
+                </button>
+                <button 
+                  className={`dc-num-btn ${activeDirection === 'forward-right' ? 'active' : ''}`}
+                  onPointerDown={() => startDirection('forward-right')}
+                  onPointerUp={stopDirection}
+                  onPointerLeave={stopDirection}
+                  disabled={!selectedDeviceId}
+                >
+                  <span className="dc-num-icon">↗️</span>
+                  <span className="dc-num-key">9</span>
+                </button>
+                
+                {/* Row 2: left, stop, right */}
+                <button 
+                  className={`dc-num-btn ${activeDirection === 'left' ? 'active' : ''}`}
+                  onPointerDown={() => startDirection('left')}
+                  onPointerUp={stopDirection}
+                  onPointerLeave={stopDirection}
+                  disabled={!selectedDeviceId}
+                >
+                  <span className="dc-num-icon">⬅️</span>
+                  <span className="dc-num-key">A / 4 左转</span>
+                </button>
+                <button 
+                  className="dc-num-btn stop"
+                  onClick={handleEmergencyStop}
+                  disabled={!selectedDeviceId}
+                >
+                  <span className="dc-num-icon">⏹️</span>
+                  <span className="dc-num-key">空格 停止</span>
+                </button>
+                <button 
+                  className={`dc-num-btn ${activeDirection === 'right' ? 'active' : ''}`}
+                  onPointerDown={() => startDirection('right')}
+                  onPointerUp={stopDirection}
+                  onPointerLeave={stopDirection}
+                  disabled={!selectedDeviceId}
+                >
+                  <span className="dc-num-icon">➡️</span>
+                  <span className="dc-num-key">D / 6 右转</span>
+                </button>
+                
+                {/* Row 3: backward-left, backward, backward-right */}
+                <button 
+                  className={`dc-num-btn ${activeDirection === 'backward-left' ? 'active' : ''}`}
+                  onPointerDown={() => startDirection('backward-left')}
+                  onPointerUp={stopDirection}
+                  onPointerLeave={stopDirection}
+                  disabled={!selectedDeviceId}
+                >
+                  <span className="dc-num-icon">↙️</span>
+                  <span className="dc-num-key">1</span>
+                </button>
+                <button 
+                  className={`dc-num-btn ${activeDirection === 'backward' ? 'active' : ''}`}
+                  onPointerDown={() => startDirection('backward')}
+                  onPointerUp={stopDirection}
+                  onPointerLeave={stopDirection}
+                  disabled={!selectedDeviceId}
+                >
+                  <span className="dc-num-icon">⬇️</span>
+                  <span className="dc-num-key">S / 2 后退</span>
+                </button>
+                <button 
+                  className={`dc-num-btn ${activeDirection === 'backward-right' ? 'active' : ''}`}
+                  onPointerDown={() => startDirection('backward-right')}
+                  onPointerUp={stopDirection}
+                  onPointerLeave={stopDirection}
+                  disabled={!selectedDeviceId}
+                >
+                  <span className="dc-num-icon">↘️</span>
+                  <span className="dc-num-key">3</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 急停按钮 */}
+            <button className="dc-btn-emergency" onClick={handleEmergencyStop} disabled={!selectedDeviceId}>
+              🚨 急停 (Emergency Stop)
+            </button>
+          </div>
+
+          {/* 发送特定指令 */}
+          <div className="dc-control-card">
+            <h3>📝 发送特定指令</h3>
+            <p className="dc-control-desc">直接输入 JSON 指令通过 TCP 发送到设备端口。</p>
+            
+            <form className="dc-custom-form" onSubmit={handleCustomSend}>
+              <div className="dc-input-group">
+                <label>指令代码 (JSON)</label>
+                <input
+                  type="text"
+                  className="dc-input"
+                  value={customCommand}
+                  onChange={e => setCustomCommand(e.target.value)}
+                  placeholder='{"type":"ping"}'
+                  disabled={!selectedDeviceId}
+                />
+              </div>
+              <button 
+                type="submit" 
+                className="dc-btn-send"
+                disabled={!selectedDeviceId || !customCommand.trim()}
+              >
+                发送指令到设备
+              </button>
+            </form>
+
+            <div className="dc-preset-commands">
+              <label>快捷指令</label>
+              <div className="dc-preset-list">
+                {[
+                  { label: 'Ping', cmd: '{"type":"ping"}' },
+                  { label: 'Stop', cmd: '{"type":"stop"}' },
+                  { label: '前进 0.1', cmd: '{"type":"cmd_vel","v":0.1,"w":0}' },
+                ].map((preset, i) => (
+                  <button 
+                    key={i} 
+                    className="dc-preset-btn"
+                    type="button"
+                    disabled={!selectedDeviceId}
+                    onClick={() => {
+                      setCustomCommand(preset.cmd)
+                    }}
+                  >{preset.label}</button>
+                ))}
+              </div>
             </div>
           </div>
         </div>

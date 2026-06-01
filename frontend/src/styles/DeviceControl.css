@@ -1,6 +1,6 @@
 .device-control-page {
   padding: 1.5rem 2rem;
-  max-width: 1400px;
+  max-width: 1600px;
   margin: 0 auto;
   animation: fadeIn 0.4s ease-out;
 }
@@ -121,17 +121,215 @@
   color: #64748b;
 }
 
-/* ===== 内容网格 ===== */
-.dc-content-grid {
+/* ===== 主布局：左摄像头 + 右控制面板 ===== */
+.dc-main-layout {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1.5rem;
+  align-items: start;
 }
 
-@media (max-width: 1024px) {
-  .dc-content-grid {
-    grid-template-columns: 1fr;
+/* ===== 摄像头面板（浅色系） ===== */
+.dc-camera-panel {
+  position: sticky;
+  top: 1rem;
+}
+
+.dc-camera-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.dc-camera-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dc-camera-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #0f172a;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.dc-camera-title svg {
+  color: #3b82f6;
+}
+
+.dc-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.5rem;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 4px;
+  color: #ef4444;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  animation: livePulse 2s ease-in-out infinite;
+}
+
+.dc-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ef4444;
+  animation: liveDotPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+
+  0%,
+  100% {
+    opacity: 1;
   }
+
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes liveDotPulse {
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.5;
+    transform: scale(0.8);
+  }
+}
+
+.dc-camera-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.dc-camera-btn {
+  padding: 0.3rem 0.5rem;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  color: #475569;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+  line-height: 1;
+}
+
+.dc-camera-btn:hover:not(:disabled) {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.dc-camera-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.dc-camera-viewport {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #f1f5f9;
+  overflow: hidden;
+}
+
+.dc-camera-stream {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.dc-camera-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+  color: #94a3b8;
+}
+
+.dc-camera-overlay.error {
+  color: #ef4444;
+}
+
+.dc-camera-overlay.error svg {
+  stroke: #ef4444;
+}
+
+.dc-camera-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.dc-camera-overlay-text {
+  font-size: 0.85rem;
+  text-align: center;
+  max-width: 80%;
+}
+
+.dc-camera-retry-btn {
+  padding: 0.4rem 1rem;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  color: #3b82f6;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.dc-camera-retry-btn:hover {
+  background: #dbeafe;
+}
+
+.dc-camera-info-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 0.4rem 0.8rem;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.5));
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+/* ===== 控制面板 ===== */
+.dc-control-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 .dc-control-card {
@@ -143,7 +341,7 @@
 }
 
 .dc-control-card h3 {
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   color: #0f172a;
   margin: 0 0 0.5rem;
 }
@@ -215,7 +413,7 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  max-width: 320px;
+  max-width: 280px;
   width: 100%;
 }
 
@@ -224,14 +422,14 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 0.8rem 0.5rem;
+  padding: 0.7rem 0.4rem;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   background: #f8fafc;
   color: #334155;
   cursor: pointer;
   transition: all 0.15s;
-  min-height: 72px;
+  min-height: 64px;
   user-select: none;
   -webkit-user-select: none;
   touch-action: none;
@@ -274,12 +472,12 @@
 }
 
 .dc-num-icon {
-  font-size: 1.3rem;
-  margin-bottom: 0.2rem;
+  font-size: 1.2rem;
+  margin-bottom: 0.15rem;
 }
 
 .dc-num-key {
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   color: #64748b;
   text-align: center;
 }
@@ -287,12 +485,12 @@
 /* ===== 急停按钮 ===== */
 .dc-btn-emergency {
   width: 100%;
-  padding: 0.9rem;
+  padding: 0.8rem;
   background: linear-gradient(135deg, #dc2626, #b91c1c);
   color: white;
   border: none;
   border-radius: 10px;
-  font-size: 1rem;
+  font-size: 0.95rem;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s;
@@ -316,9 +514,13 @@
 }
 
 /* ===== 日志区域 ===== */
-.dc-log-card {
-  display: flex;
-  flex-direction: column;
+.dc-log-container {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .dc-log-header {
@@ -350,8 +552,8 @@
 
 .dc-logs {
   flex: 1;
-  min-height: 300px;
-  max-height: 500px;
+  min-height: 160px;
+  max-height: 300px;
   overflow-y: auto;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
@@ -391,16 +593,21 @@
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 /* ===== 发送特定指令表单 ===== */
 .dc-custom-form {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+  gap: 0.8rem;
+  margin-bottom: 1.2rem;
 }
 
 .dc-input-group {
@@ -417,12 +624,12 @@
 
 .dc-input {
   width: 100%;
-  padding: 0.75rem 1rem;
+  padding: 0.65rem 0.8rem;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   background: #f8fafc;
   color: #0f172a;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-family: 'JetBrains Mono', 'Consolas', monospace;
   outline: none;
   transition: all 0.2s;
@@ -435,12 +642,12 @@
 }
 
 .dc-btn-send {
-  padding: 0.75rem;
+  padding: 0.65rem;
   background: linear-gradient(135deg, #3b82f6, #2563eb);
   color: white;
   border: none;
   border-radius: 8px;
-  font-size: 0.95rem;
+  font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
@@ -461,7 +668,7 @@
 /* ===== 快捷指令 ===== */
 .dc-preset-commands {
   border-top: 1px solid #e2e8f0;
-  padding-top: 1.2rem;
+  padding-top: 1rem;
 }
 
 .dc-preset-commands label {
@@ -469,7 +676,7 @@
   font-size: 0.85rem;
   color: #475569;
   font-weight: 500;
-  margin-bottom: 0.8rem;
+  margin-bottom: 0.6rem;
 }
 
 .dc-preset-list {
@@ -499,43 +706,50 @@
   cursor: not-allowed;
 }
 
-/* ===== 全宽终端日志 ===== */
-.dc-log-container {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 1.5rem;
-  margin-top: 1.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+/* ===== 响应式设计 ===== */
+@media (max-width: 1200px) {
+  .dc-main-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .dc-camera-panel {
+    position: static;
+  }
 }
 
-/* ===== 响应式设计 ===== */
 @media (max-width: 768px) {
   .device-control-page {
     padding: 1rem;
   }
+
   .dc-header {
     flex-direction: column;
     align-items: flex-start;
   }
+
   .dc-selector-row {
     flex-direction: column;
     align-items: stretch;
     gap: 1rem;
   }
+
   .dc-selector-left {
     min-width: unset;
   }
+
   .dc-selector-right {
     flex-direction: column;
     align-items: stretch;
   }
+
   .dc-btn-test {
     width: 100%;
   }
+
   .dc-numpad {
     max-width: 100%;
   }
+
   .dc-device-info {
     flex-direction: column;
     gap: 0.5rem;
