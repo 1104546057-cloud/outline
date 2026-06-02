@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { authFetch } from '../utils/authFetch'
 import '../styles/UserManagement.css'
 
 /**
@@ -26,9 +27,7 @@ function UserManagement() {
   const fetchUsers = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/users', {
-        credentials: 'include',
-      })
+      const response = await authFetch('/api/users')
       if (response.ok) {
         const data = await response.json()
         setUsers(data)
@@ -98,10 +97,9 @@ function UserManagement() {
         delete body.password
       }
 
-      const response = await fetch(url, {
+      const response = await authFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify(body),
       })
 
@@ -121,9 +119,8 @@ function UserManagement() {
   // 删除用户
   const handleDelete = async (userId) => {
     try {
-      const response = await fetch(`/api/users/${userId}`, {
+      const response = await authFetch(`/api/users/${userId}`, {
         method: 'DELETE',
-        credentials: 'include',
       })
       if (response.ok) {
         showNotification('用户删除成功')

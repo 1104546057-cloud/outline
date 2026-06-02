@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { authFetch } from '../utils/authFetch'
 import '../styles/DeviceControl.css'
 
 /**
@@ -72,7 +73,7 @@ export default function DeviceControl() {
 
   const fetchDevices = async () => {
     try {
-      const res = await fetch('/api/devices', { credentials: 'include' })
+      const res = await authFetch('/api/devices')
       if (res.ok) {
         const data = await res.json()
         setDevices(data)
@@ -88,7 +89,7 @@ export default function DeviceControl() {
 
   const fetchControlConfig = async () => {
     try {
-      const res = await fetch('/api/robot-control/config', { credentials: 'include' })
+      const res = await authFetch('/api/robot-control/config')
       if (res.ok) {
         const data = await res.json()
         setControlConfig(data)
@@ -112,7 +113,7 @@ export default function DeviceControl() {
     setConnectionStatus('连接中')
     addLog('正在检测连接...')
     try {
-      const res = await fetch(`/api/robot-control/status?robotId=${selectedDeviceId}`, { credentials: 'include' })
+      const res = await authFetch(`/api/robot-control/status?robotId=${selectedDeviceId}`)
       const data = await res.json()
       if (res.ok && data.ok) {
         setConnectionStatus('已连接')
@@ -133,10 +134,9 @@ export default function DeviceControl() {
   const sendCmdVel = useCallback(async (linear, angular) => {
     if (!selectedDeviceId) return
     try {
-      const res = await fetch('/api/robot-control/cmd_vel', {
+      const res = await authFetch('/api/robot-control/cmd_vel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           robotId: parseInt(selectedDeviceId),
           linear,
@@ -163,10 +163,9 @@ export default function DeviceControl() {
   const sendStop = useCallback(async () => {
     if (!selectedDeviceId) return
     try {
-      const res = await fetch('/api/robot-control/stop', {
+      const res = await authFetch('/api/robot-control/stop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ robotId: parseInt(selectedDeviceId) })
       })
       if (res.ok) {
@@ -240,10 +239,9 @@ export default function DeviceControl() {
     if (!selectedDeviceId || !customCommand.trim()) return
     addLog(`⇨ 发送: ${customCommand}`)
     try {
-      const res = await fetch('/api/robot-control/send', {
+      const res = await authFetch('/api/robot-control/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ robotId: parseInt(selectedDeviceId), command: customCommand })
       })
       const data = await res.json()
@@ -330,7 +328,7 @@ export default function DeviceControl() {
     const device = devices.find(d => String(d.id) === selectedDeviceId)
     if (!device) return
     try {
-      const res = await fetch(`/api/devices/${selectedDeviceId}/camera/snapshot`, { credentials: 'include' })
+      const res = await authFetch(`/api/devices/${selectedDeviceId}/camera/snapshot`)
       if (!res.ok) throw new Error('截图失败')
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)

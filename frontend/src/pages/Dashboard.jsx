@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import AMapLoader from '@amap/amap-jsapi-loader'
+import { authFetch } from '../utils/authFetch'
 import '../styles/Dashboard.css'
 
 /**
@@ -80,7 +81,7 @@ function Dashboard() {
   // 从 API 获取设备数据
   const fetchDevices = async () => {
     try {
-      const res = await fetch('/api/devices', { credentials: 'include' })
+      const res = await authFetch('/api/devices')
       if (res.ok) {
         const data = await res.json()
         setDevices(data)

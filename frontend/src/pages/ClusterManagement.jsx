@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { authFetch } from '../utils/authFetch'
 import '../styles/ClusterManagement.css'
 
 export default function ClusterManagement() {
@@ -24,7 +25,7 @@ export default function ClusterManagement() {
 
   const fetchClusters = async () => {
     try {
-      const res = await fetch('/api/clusters', { credentials: 'include' })
+      const res = await authFetch('/api/clusters')
       if (res.ok) {
         const data = await res.json()
         setClusters(data)
@@ -38,7 +39,7 @@ export default function ClusterManagement() {
 
   const fetchDevices = async () => {
     try {
-      const res = await fetch('/api/devices', { credentials: 'include' })
+      const res = await authFetch('/api/devices')
       if (res.ok) {
         const data = await res.json()
         setAllDevices(data)
@@ -59,10 +60,9 @@ export default function ClusterManagement() {
     try {
       const method = editingCluster ? 'PUT' : 'POST'
       const url = editingCluster ? `/api/clusters/${editingCluster.id}` : '/api/clusters'
-      const res = await fetch(url, {
+      const res = await authFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify(formData)
       })
       
@@ -80,7 +80,7 @@ export default function ClusterManagement() {
 
   const handleDeleteCluster = async (id) => {
     try {
-      const res = await fetch(`/api/clusters/${id}`, { method: 'DELETE', credentials: 'include' })
+      const res = await authFetch(`/api/clusters/${id}`, { method: 'DELETE' })
       if (res.ok) {
         setDeleteClusterConfirm(null)
         fetchClusters()
@@ -105,9 +105,8 @@ export default function ClusterManagement() {
   // Device Management within Cluster
   const handleRemoveDevice = async (clusterId, deviceId) => {
     try {
-      const res = await fetch(`/api/clusters/${clusterId}/devices/${deviceId}`, {
-        method: 'DELETE',
-        credentials: 'include'
+      const res = await authFetch(`/api/clusters/${clusterId}/devices/${deviceId}`, {
+        method: 'DELETE'
       })
       if (res.ok) {
         setRemoveDeviceConfirm(null)
@@ -131,10 +130,9 @@ export default function ClusterManagement() {
       return
     }
     try {
-      const res = await fetch(`/api/clusters/${selectedClusterForDevice.id}/devices`, {
+      const res = await authFetch(`/api/clusters/${selectedClusterForDevice.id}/devices`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ device_id: parseInt(deviceToAdd) })
       })
       if (res.ok) {

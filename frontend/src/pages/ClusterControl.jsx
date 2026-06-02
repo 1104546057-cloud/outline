@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { authFetch } from '../utils/authFetch'
 import '../styles/ClusterControl.css'
 
 /**
@@ -110,7 +111,7 @@ export default function ClusterControl() {
 
   const fetchClusters = async () => {
     try {
-      const res = await fetch('/api/clusters', { credentials: 'include' })
+      const res = await authFetch('/api/clusters')
       if (res.ok) {
         const data = await res.json()
         setClusters(data)
@@ -125,7 +126,7 @@ export default function ClusterControl() {
 
   const fetchControlConfig = async () => {
     try {
-      const res = await fetch('/api/robot-control/config', { credentials: 'include' })
+      const res = await authFetch('/api/robot-control/config')
       if (res.ok) {
         const data = await res.json()
         setControlConfig(data)
@@ -144,10 +145,9 @@ export default function ClusterControl() {
   const sendCmdVel = useCallback(async (linear, angular) => {
     if (!selectedClusterId) return
     try {
-      const res = await fetch(`/api/clusters/${selectedClusterId}/cmd_vel`, {
+      const res = await authFetch(`/api/clusters/${selectedClusterId}/cmd_vel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ linear, angular })
       })
       if (res.ok) {
@@ -168,10 +168,9 @@ export default function ClusterControl() {
   const sendStop = useCallback(async () => {
     if (!selectedClusterId) return
     try {
-      const res = await fetch(`/api/clusters/${selectedClusterId}/stop`, {
+      const res = await authFetch(`/api/clusters/${selectedClusterId}/stop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({})
       })
       if (res.ok) {
@@ -241,10 +240,9 @@ export default function ClusterControl() {
     if (!selectedClusterId || !customCommand.trim()) return
     addLog(`⇨ 广播发送: ${customCommand}`)
     try {
-      const res = await fetch(`/api/clusters/${selectedClusterId}/send`, {
+      const res = await authFetch(`/api/clusters/${selectedClusterId}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ command: customCommand })
       })
       const data = await res.json()

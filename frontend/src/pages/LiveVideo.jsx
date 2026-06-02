@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { authFetch } from '../utils/authFetch'
 import '../styles/LiveVideo.css'
 
 /**
@@ -22,11 +23,7 @@ function LiveVideo() {
   // 获取设备列表
   const fetchDevices = useCallback(async () => {
     try {
-      const res = await fetch('/api/devices', { credentials: 'include' })
-      if (res.status === 401) {
-        window.location.href = '/login'
-        return
-      }
+      const res = await authFetch('/api/devices')
       if (!res.ok) throw new Error('获取设备列表失败')
       const data = await res.json()
       setDevices(data)
@@ -157,9 +154,7 @@ function LiveVideo() {
     if (!device) return
 
     try {
-      const res = await fetch(`/api/devices/${deviceId}/camera/snapshot`, {
-        credentials: 'include',
-      })
+      const res = await authFetch(`/api/devices/${deviceId}/camera/snapshot`)
       if (!res.ok) throw new Error('截图失败')
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)

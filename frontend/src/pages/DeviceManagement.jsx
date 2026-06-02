@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { authFetch } from '../utils/authFetch'
 import '../styles/DeviceManagement.css'
 
 export default function DeviceManagement() {
@@ -69,7 +70,7 @@ export default function DeviceManagement() {
   // API Fetch
   const fetchDevices = async () => {
     try {
-      const res = await fetch('/api/devices', { credentials: 'include' })
+      const res = await authFetch('/api/devices')
       if (res.ok) {
         const data = await res.json()
         setDevices(data)
@@ -107,7 +108,7 @@ export default function DeviceManagement() {
     setScanResults([])
     setScanCacheTime('')
     try {
-      const res = await fetch(`/api/wifi/scan?subnet=${encodeURIComponent(targetSubnet)}`, { credentials: 'include' })
+      const res = await authFetch(`/api/wifi/scan?subnet=${encodeURIComponent(targetSubnet)}`)
       if (res.ok) {
         const data = await res.json()
         setScanResults(data)
@@ -145,10 +146,9 @@ export default function DeviceManagement() {
     }
     setAddSubmitting(true)
     try {
-      const res = await fetch('/api/devices', {
+      const res = await authFetch('/api/devices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify(addFormData)
       })
       if (res.ok) {
@@ -170,7 +170,7 @@ export default function DeviceManagement() {
 
   const handleDelete = async (id) => {
     try {
-      const res = await fetch(`/api/devices/${id}`, { method: 'DELETE', credentials: 'include' })
+      const res = await authFetch(`/api/devices/${id}`, { method: 'DELETE' })
       if (res.ok) {
         setDeleteConfirm(null)
         fetchDevices()
@@ -189,10 +189,9 @@ export default function DeviceManagement() {
   const handleSaveEdit = async (e) => {
     e.preventDefault()
     try {
-      const res = await fetch(`/api/devices/${editingDevice.id}`, {
+      const res = await authFetch(`/api/devices/${editingDevice.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify(formData)
       })
       if (res.ok) {
@@ -208,7 +207,7 @@ export default function DeviceManagement() {
     setTokenDevice(device)
     setShowTokenModal(true)
     try {
-      const res = await fetch(`/api/devices/${device.id}/tokens`, { credentials: 'include' })
+      const res = await authFetch(`/api/devices/${device.id}/tokens`)
       if (res.ok) {
         const data = await res.json()
         setTokens(data)
