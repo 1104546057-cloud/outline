@@ -71,13 +71,20 @@ export default function DeviceControl() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [selectedDeviceId])
 
+  // 用 ref 跟踪 selectedDeviceId 最新值，避免 setInterval 闭包过期
+  const selectedDeviceIdRef = useRef(selectedDeviceId)
+  useEffect(() => {
+    selectedDeviceIdRef.current = selectedDeviceId
+  }, [selectedDeviceId])
+
   const fetchDevices = async () => {
     try {
       const res = await authFetch('/api/devices')
       if (res.ok) {
         const data = await res.json()
         setDevices(data)
-        if (data.length > 0 && !selectedDeviceId) {
+        // 只有当尚未选择设备时，才自动选第一个在线设备
+        if (data.length > 0 && !selectedDeviceIdRef.current) {
           const onlineDev = data.find(d => d.status === 'online') || data[0]
           setSelectedDeviceId(String(onlineDev.id))
         }

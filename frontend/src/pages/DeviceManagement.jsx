@@ -65,7 +65,7 @@ export default function DeviceManagement() {
   const [tokens, setTokens] = useState([])
   
   // expanded device detail panel
-  const [expandedDeviceId, setExpandedDeviceId] = useState(null)
+  const [expandedDeviceIds, setExpandedDeviceIds] = useState(new Set())
   
   // API Fetch
   const fetchDevices = async () => {
@@ -274,7 +274,15 @@ export default function DeviceManagement() {
   }, [])
 
   const toggleExpanded = (deviceId) => {
-    setExpandedDeviceId(prev => prev === deviceId ? null : deviceId)
+    setExpandedDeviceIds(prev => {
+      const next = new Set(prev)
+      if (next.has(deviceId)) {
+        next.delete(deviceId)
+      } else {
+        next.add(deviceId)
+      }
+      return next
+    })
   }
 
   const renderSystemPanel = (device) => {
@@ -571,9 +579,9 @@ export default function DeviceManagement() {
                   className="dm-expand-btn"
                   onClick={() => toggleExpanded(dev.id)}
                 >
-                  {expandedDeviceId === dev.id ? '▲ 收起系统监控' : '▼ 展开系统监控'}
+                  {expandedDeviceIds.has(dev.id) ? '▲ 收起系统监控' : '▼ 展开系统监控'}
                 </button>
-                {expandedDeviceId === dev.id && (
+                {expandedDeviceIds.has(dev.id) && (
                   <div className="dm-sys-panel">
                     {renderSystemPanel(dev)}
                   </div>
