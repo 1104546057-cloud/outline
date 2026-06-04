@@ -1463,64 +1463,6 @@ async def cluster_control_send(
     return {"message": f"特定指令已下发至 {success_count}/{len(online_devices)} 台设备", "results": results}
 
 
-# ===== IoT 遥测上报接口 =====
-
-@app.post("/api/iot/telemetry")
-async def iot_telemetry(
-    request: Request,
-    payload: TelemetryRequest,
-    x_device_token: str = Header(None),
-    db: Session = Depends(get_db)
-):
-    """接收来自树莓派 IoT 客户端上报的遥测数据（电量、信号、经纬度等）"""
-    print(f"[{datetime.now()}] /api/iot/ request body: {payload.dict()}")
-    if not x_device_token:
-        raise HTTPException(status_code=401, detail="Missing X-Device-Token header")
-    
-    device_token = db.query(DeviceToken).filter(DeviceToken.token == x_device_token, DeviceToken.is_active == True).first()
-    if not device_token:
-        raise HTTPException(status_code=401, detail="Invalid token")
-        
-    device = device_token.device
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
-        
-    try:
-        reported_dt = datetime.fromisoformat(payload.reportedAt)
-    except:
-        reported_dt = datetime.now()
-        
-    # 更新 Device 表以便仪表盘实时展示
-    if payload.battery is not None:
-        device.battery = payload.battery
-    if payload.signal is not None:
-        device.signal = payload.signal
-    if payload.lat is not None:
-        device.lat = str(payload.lat)
-    if payload.lng is not None:
-        device.lng = str(payload.lng)
-        
-    device.status = "online" if payload.status == "online" else device.status
-    device.last_seen = reported_dt
-    
-    # 保存一条历史遥测记录
-    record = DeviceTelemetry(
-        device_id=device.id,
-        battery=payload.battery,
-        signal=payload.signal,
-        status=payload.status,
-        lat=payload.lat,
-        lng=payload.lng,
-        source_ip=request.client.host if request.client else None,
-        extra_json=payload.extra,
-        reported_at=reported_dt
-    )
-    db.add(record)
-    db.commit()
-    
-    return {"ok": True, "message": "Telemetry received"}
-
-
 # ===== 摄像头视频流代理接口 =====
 
 # 摄像头服务端口（mjpg_streamer 默认 8080）

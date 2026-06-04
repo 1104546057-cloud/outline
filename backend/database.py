@@ -49,10 +49,13 @@ def get_db():
     获取数据库会话的依赖注入函数
 
     用于 FastAPI 的 Depends() 依赖注入，确保每个请求使用独立的数据库会话，
-    并在请求结束后自动关闭。
+    并在请求结束后自动关闭。异常时自动回滚，防止脏数据意外提交。
     """
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
