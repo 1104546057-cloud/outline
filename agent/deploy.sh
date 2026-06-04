@@ -13,20 +13,77 @@ echo "=========================================="
 echo "开始自动部署 DevicesWebControl Agent"
 echo "=========================================="
 
+read -p "请输入运行服务的普通用户名 [直接回车则默认为 nano]: " RUN_USER
+RUN_USER=${RUN_USER:-nano}
+
+read -p "请输入部署工作路径 [直接回车则默认为 /home/${RUN_USER}/DevicesWebControl]: " WORK_DIR
+WORK_DIR=${WORK_DIR:-/home/${RUN_USER}/DevicesWebControl}
+# 移除末尾可能的斜杠，保证后续拼接格式统一
+WORK_DIR=${WORK_DIR%/}
+
+echo "使用工作路径: $WORK_DIR"
+
+echo ">>> 检查工作目录文件..."
+if [ ! -d "$WORK_DIR" ]; then
+  echo "错误: 工作路径 $WORK_DIR 不存在！"
+  exit 1
+fi
+
+REQUIRED_FILES=(
+  "iot_client.conf"
+  "iot_client.py"
+  "robot_control_server.conf"
+  "robot_control_server.py"
+  "start_camera.sh"
+)
+
+MISSING_FILES=()
+for file in "${REQUIRED_FILES[@]}"; do
+  if [ ! -f "$WORK_DIR/$file" ]; then
+    MISSING_FILES+=("$file")
+  fi
+done
+
+if [ ${#MISSING_FILES[@]} -ne 0 ]; then
+  echo "错误: 缺少以下核心文件，请确认文件已正确上传！"
+  for missing in "${MISSING_FILES[@]}"; do
+    echo "  - $WORK_DIR/$missing"
+  done
+  exit 1
+fi
+echo "文件检查通过！"
+
 echo ">>> 2.1 配置 apt 清华源..."
-if [ -f /etc/apt/sources.list ]; then
-    sudo mv /etc/apt/sources.list /etc/apt/sources.list.bak
+if [ "$RUN_USER" = "pi" ]; then
+    DEFAULT_APT_SYS="pi"
+elif [ "$RUN_USER" = "nano" ]; then
+    DEFAULT_APT_SYS="nano"
+else
+    DEFAULT_APT_SYS="no"
 fi
 
-if [ -f /etc/apt/sources.list.d/debian.sources ]; then
-    sudo mv /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list.d/debian.sources.bak
+read -p "配置什么系统的清华源[nano/pi/no，默认为${DEFAULT_APT_SYS}]: " APT_SYS
+APT_SYS=${APT_SYS:-$DEFAULT_APT_SYS}
+
+if [ "$APT_SYS" != "no" ]; then
+    if [ -f /etc/apt/sources.list ]; then
+        sudo mv /etc/apt/sources.list /etc/apt/sources.list.bak
+        echo ">> 已备份 /etc/apt/sources.list -> /etc/apt/sources.list.bak"
+    fi
+
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then
+        sudo mv /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list.d/debian.sources.bak
+        echo ">> 已备份 /etc/apt/sources.list.d/debian.sources -> /etc/apt/sources.list.d/debian.sources.bak"
+    fi
+
+    if [ -f /etc/apt/sources.list.d/raspi.sources ]; then
+        sudo mv /etc/apt/sources.list.d/raspi.sources /etc/apt/sources.list.d/raspi.sources.bak
+        echo ">> 已备份 /etc/apt/sources.list.d/raspi.sources -> /etc/apt/sources.list.d/raspi.sources.bak"
+    fi
 fi
 
-if [ -f /etc/apt/sources.list.d/raspi.sources ]; then
-    sudo mv /etc/apt/sources.list.d/raspi.sources /etc/apt/sources.list.d/raspi.sources.bak
-fi
-
-sudo tee /etc/apt/sources.list > /dev/null << 'EOF'
+if [ "$APT_SYS" = "pi" ]; then
+    sudo tee /etc/apt/sources.list > /dev/null << 'EOF'
 # Debian 13 Trixie
 # 默认注释了源码镜像以提高 apt update 速度，如有需要可自行取消注释
 deb https://mirrors.tuna.tsinghua.edu.cn/debian/ trixie main contrib non-free non-free-firmware
@@ -45,8 +102,25 @@ deb https://mirrors.tuna.tsinghua.edu.cn/debian-security trixie-security main co
 # Raspberry Pi 软件源
 deb https://mirrors.tuna.tsinghua.edu.cn/raspberrypi/ trixie main
 EOF
+    sudo apt update
+elif [ "$APT_SYS" = "nano" ]; then
+    sudo tee /etc/apt/sources.list > /dev/null << 'EOF'
+deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ bionic main restricted universe multiverse
+# deb-src http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ bionic main restricted universe multiverse
 
-sudo apt update
+deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ bionic-updates main restricted universe multiverse
+# deb-src http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ bionic-updates main restricted universe multiverse
+
+deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ bionic-backports main restricted universe multiverse
+# deb-src http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ bionic-backports main restricted universe multiverse
+
+deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ bionic-security main restricted universe multiverse
+# deb-src http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ bionic-security main restricted universe multiverse
+EOF
+    sudo apt update
+else
+    echo ">> 跳过清华源配置"
+fi
 
 echo ">>> 2.2 安装编译依赖..."
 sudo apt-get -y install gcc g++ cmake libjpeg62-turbo-dev
@@ -76,26 +150,29 @@ EOF
 sudo systemctl restart gpsd
 sudo systemctl enable gpsd
 
-echo ">>> 4. 配置服务..."
+echo ">>> 4. 安装 UPS 电量读取依赖..."
+sudo apt-get -y install python3-smbus
 
-echo ">> 4.1 配置控制服务 (robot_control_server)..."
-sudo tee /etc/systemd/system/DevicesWebControl-robot_control_server.service > /dev/null << 'EOF'
+echo ">>> 5. 配置服务..."
+
+echo ">> 5.1 配置控制服务 (robot_control_server)..."
+sudo tee /etc/systemd/system/DevicesWebControl-robot_control_server.service > /dev/null << EOF
 [Unit]
 Description=DevicesWebControl Robot Control Server
 
 [Service]
-ExecStart=/usr/bin/python3 /home/pi/DevicesWebControl/robot_control_server.py
-WorkingDirectory=/home/pi/DevicesWebControl/
+ExecStart=/usr/bin/python3 ${WORK_DIR}/robot_control_server.py
+WorkingDirectory=${WORK_DIR}/
 Restart=always
-User=pi
-Group=pi
+User=${RUN_USER}
+Group=${RUN_USER}
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-echo ">> 4.2 配置 IoT 服务 (iot_client)..."
-sudo tee /etc/systemd/system/DevicesWebControl-iot_client.service > /dev/null << 'EOF'
+echo ">> 5.2 配置 IoT 服务 (iot_client)..."
+sudo tee /etc/systemd/system/DevicesWebControl-iot_client.service > /dev/null << EOF
 [Unit]
 Description=DevicesWebControl IoT Client
 After=network-online.target
@@ -103,18 +180,18 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/pi/DevicesWebControl
-ExecStart=/usr/bin/python3 /home/pi/DevicesWebControl/iot_client.py --config /home/pi/DevicesWebControl/iot_client.conf
+WorkingDirectory=${WORK_DIR}
+ExecStart=/usr/bin/python3 ${WORK_DIR}/iot_client.py --config ${WORK_DIR}/iot_client.conf
 Restart=always
 RestartSec=5
-User=pi
+User=${RUN_USER}
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-echo ">> 4.3 配置摄像头采集服务 (camera)..."
-sudo tee /etc/systemd/system/DevicesWebControl-camera.service > /dev/null << 'EOF'
+echo ">> 5.3 配置摄像头采集服务 (camera)..."
+sudo tee /etc/systemd/system/DevicesWebControl-camera.service > /dev/null << EOF
 [Unit]
 Description=DevicesWebControl USB Camera MJPEG Stream
 After=network-online.target
@@ -122,9 +199,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi
+User=${RUN_USER}
 Group=video
-ExecStart=/home/pi/DevicesWebControl/start_camera.sh
+ExecStart=${WORK_DIR}/start_camera.sh
 Restart=always
 RestartSec=3
 
@@ -144,8 +221,8 @@ sudo systemctl start DevicesWebControl-iot_client
 sudo systemctl enable DevicesWebControl-camera
 sudo systemctl start DevicesWebControl-camera
 
-echo ">>> 4.4 授权 pi 用户重启 iot 服务..."
-echo "pi ALL=(root) NOPASSWD: /usr/bin/systemctl restart DevicesWebControl-iot_client" | sudo tee /etc/sudoers.d/deviceswebcontrol
+echo ">>> 5.4 授权 ${RUN_USER} 用户重启 iot 服务..."
+echo "${RUN_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart DevicesWebControl-iot_client" | sudo tee /etc/sudoers.d/deviceswebcontrol
 sudo chmod 0440 /etc/sudoers.d/deviceswebcontrol
 
 echo "=========================================="

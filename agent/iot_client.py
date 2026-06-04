@@ -44,6 +44,12 @@ try:
 except ImportError:
     PSUTIL_AVAILABLE = False
 
+try:
+    import smbus
+    SMBUS_AVAILABLE = True
+except ImportError:
+    SMBUS_AVAILABLE = False
+
 # ── 日志 ──────────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -150,11 +156,159 @@ def _read_file(path: str) -> Optional[str]:
         return None
 
 
+# ── INA219 UPS 电量读取 ───────────────────────────────────────────────────────
+# 参考 INA219.py，通过 I2C 读取 UPS HAT 的电压/电流/功率并换算电量百分比。
+# 硬件不存在或 smbus 未安装时会优雅降级。
+
+_REG_CONFIG_INA219         = 0x00
+_REG_SHUNTVOLTAGE_INA219   = 0x01
+_REG_BUSVOLTAGE_INA219     = 0x02
+_REG_POWER_INA219          = 0x03
+_REG_CURRENT_INA219        = 0x04
+_REG_CALIBRATION_INA219    = 0x05
+
+# 全局 INA219 实例缓存，避免每次遥测都重新初始化
+_ina219_instance: Optional[Any] = None
+_ina219_init_failed: bool = False
+
+
+def _ina219_read_reg(bus, addr: int, register: int) -> int:
+    """从 INA219 寄存器读取 16 位值。"""
+    data = bus.read_i2c_block_data(addr, register, 2)
+    return (data[0] << 8) | data[1]
+
+
+def _ina219_write_reg(bus, addr: int, register: int, value: int) -> None:
+    """向 INA219 寄存器写入 16 位值。"""
+    bus.write_i2c_block_data(addr, register, [(value >> 8) & 0xFF, value & 0xFF])
+
+
+def _get_ina219():
+    """
+    获取 INA219 I2C 总线实例。
+    首次调用时初始化并缓存，初始化失败后不再重试。
+    返回 (bus, addr) 或 None。
+    """
+    global _ina219_instance, _ina219_init_failed
+
+    if _ina219_init_failed:
+        return None
+    if _ina219_instance is not None:
+        return _ina219_instance
+
+    if not SMBUS_AVAILABLE:
+        _ina219_init_failed = True
+        log.debug("smbus 模块不可用，跳过 INA219 UPS 电量读取")
+        return None
+
+    # 尝试常见的 INA219 I2C 地址
+    i2c_bus_num = 1
+    candidate_addrs = [0x42, 0x40, 0x41, 0x43]
+
+    try:
+        bus = smbus.SMBus(i2c_bus_num)
+    except Exception as exc:
+        _ina219_init_failed = True
+        log.debug(f"无法打开 I2C 总线 {i2c_bus_num}，跳过 INA219: {exc}")
+        return None
+
+    for addr in candidate_addrs:
+        try:
+            # 尝试读取配置寄存器来探测设备是否存在
+            bus.read_i2c_block_data(addr, _REG_CONFIG_INA219, 2)
+
+            # 设备存在，执行校准（32V/2A 配置，与 INA219.py 一致）
+            cal_value = 4096
+            config = (
+                0x01 << 13 |  # BusVoltageRange: 32V
+                0x03 << 11 |  # Gain: /8, 320mV
+                0x0D << 7  |  # Bus ADC: 12bit, 32 samples
+                0x0D << 3  |  # Shunt ADC: 12bit, 32 samples
+                0x07          # Mode: shunt and bus continuous
+            )
+            _ina219_write_reg(bus, addr, _REG_CALIBRATION_INA219, cal_value)
+            _ina219_write_reg(bus, addr, _REG_CONFIG_INA219, config)
+
+            _ina219_instance = (bus, addr)
+            log.info(f"INA219 UPS 初始化成功，I2C 地址: 0x{addr:02X}")
+            return _ina219_instance
+        except Exception:
+            continue
+
+    _ina219_init_failed = True
+    log.debug("未检测到 INA219 设备，跳过 UPS 电量读取")
+    return None
+
+
+def read_ups_ina219() -> Optional[Dict[str, Any]]:
+    """
+    通过 INA219 读取 UPS HAT 电源信息。
+    返回包含 voltage, current, power, percent 的字典，或在硬件不可用时返回 None。
+    电量百分比换算：参考 INA219.py，假设锂电池放电范围 6V ~ 8.4V。
+    """
+    ina = _get_ina219()
+    if ina is None:
+        return None
+
+    bus, addr = ina
+    cal_value = 4096
+    current_lsb = 0.1      # 100uA per bit
+    power_lsb = 0.002      # 2mW per bit
+
+    try:
+        # 写入校准寄存器（每次读取前重写以确保一致性，与 INA219.py 行为一致）
+        _ina219_write_reg(bus, addr, _REG_CALIBRATION_INA219, cal_value)
+
+        # 读取总线电压（负载侧）
+        _ina219_read_reg(bus, addr, _REG_BUSVOLTAGE_INA219)  # 第一次读取丢弃
+        raw_bus = _ina219_read_reg(bus, addr, _REG_BUSVOLTAGE_INA219)
+        bus_voltage = (raw_bus >> 3) * 0.004  # V
+
+        # 读取电流
+        raw_current = _ina219_read_reg(bus, addr, _REG_CURRENT_INA219)
+        if raw_current > 32767:
+            raw_current -= 65535
+        current_mA = raw_current * current_lsb  # mA
+
+        # 读取功率
+        _ina219_write_reg(bus, addr, _REG_CALIBRATION_INA219, cal_value)
+        raw_power = _ina219_read_reg(bus, addr, _REG_POWER_INA219)
+        if raw_power > 32767:
+            raw_power -= 65535
+        power_W = raw_power * power_lsb  # W
+
+        # 电量百分比：锂电池放电曲线近似线性映射（6V ~ 8.4V）
+        percent = (bus_voltage - 6) / 2.4 * 100
+        percent = max(0.0, min(100.0, percent))
+
+        return {
+            "voltage_V": round(bus_voltage, 3),
+            "current_A": round(current_mA / 1000, 6),
+            "power_W": round(power_W, 3),
+            "percent": round(percent, 1),
+        }
+    except Exception as exc:
+        log.warning(f"INA219 读取失败: {exc}")
+        return None
+
+
 def read_battery() -> Optional[int]:
-    """读取电量（需接 UPS HAT，否则返回 None）。"""
+    """
+    读取电量百分比。
+    优先从 sysfs 读取（标准 Linux 电池驱动），
+    若不可用则尝试通过 INA219 I2C 读取 UPS HAT 电压并换算百分比。
+    均不可用时返回 None。
+    """
+    # 方式 1：标准 sysfs
     raw = _read_file("/sys/class/power_supply/BAT0/capacity")
     if raw and raw.isdigit():
         return int(raw)
+
+    # 方式 2：INA219 UPS HAT
+    ups_data = read_ups_ina219()
+    if ups_data is not None:
+        return int(ups_data["percent"])
+
     return None
 
 
@@ -954,6 +1108,11 @@ def collect_telemetry(cfg: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, A
     usb_devs = read_usb_devices()
     if usb_devs is not None:
         extra["usb_devices"] = usb_devs
+
+    # UPS 电源详情（INA219）
+    ups_info = read_ups_ina219()
+    if ups_info is not None:
+        extra["ups"] = ups_info
 
     if extra:
         payload["extra"] = extra

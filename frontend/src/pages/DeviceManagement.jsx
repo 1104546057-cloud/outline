@@ -259,6 +259,9 @@ export default function DeviceManagement() {
     if (extra.system && extra.system.uptime) {
       items.push({ label: '⏱️ 运行', value: extra.system.uptime })
     }
+    if (extra.ups) {
+      items.push({ label: '🔌 UPS', value: `${extra.ups.voltage_V}V / ${extra.ups.current_A}A` })
+    }
     if (extra.gps) {
       const gpsStatus = extra.gps.status === 'fix' ? '已定位' : '未定位'
       items.push({ label: '📡 GPS', value: gpsStatus })
@@ -419,6 +422,38 @@ export default function DeviceManagement() {
       )
     }
 
+    // UPS 电源详情
+    if (extra.ups) {
+      const ups = extra.ups
+      const pctColor = ups.percent > 60 ? '#22c55e' : ups.percent > 20 ? '#f59e0b' : '#ef4444'
+      sections.push(
+        <div className="dm-sys-section" key="ups">
+          <div className="dm-sys-section-title">🔋 UPS 电源</div>
+          <div className="dm-sys-row">
+            <span className="dm-sys-label">电量</span>
+            <span className="dm-sys-value" style={{ color: pctColor }}>{ups.percent}%</span>
+          </div>
+          <div className="dm-sys-bar-track">
+            <div className="dm-sys-bar-fill" style={{ width: `${Math.min(100, ups.percent)}%`, background: pctColor }} />
+          </div>
+          <div className="dm-sys-info-grid" style={{ marginTop: '0.5rem' }}>
+            <div className="dm-sys-info-item">
+              <span className="dm-sys-info-label">电压</span>
+              <span className="dm-sys-info-value">{ups.voltage_V} V</span>
+            </div>
+            <div className="dm-sys-info-item">
+              <span className="dm-sys-info-label">电流</span>
+              <span className="dm-sys-info-value">{ups.current_A} A</span>
+            </div>
+            <div className="dm-sys-info-item">
+              <span className="dm-sys-info-label">功率</span>
+              <span className="dm-sys-info-value">{ups.power_W} W</span>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
     // 硬件与外设详情
     if (extra.hardware || (extra.usb_devices && extra.usb_devices.length > 0)) {
       sections.push(
@@ -573,7 +608,7 @@ export default function DeviceManagement() {
             )}
 
             {/* 系统监控详情面板 */}
-            {dev.extra && (dev.extra.cpu || dev.extra.memory || dev.extra.disk || dev.extra.network || dev.extra.system || dev.extra.hardware || dev.extra.usb_devices) && (
+            {dev.extra && (dev.extra.cpu || dev.extra.memory || dev.extra.disk || dev.extra.network || dev.extra.system || dev.extra.hardware || dev.extra.usb_devices || dev.extra.ups) && (
               <>
                 <button
                   className="dm-expand-btn"
