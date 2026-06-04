@@ -19,7 +19,6 @@ iot_client.py — 树莓派巡检机器人设备端上报客户端
   route_id = 1
 """
 
-from __future__ import annotations
 
 import argparse
 import configparser

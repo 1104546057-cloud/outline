@@ -29,24 +29,18 @@ if [ ! -d "$WORK_DIR" ]; then
   exit 1
 fi
 
-REQUIRED_FILES=(
-  "iot_client.conf"
-  "iot_client.py"
-  "robot_control_server.conf"
-  "robot_control_server.py"
-  "start_camera.sh"
-)
+REQUIRED_FILES="iot_client.conf iot_client.py robot_control_server.conf robot_control_server.py start_camera.sh"
 
-MISSING_FILES=()
-for file in "${REQUIRED_FILES[@]}"; do
+MISSING_FILES=""
+for file in $REQUIRED_FILES; do
   if [ ! -f "$WORK_DIR/$file" ]; then
-    MISSING_FILES+=("$file")
+    MISSING_FILES="$MISSING_FILES $file"
   fi
 done
 
-if [ ${#MISSING_FILES[@]} -ne 0 ]; then
+if [ -n "$MISSING_FILES" ]; then
   echo "错误: 缺少以下核心文件，请确认文件已正确上传！"
-  for missing in "${MISSING_FILES[@]}"; do
+  for missing in $MISSING_FILES; do
     echo "  - $WORK_DIR/$missing"
   done
   exit 1
@@ -123,7 +117,11 @@ else
 fi
 
 echo ">>> 2.2 安装编译依赖..."
-sudo apt-get -y install gcc g++ cmake libjpeg62-turbo-dev
+if [ "$APT_SYS" = "nano" ]; then
+    sudo apt-get -y install gcc g++ cmake libjpeg-dev libv4l-dev
+else
+    sudo apt-get -y install gcc g++ cmake libjpeg62-turbo-dev
+fi
 
 echo ">>> 2.3 编译安装 mjpg_streamer..."
 if [ ! -d "mjpg-streamer" ]; then
@@ -150,12 +148,15 @@ EOF
 sudo systemctl restart gpsd
 sudo systemctl enable gpsd
 
-echo ">>> 4. 安装 UPS 电量读取依赖..."
-sudo apt-get -y install python3-smbus
+echo ">>> 4. 安装 Python 依赖 (系统状态、串口通信与 UPS 电量读取)..."
+sudo apt-get -y install python3-smbus python3-serial python3-psutil
 
-echo ">>> 5. 配置服务..."
+echo ">>> 5. 授权并配置服务..."
 
-echo ">> 5.1 配置控制服务 (robot_control_server)..."
+echo ">> 5.1 将用户加入硬件访问组 (dialout, video, i2c)..."
+sudo usermod -aG dialout,video,i2c ${RUN_USER} || echo "警告: 组分配可能未完全成功，请检查系统组。"
+
+echo ">> 5.2 配置控制服务 (robot_control_server)..."
 sudo tee /etc/systemd/system/DevicesWebControl-robot_control_server.service > /dev/null << EOF
 [Unit]
 Description=DevicesWebControl Robot Control Server
@@ -171,7 +172,7 @@ Group=${RUN_USER}
 WantedBy=multi-user.target
 EOF
 
-echo ">> 5.2 配置 IoT 服务 (iot_client)..."
+echo ">> 5.3 配置 IoT 服务 (iot_client)..."
 sudo tee /etc/systemd/system/DevicesWebControl-iot_client.service > /dev/null << EOF
 [Unit]
 Description=DevicesWebControl IoT Client
@@ -190,7 +191,7 @@ User=${RUN_USER}
 WantedBy=multi-user.target
 EOF
 
-echo ">> 5.3 配置摄像头采集服务 (camera)..."
+echo ">> 5.4 配置摄像头采集服务 (camera)..."
 sudo tee /etc/systemd/system/DevicesWebControl-camera.service > /dev/null << EOF
 [Unit]
 Description=DevicesWebControl USB Camera MJPEG Stream
@@ -221,7 +222,7 @@ sudo systemctl start DevicesWebControl-iot_client
 sudo systemctl enable DevicesWebControl-camera
 sudo systemctl start DevicesWebControl-camera
 
-echo ">>> 5.4 授权 ${RUN_USER} 用户重启 iot 服务..."
+echo ">>> 5.5 授权 ${RUN_USER} 用户重启 iot 服务..."
 echo "${RUN_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart DevicesWebControl-iot_client" | sudo tee /etc/sudoers.d/deviceswebcontrol
 sudo chmod 0440 /etc/sudoers.d/deviceswebcontrol
 

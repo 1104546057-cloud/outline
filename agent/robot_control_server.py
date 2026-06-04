@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """TCP cmd_vel bridge for the Raspberry Pi motor controller."""
 
-from __future__ import annotations
 
 import json
 import os
@@ -12,6 +11,7 @@ import subprocess
 import time
 from configparser import ConfigParser
 from threading import Lock, Thread
+from typing import Tuple
 
 import serial
 
@@ -97,7 +97,7 @@ def restart_iot_service() -> None:
 # 串口 / 电机控制
 # ---------------------------------------------------------------------------
 
-def split_i16(value: int) -> tuple[int, int]:
+def split_i16(value: int) -> Tuple[int, int]:
     normalized = value & 0xFFFF
     return (normalized >> 8) & 0xFF, normalized & 0xFF
 
@@ -191,7 +191,7 @@ def handle_command(conn: socket.socket, msg: dict) -> None:
     send_json_line(conn, {"type": "ack", "ok": False, "err": "unknown_type", "ts": int(now)})
 
 
-def handle_client(conn: socket.socket, addr: tuple[str, int]) -> None:
+def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
     """处理 TCP 客户端连接。
     无 token 鉴权，支持 register 和其他控制指令。
     """
