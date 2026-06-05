@@ -10,7 +10,8 @@ from sqlalchemy import inspect, text
 from passlib.hash import bcrypt
 
 from database import engine, SessionLocal, Base
-from models import User, Device, Cluster, DeviceTelemetry, DeviceToken
+from models import User, Device, Cluster, DeviceTelemetry, DeviceToken, \
+    PatrolArea, PatrolPoint, PatrolRoute, PatrolRoutePoint, PatrolTask
 
 
 def init_database():

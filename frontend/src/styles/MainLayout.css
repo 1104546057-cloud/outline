@@ -327,18 +327,28 @@
     flex-direction: row;
     overflow-x: auto;
     overflow-y: hidden;
-    padding: 0;
-    justify-content: space-between;
+    padding: 0 0.25rem;
+    gap: 0;
     align-items: center;
     flex: 1;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .sidebar-nav::-webkit-scrollbar {
+    display: none;
   }
 
   .nav-item {
     flex-direction: column;
-    padding: 0.5rem;
+    padding: 0.5rem 0.65rem;
     gap: 0.2rem;
     white-space: nowrap;
     background: transparent !important;
+    flex-shrink: 0;
+    min-width: 3.2rem;
+    align-items: center;
+    justify-content: center;
   }
   
   .nav-item.active {

@@ -244,7 +244,7 @@ function Login() {
 
       {/* ===== 提示弹窗（统一风格） ===== */}
       {modalType && (
-        <div className="modal-overlay" onClick={() => setModalType(null)}>
+        <div className="modal-overlay">
           <div className="modal-content delete-modal" onClick={(e) => e.stopPropagation()} id="contact-admin-modal">
             <div className="delete-icon">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

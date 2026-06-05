@@ -9,6 +9,10 @@ import ClusterManagement from './pages/ClusterManagement'
 import ClusterControl from './pages/ClusterControl'
 import LiveVideo from './pages/LiveVideo'
 import PlaceholderPage from './pages/PlaceholderPage'
+import PatrolAreas from './pages/PatrolAreas'
+import PatrolPoints from './pages/PatrolPoints'
+import PatrolRoutes from './pages/PatrolRoutes'
+import PatrolTasks from './pages/PatrolTasks'
 
 /**
  * 应用根组件
@@ -65,6 +69,10 @@ function App() {
           <Route path="cluster" element={<ClusterManagement />} />
           <Route path="cluster-control" element={<ClusterControl />} />
           <Route path="live-video" element={<LiveVideo />} />
+          <Route path="patrol/areas" element={<PatrolAreas />} />
+          <Route path="patrol/points" element={<PatrolPoints />} />
+          <Route path="patrol/routes" element={<PatrolRoutes />} />
+          <Route path="patrol/tasks" element={<PatrolTasks />} />
         </Route>
 
         {/* 其他路径重定向到登录 */}

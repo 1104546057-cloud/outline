@@ -312,7 +312,7 @@ function UserManagement() {
 
       {/* ===== 新增/编辑弹窗 ===== */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()} id="user-modal">
             <div className="modal-header">
               <h2>{editingUser ? '编辑用户' : '新增用户'}</h2>
@@ -391,7 +391,7 @@ function UserManagement() {
 
       {/* ===== 删除确认弹窗 ===== */}
       {deleteConfirm && (
-        <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
+        <div className="modal-overlay">
           <div className="modal-content delete-modal" onClick={(e) => e.stopPropagation()} id="delete-confirm-modal">
             <div className="delete-icon">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

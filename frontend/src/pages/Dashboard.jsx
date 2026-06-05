@@ -132,7 +132,7 @@ function Dashboard() {
         if (!mapContainerRef.current) return
 
         const map = new AMap.Map(mapContainerRef.current, {
-          zoom: 15,
+          zoom: 16.8,
           center: [113.584101, 22.349278],
           mapStyle: 'amap://styles/light',
           viewMode: '2D',

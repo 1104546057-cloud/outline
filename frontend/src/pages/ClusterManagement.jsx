@@ -211,7 +211,7 @@ export default function ClusterManagement() {
 
       {/* 创建/编辑集群弹窗 */}
       {showModal && (
-        <div className="cm-modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="cm-modal-overlay">
           <div className="cm-modal" onClick={e => e.stopPropagation()}>
             <div className="cm-modal-header">
               <h2>{editingCluster ? '编辑集群' : '创建新集群'}</h2>
@@ -247,7 +247,7 @@ export default function ClusterManagement() {
 
       {/* 添加设备弹窗 */}
       {showAddDeviceModal && (
-        <div className="cm-modal-overlay" onClick={() => setShowAddDeviceModal(false)}>
+        <div className="cm-modal-overlay">
           <div className="cm-modal" onClick={e => e.stopPropagation()}>
             <div className="cm-modal-header">
               <h2>添加设备到 {selectedClusterForDevice?.name}</h2>
@@ -277,7 +277,7 @@ export default function ClusterManagement() {
 
       {/* 删除集群确认弹窗 */}
       {deleteClusterConfirm && (
-        <div className="cm-modal-overlay" onClick={() => setDeleteClusterConfirm(null)}>
+        <div className="cm-modal-overlay">
           <div className="cm-modal cm-delete-modal" onClick={e => e.stopPropagation()}>
             <div className="cm-delete-icon">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -298,7 +298,7 @@ export default function ClusterManagement() {
 
       {/* 移除设备确认弹窗 */}
       {removeDeviceConfirm && (
-        <div className="cm-modal-overlay" onClick={() => setRemoveDeviceConfirm(null)}>
+        <div className="cm-modal-overlay">
           <div className="cm-modal cm-delete-modal" onClick={e => e.stopPropagation()}>
             <div className="cm-delete-icon">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

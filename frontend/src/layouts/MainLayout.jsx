@@ -118,6 +118,53 @@ function MainLayout() {
     },
   ]
 
+  // 巡检管理菜单
+  const patrolMenuItems = [
+    {
+      key: 'patrol-areas',
+      label: '巡检区域',
+      path: '/patrol/areas',
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+          <polyline points="9,22 9,12 15,12 15,22"/>
+        </svg>
+      ),
+    },
+    {
+      key: 'patrol-points',
+      label: '巡检点位',
+      path: '/patrol/points',
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="10" r="3"/>
+          <path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 10-16 0c0 3 2.7 6.9 8 11.7z"/>
+        </svg>
+      ),
+    },
+    {
+      key: 'patrol-routes',
+      label: '巡检线路',
+      path: '/patrol/routes',
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
+        </svg>
+      ),
+    },
+    {
+      key: 'patrol-tasks',
+      label: '巡检任务',
+      path: '/patrol/tasks',
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+        </svg>
+      ),
+    },
+  ]
+
   const handleLogout = () => {
     localStorage.removeItem('user')
     navigate('/login')
@@ -166,7 +213,80 @@ function MainLayout() {
 
         {/* 导航菜单 */}
         <nav className="sidebar-nav">
-          {menuItems.map((item) => (
+          {/* 主菜单 */}
+          {!sidebarCollapsed && (
+            <div style={{
+              fontSize: '0.68rem',
+              fontWeight: 700,
+              color: 'var(--color-text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              padding: '0.4rem 0.85rem 0.3rem',
+            }}>系统概览</div>
+          )}
+          {menuItems.slice(0, 2).map((item) => (
+            <NavLink
+              key={item.key}
+              to={item.path}
+              className={({ isActive }) =>
+                `nav-item ${isActive ? 'active' : ''}`
+              }
+              id={`nav-${item.key}`}
+              title={sidebarCollapsed ? item.label : ''}
+            >
+              <span className="nav-icon">{item.icon}</span>
+              <span className="nav-label">{item.label}</span>
+            </NavLink>
+          ))}
+
+          {/* 设备管理分组 */}
+          {!sidebarCollapsed && (
+            <div style={{
+              fontSize: '0.68rem',
+              fontWeight: 700,
+              color: 'var(--color-text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              padding: '0.75rem 0.85rem 0.3rem',
+              marginTop: '0.25rem',
+              borderTop: '1px solid var(--color-border-light)',
+            }}>设备管理</div>
+          )}
+          {sidebarCollapsed && (
+            <div style={{ borderTop: '1px solid var(--color-border-light)', margin: '0.4rem 0' }} />
+          )}
+          {menuItems.slice(2).map((item) => (
+            <NavLink
+              key={item.key}
+              to={item.path}
+              className={({ isActive }) =>
+                `nav-item ${isActive ? 'active' : ''}`
+              }
+              id={`nav-${item.key}`}
+              title={sidebarCollapsed ? item.label : ''}
+            >
+              <span className="nav-icon">{item.icon}</span>
+              <span className="nav-label">{item.label}</span>
+            </NavLink>
+          ))}
+
+          {/* 巡检管理分组 */}
+          {!sidebarCollapsed && (
+            <div style={{
+              fontSize: '0.68rem',
+              fontWeight: 700,
+              color: 'var(--color-text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              padding: '0.75rem 0.85rem 0.3rem',
+              marginTop: '0.25rem',
+              borderTop: '1px solid var(--color-border-light)',
+            }}>巡检管理</div>
+          )}
+          {sidebarCollapsed && (
+            <div style={{ borderTop: '1px solid var(--color-border-light)', margin: '0.4rem 0' }} />
+          )}
+          {patrolMenuItems.map((item) => (
             <NavLink
               key={item.key}
               to={item.path}

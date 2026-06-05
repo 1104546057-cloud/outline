@@ -648,7 +648,7 @@ export default function DeviceManagement() {
 
       {/* 添加设备弹窗（手动添加 / 扫描后添加共用） */}
       {showAddModal && (
-        <div className="dm-modal-overlay" onClick={() => !addSubmitting && setShowAddModal(false)}>
+        <div className="dm-modal-overlay">
           <div className="dm-modal" onClick={e => e.stopPropagation()}>
             <div className="dm-modal-header">
               <h2>添加新设备</h2>
@@ -703,7 +703,7 @@ export default function DeviceManagement() {
 
       {/* WiFi 扫描弹窗 */}
       {showScanModal && (
-        <div className="dm-modal-overlay" onClick={() => setShowScanModal(false)}>
+        <div className="dm-modal-overlay">
           <div className="dm-modal dm-modal-wide" onClick={e => e.stopPropagation()}>
             <div className="dm-modal-header">
               <h2>扫描局域网设备</h2>
@@ -772,7 +772,7 @@ export default function DeviceManagement() {
 
       {/* 编辑设备弹窗 */}
       {showEditModal && (
-        <div className="dm-modal-overlay" onClick={() => setShowEditModal(false)}>
+        <div className="dm-modal-overlay">
           <div className="dm-modal" onClick={e => e.stopPropagation()}>
             <div className="dm-modal-header">
               <h2>编辑设备信息</h2>
@@ -814,7 +814,7 @@ export default function DeviceManagement() {
 
       {/* Token 查看弹窗（只读） */}
       {showTokenModal && (
-        <div className="dm-modal-overlay" onClick={() => setShowTokenModal(false)}>
+        <div className="dm-modal-overlay">
           <div className="dm-modal dm-modal-wide" onClick={e => e.stopPropagation()}>
             <div className="dm-modal-header">
               <h2>🔑 设备 Token - {tokenDevice?.name}</h2>
@@ -845,7 +845,7 @@ export default function DeviceManagement() {
 
       {/* 删除设备确认弹窗（统一风格） */}
       {deleteConfirm && (
-        <div className="dm-modal-overlay" onClick={() => setDeleteConfirm(null)}>
+        <div className="dm-modal-overlay">
           <div className="dm-modal dm-delete-modal" onClick={e => e.stopPropagation()}>
             <div className="dm-delete-icon">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

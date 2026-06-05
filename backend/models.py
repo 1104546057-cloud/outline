@@ -6,7 +6,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Table, Text, Numeric, JSON
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Table, Text, Numeric, JSON, Float
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -118,3 +118,107 @@ class Cluster(Base):
 
     def __repr__(self):
         return f"<Cluster(id={self.id}, name='{self.name}')>"
+
+
+# ===== 巡检系统模型 =====
+
+class PatrolArea(Base):
+    """巡检区域表"""
+    __tablename__ = "patrol_areas"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="区域ID")
+    name = Column(String(100), nullable=False, comment="区域名称")
+    description = Column(Text, nullable=True, comment="描述")
+    manager = Column(String(100), nullable=True, comment="负责人")
+    boundary = Column(JSON, nullable=True, comment="区域边界多边形坐标 [[lng,lat],...]")
+    center_lng = Column(Numeric(10, 7), nullable=True, comment="中心点经度")
+    center_lat = Column(Numeric(10, 7), nullable=True, comment="中心点纬度")
+    area_sqm = Column(Float, nullable=True, comment="面积(平方米)")
+    created_at = Column(DateTime, default=datetime.now, nullable=False, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False, comment="更新时间")
+
+    # 关联点位和线路
+    points = relationship("PatrolPoint", back_populates="area", cascade="all, delete-orphan")
+    routes = relationship("PatrolRoute", back_populates="area", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<PatrolArea(id={self.id}, name='{self.name}')>"
+
+
+class PatrolPoint(Base):
+    """巡检点位表"""
+    __tablename__ = "patrol_points"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="点位ID")
+    area_id = Column(Integer, ForeignKey("patrol_areas.id", ondelete="CASCADE"), nullable=False, index=True, comment="所属区域ID")
+    name = Column(String(100), nullable=False, comment="点位名称")
+    description = Column(Text, nullable=True, comment="描述")
+    lng = Column(Numeric(10, 7), nullable=False, comment="经度")
+    lat = Column(Numeric(10, 7), nullable=False, comment="纬度")
+    address = Column(String(255), nullable=True, comment="位置名称(高德逆地理编码)")
+    created_at = Column(DateTime, default=datetime.now, nullable=False, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False, comment="更新时间")
+
+    area = relationship("PatrolArea", back_populates="points")
+    route_points = relationship("PatrolRoutePoint", back_populates="point", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<PatrolPoint(id={self.id}, name='{self.name}')>"
+
+
+class PatrolRoute(Base):
+    """巡检线路表"""
+    __tablename__ = "patrol_routes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="线路ID")
+    area_id = Column(Integer, ForeignKey("patrol_areas.id", ondelete="CASCADE"), nullable=False, index=True, comment="所属区域ID")
+    name = Column(String(100), nullable=False, comment="线路名称")
+    description = Column(Text, nullable=True, comment="描述")
+    distance = Column(Float, nullable=True, comment="线路总距离(米)")
+    created_at = Column(DateTime, default=datetime.now, nullable=False, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False, comment="更新时间")
+
+    area = relationship("PatrolArea", back_populates="routes")
+    route_points = relationship("PatrolRoutePoint", back_populates="route", cascade="all, delete-orphan", order_by="PatrolRoutePoint.seq_order")
+    tasks = relationship("PatrolTask", back_populates="route")
+
+    def __repr__(self):
+        return f"<PatrolRoute(id={self.id}, name='{self.name}')>"
+
+
+class PatrolRoutePoint(Base):
+    """线路-点位关联表（有序）"""
+    __tablename__ = "patrol_route_points"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="关联ID")
+    route_id = Column(Integer, ForeignKey("patrol_routes.id", ondelete="CASCADE"), nullable=False, index=True, comment="线路ID")
+    point_id = Column(Integer, ForeignKey("patrol_points.id", ondelete="CASCADE"), nullable=False, comment="点位ID")
+    seq_order = Column(Integer, nullable=False, default=1, comment="顺序编号(从1开始)")
+
+    route = relationship("PatrolRoute", back_populates="route_points")
+    point = relationship("PatrolPoint", back_populates="route_points")
+
+    def __repr__(self):
+        return f"<PatrolRoutePoint(route_id={self.route_id}, point_id={self.point_id}, order={self.seq_order})>"
+
+
+class PatrolTask(Base):
+    """巡检任务表"""
+    __tablename__ = "patrol_tasks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="任务ID")
+    route_id = Column(Integer, ForeignKey("patrol_routes.id", ondelete="SET NULL"), nullable=True, index=True, comment="线路ID")
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="SET NULL"), nullable=True, index=True, comment="执行设备ID")
+    name = Column(String(100), nullable=False, comment="任务名称")
+    status = Column(String(20), default="pending", nullable=False, comment="状态(pending/running/paused/completed/cancelled)")
+    gps_track = Column(JSON, nullable=True, comment="GPS轨迹 [{lng,lat,ts}, ...]")
+    started_at = Column(DateTime, nullable=True, comment="开始时间")
+    ended_at = Column(DateTime, nullable=True, comment="结束时间")
+    created_at = Column(DateTime, default=datetime.now, nullable=False, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False, comment="更新时间")
+
+    route = relationship("PatrolRoute", back_populates="tasks")
+    device = relationship("Device")
+
+    def __repr__(self):
+        return f"<PatrolTask(id={self.id}, name='{self.name}', status='{self.status}')>"
