@@ -47,6 +47,9 @@ if [ -n "$MISSING_FILES" ]; then
 fi
 echo "文件检查通过！"
 
+echo ">>> 赋予工作目录下所有的 shell 脚本执行权限..."
+sudo chmod +x "$WORK_DIR"/*.sh
+
 echo ">>> 2.1 配置 apt 清华源..."
 if [ "$RUN_USER" = "pi" ]; then
     DEFAULT_APT_SYS="pi"
@@ -223,8 +226,14 @@ sudo systemctl enable DevicesWebControl-camera
 sudo systemctl start DevicesWebControl-camera
 
 echo ">>> 5.5 授权 ${RUN_USER} 用户重启 iot 服务..."
-echo "${RUN_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart DevicesWebControl-iot_client" | sudo tee /etc/sudoers.d/deviceswebcontrol
+SYSTEMCTL_PATH=$(which systemctl)
+echo ">> systemctl 路径: ${SYSTEMCTL_PATH}"
+cat << EOF | sudo tee /etc/sudoers.d/deviceswebcontrol
+${RUN_USER} ALL=(root) NOPASSWD: ${SYSTEMCTL_PATH} restart DevicesWebControl-iot_client
+EOF
 sudo chmod 0440 /etc/sudoers.d/deviceswebcontrol
+# 验证 sudoers 文件语法
+sudo visudo -cf /etc/sudoers.d/deviceswebcontrol && echo ">> sudoers 配置验证通过" || echo "!! sudoers 配置有误，请检查"
 
 echo "=========================================="
 echo "部署完成！接下来请进入控制台进行添加设备。"
