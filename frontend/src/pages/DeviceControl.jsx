@@ -16,7 +16,7 @@ export default function DeviceControl() {
   const [selectedDeviceId, setSelectedDeviceId] = useState('')
   const [logs, setLogs] = useState([])
   const [controlConfig, setControlConfig] = useState({ maxLinear: 0.4, maxAngular: 1.2 })
-  const [speedRatio, setSpeedRatio] = useState(0.3) // 速度倍率 0~1
+  const [speedRatio, setSpeedRatio] = useState(1.0) // 速度倍率 0~1
   const [connectionStatus, setConnectionStatus] = useState('未检测') // 未检测 / 连接中 / 已连接 / 不可达
   const [activeDirection, setActiveDirection] = useState(null) // 当前按住的方向
   const [customCommand, setCustomCommand] = useState('{"type":"ping"}')
