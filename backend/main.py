@@ -1099,6 +1099,26 @@ async def iot_telemetry(
         reported_at=reported_at,
     )
     db.add(telemetry)
+
+    # ===== 自动追加 GPS 轨迹到正在运行的巡检任务 =====
+    # 当设备上报了有效 GPS 坐标时，检查该设备是否有 running 状态的巡检任务
+    # 如果有，则自动将 GPS 坐标追加到任务的 gps_track 中
+    report_lat = payload.get("lat")
+    report_lng = payload.get("lng")
+    if report_lat is not None and report_lng is not None:
+        running_tasks = db.query(PatrolTask).filter(
+            PatrolTask.device_id == device.id,
+            PatrolTask.status == "running",
+        ).all()
+        for task in running_tasks:
+            current_track = list(task.gps_track or [])  # 必须用 list() 创建新列表，否则 SQLAlchemy 检测不到 JSON 字段的原地修改
+            current_track.append({
+                "lng": float(report_lng),
+                "lat": float(report_lat),
+                "ts": reported_at.isoformat(),
+            })
+            task.gps_track = current_track
+
     db.commit()
 
     return {"ok": True, "deviceId": device.id, "receivedAt": now.isoformat()}
@@ -2172,10 +2192,9 @@ async def start_patrol_task(
         raise HTTPException(status_code=404, detail="巡检任务不存在")
     if task.status == "running":
         raise HTTPException(status_code=400, detail="任务已在运行中")
-    if task.status == "completed":
-        raise HTTPException(status_code=400, detail="任务已完成，无法重新开始")
     task.status = "running"
     task.started_at = datetime.now()
+    task.ended_at = None
     task.gps_track = []
     db.commit()
     return {"message": "任务已开始", "status": "running"}
@@ -2246,7 +2265,7 @@ async def append_gps_track(
         raise HTTPException(status_code=404, detail="巡检任务不存在")
     if task.status != "running":
         raise HTTPException(status_code=400, detail="只有运行中的任务才能追加GPS轨迹")
-    current_track = task.gps_track or []
+    current_track = list(task.gps_track or [])  # 必须用 list() 创建新列表，否则 SQLAlchemy 检测不到 JSON 字段变更
     current_track.extend(data.points)
     task.gps_track = current_track
     db.commit()

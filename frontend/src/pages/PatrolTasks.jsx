@@ -118,40 +118,56 @@ function TaskDetailMap({ task, device }) {
       })
     }
 
-    // 绘制 GPS 实际轨迹（绿色）
-    if (task.gps_track?.length >= 2) {
-      const gpsPath = task.gps_track.map(p => new AMap.LngLat(p.lng, p.lat))
-      const gpsLine = new AMap.Polyline({
-        path: gpsPath, strokeColor: '#22c55e', strokeWeight: 4, strokeOpacity: 0.95, lineJoin: 'round', lineCap: 'round',
+    // 绘制 GPS 实际轨迹 + 当前位置 —— GPS 坐标为 WGS-84，需通过高德 API 转换为 GCJ-02
+    const gpsPoints = task.gps_track || []
+    // 收集所有需要转换的 GPS 坐标（轨迹 + 设备当前位置）
+    const rawCoords = gpsPoints.map(p => [p.lng, p.lat])
+    if (rawCoords.length === 0 && device && device.lng && device.lat) {
+      rawCoords.push([parseFloat(device.lng), parseFloat(device.lat)])
+    }
+
+    if (rawCoords.length > 0) {
+      AMap.convertFrom(rawCoords, 'gps', (status, result) => {
+        if (result.info !== 'ok') return
+        const locs = result.locations // 转换后的 GCJ-02 坐标数组
+
+        // 绘制 GPS 轨迹线（绿色）
+        if (gpsPoints.length >= 2) {
+          const gpsPath = locs.slice(0, gpsPoints.length).map(l => new AMap.LngLat(l.getLng(), l.getLat()))
+          const gpsLine = new AMap.Polyline({
+            path: gpsPath, strokeColor: '#22c55e', strokeWeight: 4, strokeOpacity: 0.95, lineJoin: 'round', lineCap: 'round',
+          })
+          map.add(gpsLine)
+          objects.push(gpsLine)
+        }
+
+        // 当前位置标记（取最后一个转换后的坐标）
+        const lastLoc = locs[locs.length - 1]
+        if (lastLoc) {
+          const curMarker = new AMap.Marker({
+            position: [lastLoc.getLng(), lastLoc.getLat()],
+            content: `<div style="width:18px;height:18px;background:#22c55e;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 4px rgba(34,197,94,0.3)"></div>`,
+            anchor: 'center',
+          })
+          map.add(curMarker)
+          objects.push(curMarker)
+        }
+
+        objectsRef.current = objects
+
+        // 只在初次加载路线时自适应一次视野，避免刷新时乱跳
+        if (objects.length > 0 && !hasFitViewRef.current) {
+          map.setFitView(objects, false, [30, 30, 30, 30], 17)
+          hasFitViewRef.current = true
+        }
       })
-      map.add(gpsLine)
-      objects.push(gpsLine)
-    }
+    } else {
+      objectsRef.current = objects
 
-    // 当前位置标记
-    let currentLoc = null;
-    if (task.gps_track?.length > 0) {
-      currentLoc = task.gps_track[task.gps_track.length - 1];
-    } else if (device && device.lng && device.lat) {
-      currentLoc = { lng: device.lng, lat: device.lat };
-    }
-
-    if (currentLoc) {
-      const curMarker = new AMap.Marker({
-        position: [currentLoc.lng, currentLoc.lat],
-        content: `<div style="width:18px;height:18px;background:#22c55e;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 4px rgba(34,197,94,0.3)"></div>`,
-        anchor: 'center',
-      })
-      map.add(curMarker)
-      objects.push(curMarker)
-    }
-
-    objectsRef.current = objects
-
-    // 只在初次加载路线时自适应一次视野，避免刷新时乱跳
-    if (objects.length > 0 && !hasFitViewRef.current) {
-      map.setFitView(objects, false, [30, 30, 30, 30], 17)
-      hasFitViewRef.current = true
+      if (objects.length > 0 && !hasFitViewRef.current) {
+        map.setFitView(objects, false, [30, 30, 30, 30], 17)
+        hasFitViewRef.current = true
+      }
     }
   }, [mapReady, task, device])
 
@@ -213,10 +229,6 @@ export default function PatrolTasks() {
 
   const [deleteConfirm, setDeleteConfirm] = useState(null)
 
-  // GPS追踪
-  const trackIntervalRef = useRef(null)
-  const runningTaskIdRef = useRef(null)
-
   const fetchTasks = useCallback(async () => {
     try {
       const res = await authFetch('/api/patrol/tasks')
@@ -275,48 +287,9 @@ export default function PatrolTasks() {
     } catch (e) { console.error(e) }
   }
 
-  // 模拟GPS轨迹（从设备遥测获取当前GPS位置追加）
-  const startGpsTracking = (taskId, deviceId) => {
-    if (trackIntervalRef.current) clearInterval(trackIntervalRef.current)
-    runningTaskIdRef.current = taskId
-    trackIntervalRef.current = setInterval(async () => {
-      try {
-        // 从设备当前GPS位置获取数据
-        const devRes = await authFetch(`/api/devices`)
-        if (!devRes.ok) return
-        const devList = await devRes.json()
-        const dev = devList.find(d => d.id === deviceId)
-        if (!dev || !dev.lat || !dev.lng) return
-        // 追加轨迹点
-        await authFetch(`/api/patrol/tasks/${taskId}/track`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ points: [{ lng: parseFloat(dev.lng), lat: parseFloat(dev.lat), ts: new Date().toISOString() }] }),
-        })
-      } catch (e) { console.error(e) }
-    }, 5000)
-  }
-
-  const stopGpsTracking = () => {
-    if (trackIntervalRef.current) {
-      clearInterval(trackIntervalRef.current)
-      trackIntervalRef.current = null
-    }
-    runningTaskIdRef.current = null
-  }
-
-  useEffect(() => { return () => stopGpsTracking() }, [])
-
-  const handleStart = async (task) => {
-    await handleTaskAction(task.id, 'start')
-    if (task.device_id) startGpsTracking(task.id, task.device_id)
-  }
-
-  const handleStop = async (task) => {
-    await handleTaskAction(task.id, 'stop')
-    if (runningTaskIdRef.current === task.id) stopGpsTracking()
-  }
-
+  // GPS 轨迹采集已由后端在设备遥测上报时自动完成，前端只做状态操作
+  const handleStart = (task) => handleTaskAction(task.id, 'start')
+  const handleStop = (task) => handleTaskAction(task.id, 'stop')
   const handlePause = (task) => handleTaskAction(task.id, 'pause')
   const handleResume = (task) => handleTaskAction(task.id, 'resume')
 
