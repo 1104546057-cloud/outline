@@ -1,6 +1,19 @@
-import { useState, useEffect } from 'react'
+/* eslint-disable react/prop-types */
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import '../styles/Login.css'
+
+function LoginIcon({ name, size = 19 }) {
+  const paths = {
+    user: <><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></>,
+    lock: <><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></>,
+    eye: <><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></>,
+    eyeOff: <><path d="m3 3 18 18M10.6 6.2A10.8 10.8 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-3 3.7M6.2 6.2C3.5 8 2 12 2 12s3.5 6 10 6c1.3 0 2.5-.2 3.5-.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></>,
+    shield: <><path d="M12 3 4.5 6v5.5c0 4.7 3.1 7.8 7.5 9.5 4.4-1.7 7.5-4.8 7.5-9.5V6L12 3Z"/><path d="m9 12 2 2 4-5"/></>,
+    alert: <><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></>,
+  }
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>
+}
 
 function Login() {
   const [username, setUsername] = useState('')
@@ -9,71 +22,45 @@ function Login() {
   const [rememberMe, setRememberMe] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
-  const [modalType, setModalType] = useState(null) // 'forgot' 或 'register'
+  const [modalType, setModalType] = useState(null)
   const navigate = useNavigate()
 
-  // 初始化时读取「记住我」保存的凭证
   useEffect(() => {
     const saved = localStorage.getItem('dwc_remember')
-    if (saved) {
-      try {
-        const { username: savedUser, password: savedPass } = JSON.parse(saved)
-        setUsername(savedUser || '')
-        setPassword(savedPass || '')
-        setRememberMe(true)
-      } catch { /* ignore */ }
+    if (!saved) return
+    try {
+      const data = JSON.parse(saved)
+      setUsername(data.username || '')
+      setPassword(data.password || '')
+      setRememberMe(true)
+    } catch {
+      localStorage.removeItem('dwc_remember')
     }
   }, [])
 
-  // 处理登录提交
-  const handleLogin = async (e) => {
-    e.preventDefault()
+  const handleLogin = async event => {
+    event.preventDefault()
     setError('')
-
-    // 前端基础校验
-    if (!username.trim()) {
-      setError('请输入用户名')
-      return
-    }
-    if (!password.trim()) {
-      setError('请输入密码')
-      return
-    }
-
+    if (!username.trim()) { setError('请输入用户名'); return }
+    if (!password.trim()) { setError('请输入密码'); return }
     setIsLoading(true)
 
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: username.trim(),
-          password: password,
-        }),
+        body: JSON.stringify({ username: username.trim(), password }),
       })
-
       const data = await response.json()
-
-      if (response.ok) {
-        // 登录成功，保存用户信息并跳转
-        localStorage.setItem('user', JSON.stringify({
-          username: data.username,
-          nickname: data.nickname,
-          token: data.token,
-        }))
-        // 「记住我」持久化
-        if (rememberMe) {
-          localStorage.setItem('dwc_remember', JSON.stringify({
-            username: username.trim(),
-            password: password,
-          }))
-        } else {
-          localStorage.removeItem('dwc_remember')
-        }
-        navigate('/dashboard')
-      } else {
+      if (!response.ok) {
         setError(data.detail || '用户名或密码错误')
+        return
       }
+
+      localStorage.setItem('user', JSON.stringify({ username: data.username, nickname: data.nickname, token: data.token }))
+      if (rememberMe) localStorage.setItem('dwc_remember', JSON.stringify({ username: username.trim(), password }))
+      else localStorage.removeItem('dwc_remember')
+      navigate('/dashboard')
     } catch {
       setError('无法连接到服务器，请检查后端服务是否启动')
     } finally {
@@ -83,187 +70,92 @@ function Login() {
 
   return (
     <div className="login-page" id="login-page">
-      {/* ===== 左侧品牌区域 ===== */}
-      <div className="login-brand">
-        <div className="brand-grid"></div>
-        <div className="brand-content">
-          <div className="brand-logo">🛰️</div>
-          <h2 className="brand-title">异构无人集群管理平台</h2>
-          <p className="brand-subtitle">
-            统一管理无人车、无人机、无人船等多类型设备，
-            <br />
-            实现实时监控、远程控制与智能调度。
-          </p>
-          <div className="brand-devices">
-            <div className="brand-device-item">
-              <span className="device-emoji">🚗</span>
-              <span className="device-label">无人车</span>
-            </div>
-            <div className="brand-device-item">
-              <span className="device-emoji">✈️</span>
-              <span className="device-label">无人机</span>
-            </div>
-            <div className="brand-device-item">
-              <span className="device-emoji">🚢</span>
-              <span className="device-label">无人船</span>
-            </div>
-          </div>
-        </div>
+      <div className="login-scene" aria-hidden="true">
+        <span className="login-grid" />
+        <span className="login-orbit orbit-one" />
+        <span className="login-orbit orbit-two" />
+        <span className="login-beam beam-left" />
+        <span className="login-beam beam-right" />
+        <span className="campus-silhouette" />
       </div>
 
-      {/* ===== 右侧登录表单区域 ===== */}
-      <div className="login-form-area">
-        <div className="login-topbar">
-          <span>还没有账号？</span>
-          <a href="#register" id="register-link" onClick={(e) => { e.preventDefault(); setModalType('register'); }}>注册账号</a>
+      <header className="login-system-title">
+        <span className="title-line left" />
+        <div>
+          <small>SMART CAMPUS PATROL MANAGEMENT SYSTEM</small>
+          <h1>智慧校园巡逻管理系统</h1>
         </div>
+        <span className="title-line right" />
+      </header>
 
-        <div className="login-form-container">
-          <div className="form-header">
-            <h1>欢迎回来</h1>
-            <p>请登录您的账号以继续使用管理平台</p>
+      <main className="login-stage">
+        <section className="login-console">
+          <span className="console-corner corner-tl" /><span className="console-corner corner-tr" />
+          <span className="console-corner corner-bl" /><span className="console-corner corner-br" />
+          <div className="console-glow" />
+
+          <div className="login-console-head">
+            <span className="head-wing left" />
+            <div className="console-title">
+              <LoginIcon name="shield" size={21} />
+              <div><h2>用户登录</h2><small>USER AUTHENTICATION</small></div>
+            </div>
+            <span className="head-wing right" />
           </div>
 
-          {/* 错误提示 */}
-          {error && (
-            <div className="error-message" id="error-message">
-              <span className="error-icon">⚠️</span>
-              <span>{error}</span>
-            </div>
-          )}
+          <form className="tech-login-form" onSubmit={handleLogin} id="login-form">
+            {error && <div className="login-error" id="error-message"><LoginIcon name="alert" size={17} /><span>{error}</span></div>}
 
-          <form onSubmit={handleLogin} id="login-form">
-            {/* 用户名 */}
-            <div className="form-group">
-              <label className="form-label" htmlFor="username">
-                用户名
-              </label>
-              <div className="form-input-wrapper">
-                <span className="form-input-icon">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="12" cy="7" r="4"></circle>
-                  </svg>
-                </span>
-                <input
-                  type="text"
-                  id="username"
-                  className="form-input"
-                  placeholder="请输入用户名"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  autoComplete="username"
-                  disabled={isLoading}
-                />
-              </div>
-            </div>
+            <label className="tech-field" htmlFor="username">
+              <span className="field-icon"><LoginIcon name="user" /></span>
+              <span className="field-divider" />
+              <input id="username" type="text" placeholder="请输入用户名" value={username} onChange={event => setUsername(event.target.value)} autoComplete="username" disabled={isLoading} autoFocus />
+              <i className="field-focus-line" />
+            </label>
 
-            {/* 密码 */}
-            <div className="form-group">
-              <label className="form-label" htmlFor="password">
-                密码
-              </label>
-              <div className="form-input-wrapper">
-                <span className="form-input-icon">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                  </svg>
-                </span>
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  id="password"
-                  className="form-input"
-                  placeholder="请输入密码"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
-                  disabled={isLoading}
-                />
-                <button
-                  type="button"
-                  className="password-toggle"
-                  id="password-toggle"
-                  onClick={() => setShowPassword(!showPassword)}
-                  tabIndex={-1}
-                  aria-label={showPassword ? '隐藏密码' : '显示密码'}
-                >
-                  {showPassword ? (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"></path>
-                      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"></path>
-                      <line x1="1" y1="1" x2="23" y2="23"></line>
-                    </svg>
-                  ) : (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                      <circle cx="12" cy="12" r="3"></circle>
-                    </svg>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* 记住我 & 忘记密码 */}
-            <div className="form-options">
-              <label className="remember-me" id="remember-me">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                />
-                <span>记住我</span>
-              </label>
-              <button
-                type="button"
-                className="forgot-password"
-                id="forgot-password-link"
-                onClick={() => setModalType('forgot')}
-              >
-                忘记密码？
+            <label className="tech-field" htmlFor="password">
+              <span className="field-icon"><LoginIcon name="lock" /></span>
+              <span className="field-divider" />
+              <input id="password" type={showPassword ? 'text' : 'password'} placeholder="请输入密码" value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" disabled={isLoading} />
+              <button type="button" className="password-toggle" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? '隐藏密码' : '显示密码'}>
+                <LoginIcon name={showPassword ? 'eyeOff' : 'eye'} size={17} />
               </button>
+              <i className="field-focus-line" />
+            </label>
+
+            <div className="login-options">
+              <label className="tech-checkbox">
+                <input type="checkbox" checked={rememberMe} onChange={event => setRememberMe(event.target.checked)} />
+                <span className="checkbox-ui"><i /></span>
+                <span>记住登录信息</span>
+              </label>
+              <button type="button" onClick={() => setModalType('forgot')}>忘记密码？</button>
             </div>
 
-            {/* 登录按钮 */}
-            <button
-              type="submit"
-              className="login-button"
-              id="login-button"
-              disabled={isLoading}
-            >
-              {isLoading && <span className="spinner"></span>}
-              {isLoading ? '登录中...' : '登  录'}
+            <button type="submit" className="tech-login-button" id="login-button" disabled={isLoading}>
+              <span className="button-scan" />
+              {isLoading ? <><i className="login-spinner" />身份验证中...</> : '登 录'}
             </button>
+
+            <div className="secure-tip"><span className="secure-dot" />安全接入通道已启用 <b>SECURE CHANNEL</b></div>
           </form>
-        </div>
+        </section>
+      </main>
 
-        <div className="login-footer">
-          © 2026 异构无人集群管理平台 · 技术支持
-        </div>
-      </div>
+      <footer className="login-footer">
+        <span>智慧校园无人巡逻综合管理平台</span>
+        <i />
+        <span>© 2026 SMART CAMPUS</span>
+      </footer>
 
-      {/* ===== 提示弹窗（统一风格） ===== */}
       {modalType && (
-        <div className="modal-overlay">
-          <div className="modal-content delete-modal" onClick={(e) => e.stopPropagation()} id="contact-admin-modal">
-            <div className="delete-icon">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="8" x2="12" y2="12"></line>
-                <line x1="12" y1="16" x2="12.01" y2="16"></line>
-              </svg>
-            </div>
-            <h3>{modalType === 'forgot' ? '忘记密码' : '注册账号'}</h3>
-            <p>
-              {modalType === 'forgot' 
-                ? '请联系系统管理员重置您的密码。' 
-                : '系统暂未开放自主注册，请联系系统管理员分配账号。'}
-            </p>
-            <div className="modal-actions">
-              <button className="btn-primary" onClick={() => setModalType(null)}>
-                我知道了
-              </button>
-            </div>
+        <div className="login-modal-backdrop" onMouseDown={() => setModalType(null)}>
+          <div className="login-modal" onMouseDown={event => event.stopPropagation()}>
+            <span className="modal-alert-icon"><LoginIcon name="alert" size={27} /></span>
+            <small>SYSTEM MESSAGE</small>
+            <h3>{modalType === 'forgot' ? '忘记密码' : '账号申请'}</h3>
+            <p>{modalType === 'forgot' ? '请联系系统管理员重置您的登录密码。' : '系统暂未开放自主注册，请联系管理员分配账号。'}</p>
+            <button onClick={() => setModalType(null)}>我知道了</button>
           </div>
         </div>
       )}

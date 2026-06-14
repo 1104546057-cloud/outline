@@ -2087,6 +2087,9 @@ async def list_patrol_tasks(
             "status": t.status,
             "route_id": t.route_id,
             "route_name": t.route.name if t.route else None,
+            "area_name": t.route.area.name if t.route and t.route.area else None,
+            "point_count": len(t.route.route_points) if t.route else 0,
+            "route_distance": t.route.distance if t.route else None,
             "device_id": t.device_id,
             "device_name": t.device.name if t.device else None,
             "gps_track": t.gps_track,
@@ -2115,6 +2118,7 @@ async def get_patrol_task(
             "id": t.route.id,
             "name": t.route.name,
             "area_id": t.route.area_id,
+            "area_name": t.route.area.name if t.route.area else None,
             "distance": t.route.distance,
             "points": [{
                 "id": rp.point.id,

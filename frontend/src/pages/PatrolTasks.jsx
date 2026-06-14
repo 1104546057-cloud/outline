@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import AMapLoader from '@amap/amap-jsapi-loader'
+import { useSearchParams } from 'react-router-dom'
 import { authFetch } from '../utils/authFetch'
 import '../styles/Patrol.css'
 
@@ -57,7 +58,10 @@ function TaskDetailMap({ task, device }) {
       const map = new AMap.Map(mapRef.current, {
         zoom: 16.8,
         center: [113.584101, 22.349278],
-        mapStyle: 'amap://styles/light',
+        layers: [
+          new AMap.TileLayer.Satellite(),
+          new AMap.TileLayer.RoadNet(),
+        ],
       })
       mapInstanceRef.current = map
       setMapReady(true)
@@ -211,6 +215,7 @@ function TaskCamera({ deviceIp, devicePort }) {
 }
 
 export default function PatrolTasks() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [tasks, setTasks] = useState([])
   const [routes, setRoutes] = useState([])
   const [devices, setDevices] = useState([])
@@ -228,6 +233,7 @@ export default function PatrolTasks() {
   const [detailLoading, setDetailLoading] = useState(false)
 
   const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const openedTaskIdRef = useRef(null)
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -258,6 +264,20 @@ export default function PatrolTasks() {
       if (res.ok) setDetailTask(await res.json())
     } catch (e) { console.error(e) }
     finally { setDetailLoading(false) }
+  }
+
+  useEffect(() => {
+    const taskId = Number(searchParams.get('task'))
+    if (!Number.isInteger(taskId) || taskId <= 0 || openedTaskIdRef.current === taskId) return
+    openedTaskIdRef.current = taskId
+    loadDetail({ id: taskId })
+  }, [searchParams])
+
+  const closeDetail = () => {
+    setShowDetailModal(false)
+    setDetailTask(null)
+    openedTaskIdRef.current = null
+    if (searchParams.has('task')) setSearchParams({}, { replace: true })
   }
 
   // 刷新详情（任务运行或待开始时定期刷新轨迹/设备位置）
@@ -463,7 +483,13 @@ export default function PatrolTasks() {
           <div className="patrol-modal patrol-modal-wide" style={{ maxWidth: 760 }} onClick={e => e.stopPropagation()}>
             <div className="patrol-modal-header">
               <h2>📋 {detailTask?.name || '任务详情'}</h2>
-              <button className="patrol-modal-close" onClick={() => setShowDetailModal(false)}>✕</button>
+              <button
+                className="patrol-modal-close"
+                type="button"
+                aria-label="关闭任务详情"
+                title="关闭"
+                onClick={closeDetail}
+              >✕</button>
             </div>
             <div className="patrol-modal-body">
               {detailLoading ? (

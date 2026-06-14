@@ -480,7 +480,7 @@ export default function DeviceManagement() {
           {extra.hw_diagram && (
             <div>
               <div className="dm-sys-label" style={{ marginBottom: '0.4rem' }}>主板引脚结构图</div>
-              <div style={{ padding: '0.75rem', background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#334155', borderRadius: '8px', overflowX: 'auto', fontSize: '0.7rem', fontFamily: "'JetBrains Mono', 'Consolas', monospace", whiteSpace: 'pre', lineHeight: '1.2' }}>
+              <div className="dm-hardware-diagram">
                 {extra.hw_diagram}
               </div>
             </div>
@@ -488,7 +488,7 @@ export default function DeviceManagement() {
           {extra.usb_devices && extra.usb_devices.length > 0 && (
             <div>
               <div className="dm-sys-label" style={{ marginBottom: '0.4rem', borderTop: '1px solid #f1f5f9', paddingTop: '0.6rem' }}>USB 外设列表</div>
-              <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.72rem', color: '#475569', fontFamily: "'JetBrains Mono', 'Consolas', monospace" }}>
+              <ul className="dm-hardware-list">
                 {extra.usb_devices.map((dev, i) => (
                   <li key={i} style={{ marginBottom: '0.2rem' }}>{dev}</li>
                 ))}
@@ -712,7 +712,7 @@ export default function DeviceManagement() {
             <div className="dm-modal-body">
               <div className="dm-form-group" style={{ marginBottom: '1.5rem', display: 'flex', gap: '0.75rem', alignItems: 'flex-end' }}>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.88rem', color: '#475569', fontWeight: '500' }}>扫描网段 (CIDR 格式)</label>
+                  <label className="dm-scan-label">扫描网段 (CIDR 格式)</label>
                   <input 
                     type="text" 
                     value={scanSubnet} 
@@ -734,7 +734,7 @@ export default function DeviceManagement() {
               </div>
 
               {scanCacheTime && !scanning && (
-                <p style={{ fontSize: '0.78rem', color: '#94a3b8', margin: '0 0 0.75rem', textAlign: 'right' }}>
+                <p className="dm-scan-cache" style={{ fontSize: '0.78rem', margin: '0 0 0.75rem', textAlign: 'right' }}>
                   缓存自 {new Date(scanCacheTime).toLocaleString('zh-CN')}
                 </p>
               )}
@@ -751,9 +751,9 @@ export default function DeviceManagement() {
                       <div className="dm-wifi-item-info">
                         <span className="dm-wifi-ssid">
                           {res.ssid} 
-                          <span style={{ fontSize: '0.8rem', color: '#3b82f6', marginLeft: '8px', fontWeight: '600' }}>{res.type}</span>
+                          <span className="dm-device-type-inline">{res.type}</span>
                           {res.vendor && res.vendor !== '未知' && (
-                            <span style={{ fontSize: '0.75rem', color: '#64748b', marginLeft: '6px', background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px' }}>{res.vendor}</span>
+                            <span className="dm-vendor-tag">{res.vendor}</span>
                           )}
                         </span>
                         <span className="dm-wifi-ip">{res.ip} | MAC: {res.mac}</span>
@@ -761,7 +761,7 @@ export default function DeviceManagement() {
                       <span className="dm-wifi-item-action">添加设备</span>
                     </div>
                   )) : (
-                    <p style={{ textAlign: 'center', color: '#94a3b8', padding: '1rem 0' }}>未发现存活设备，您可以调整网段后重新扫描</p>
+                    <p className="dm-inline-empty" style={{ textAlign: 'center', padding: '1rem 0' }}>未发现存活设备，您可以调整网段后重新扫描</p>
                   )}
                 </div>
               )}

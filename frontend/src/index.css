@@ -111,3 +111,11 @@ input {
   background: var(--color-primary-bg);
   color: var(--color-primary-dark);
 }
+
+/* 隐藏高德地图水印 */
+.amap-logo,
+.amap-copyright {
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+}

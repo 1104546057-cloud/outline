@@ -1,337 +1,190 @@
-import { useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+/* eslint-disable react/prop-types */
+import { useEffect, useMemo, useState } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import '../styles/MainLayout.css'
 
-/**
- * 主布局组件
- * 包含侧边栏导航和内容区域，登录后的所有页面共享此布局
- */
+const primaryNav = [
+  { label: '校园巡逻管控', path: '/dashboard', match: ['/dashboard', '/patrol', '/device-cockpit'] },
+  { label: '视频识别分析', path: '/video-analysis', match: ['/video-analysis'] },
+  { label: '安全预警处置', path: '/warning-response', match: ['/warning-response'] },
+  { label: '数据统计研判', path: '/statistics-analysis', match: ['/statistics-analysis'] },
+]
+
+const settingsGroups = [
+  {
+    title: '系统管理',
+    items: [
+      { label: '用户管理', path: '/users', icon: 'users' },
+      { label: '设备管理', path: '/devices', icon: 'device' },
+      { label: '设备控制', path: '/device-control', icon: 'control' },
+    ],
+  },
+  {
+    title: '集群与视频',
+    items: [
+      { label: '集群管理', path: '/cluster', icon: 'cluster' },
+      { label: '集群控制', path: '/cluster-control', icon: 'layers' },
+      { label: '实时画面', path: '/live-video', icon: 'video' },
+    ],
+  },
+  {
+    title: '巡检管理',
+    items: [
+      { label: '巡检区域', path: '/patrol/areas', icon: 'area' },
+      { label: '巡检点位', path: '/patrol/points', icon: 'pin' },
+      { label: '巡检线路', path: '/patrol/routes', icon: 'route' },
+      { label: '巡检任务', path: '/patrol/tasks', icon: 'task' },
+    ],
+  },
+]
+
+function AppIcon({ name, size = 18 }) {
+  const paths = {
+    home: <><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M9.5 20v-6h5v6"/></>,
+    settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></>,
+    fullscreen: <><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5"/></>,
+    collapse: <><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5"/><path d="m8 8-5-5m13 5 5-5m-5 13 5 5M8 16l-5 5"/></>,
+    user: <><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></>,
+    users: <><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 5.5a3 3 0 0 1 0 5.5M17 15a5 5 0 0 1 4 5"/></>,
+    device: <><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9zM9 1v3m6-3v3M9 20v3m6-3v3M20 9h3m-3 6h3M1 9h3m-3 6h3"/></>,
+    control: <><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4M5 5l3 3m8 8 3 3m0-14-3 3M8 16l-3 3"/></>,
+    cluster: <><circle cx="12" cy="5" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="m11 7-5 9m7-9 5 9M7 18h10"/></>,
+    layers: <><path d="m12 3-9 5 9 5 9-5-9-5Z"/><path d="m3 12 9 5 9-5M3 16l9 5 9-5"/></>,
+    video: <><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></>,
+    area: <><path d="M4 20V8l8-5 8 5v12H4Z"/><path d="M9 20v-7h6v7"/></>,
+    pin: <><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></>,
+    route: <><circle cx="5" cy="6" r="2"/><circle cx="19" cy="18" r="2"/><path d="M7 6h4a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h8"/></>,
+    task: <><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2h6v2M9 9h6m-6 4h6m-6 4h4"/></>,
+    logout: <><path d="M10 4H5v16h5M14 8l4 4-4 4m4-4H9"/></>,
+    chevron: <path d="m9 18 6-6-6-6"/>,
+  }
+
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {paths[name] || paths.home}
+    </svg>
+  )
+}
+
 function MainLayout() {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [currentTime, setCurrentTime] = useState(new Date())
+  const [showSettings, setShowSettings] = useState(false)
+  const [showAccount, setShowAccount] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement))
   const navigate = useNavigate()
+  const location = useLocation()
+  const user = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem('user') || '{}') } catch { return {} }
+  }, [])
 
-  // 获取当前登录用户信息
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+    const handleFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement))
+    document.addEventListener('fullscreenchange', handleFullscreen)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('fullscreenchange', handleFullscreen)
+    }
+  }, [])
 
-  // 导航菜单配置
-  const menuItems = [
-    {
-      key: 'dashboard',
-      label: '数据看板',
-      path: '/dashboard',
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="3" width="7" height="7"></rect>
-          <rect x="14" y="3" width="7" height="7"></rect>
-          <rect x="14" y="14" width="7" height="7"></rect>
-          <rect x="3" y="14" width="7" height="7"></rect>
-        </svg>
-      ),
-    },
-    {
-      key: 'users',
-      label: '用户管理',
-      path: '/users',
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-          <circle cx="9" cy="7" r="4"></circle>
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-        </svg>
-      ),
-    },
-    {
-      key: 'devices',
-      label: '设备管理',
-      path: '/devices',
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
-          <rect x="9" y="9" width="6" height="6"></rect>
-          <line x1="9" y1="1" x2="9" y2="4"></line>
-          <line x1="15" y1="1" x2="15" y2="4"></line>
-          <line x1="9" y1="20" x2="9" y2="23"></line>
-          <line x1="15" y1="20" x2="15" y2="23"></line>
-          <line x1="20" y1="9" x2="23" y2="9"></line>
-          <line x1="20" y1="14" x2="23" y2="14"></line>
-          <line x1="1" y1="9" x2="4" y2="9"></line>
-          <line x1="1" y1="14" x2="4" y2="14"></line>
-        </svg>
-      ),
-    },
-    {
-      key: 'device-control',
-      label: '设备控制',
-      path: '/device-control',
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="3"></circle>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-        </svg>
-      ),
-    },
-    {
-      key: 'cluster',
-      label: '集群管理',
-      path: '/cluster',
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="2"></circle>
-          <circle cx="12" cy="5" r="2"></circle>
-          <circle cx="12" cy="19" r="2"></circle>
-          <circle cx="5" cy="8.5" r="2"></circle>
-          <circle cx="19" cy="8.5" r="2"></circle>
-          <circle cx="5" cy="15.5" r="2"></circle>
-          <circle cx="19" cy="15.5" r="2"></circle>
-          <line x1="12" y1="7" x2="12" y2="10"></line>
-          <line x1="12" y1="14" x2="12" y2="17"></line>
-          <line x1="6.7" y1="9.5" x2="10.3" y2="11"></line>
-          <line x1="13.7" y1="11" x2="17.3" y2="9.5"></line>
-          <line x1="6.7" y1="14.5" x2="10.3" y2="13"></line>
-          <line x1="13.7" y1="13" x2="17.3" y2="14.5"></line>
-        </svg>
-      ),
-    },
-    {
-      key: 'cluster-control',
-      label: '集群控制',
-      path: '/cluster-control',
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
-          <polyline points="2 17 12 22 22 17"></polyline>
-          <polyline points="2 12 12 17 22 12"></polyline>
-        </svg>
-      ),
-    },
-    {
-      key: 'live-video',
-      label: '实时画面',
-      path: '/live-video',
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polygon points="23 7 16 12 23 17 23 7"></polygon>
-          <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
-        </svg>
-      ),
-    },
-  ]
-
-  // 巡检管理菜单
-  const patrolMenuItems = [
-    {
-      key: 'patrol-areas',
-      label: '巡检区域',
-      path: '/patrol/areas',
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
-          <polyline points="9,22 9,12 15,12 15,22"/>
-        </svg>
-      ),
-    },
-    {
-      key: 'patrol-points',
-      label: '巡检点位',
-      path: '/patrol/points',
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="10" r="3"/>
-          <path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 10-16 0c0 3 2.7 6.9 8 11.7z"/>
-        </svg>
-      ),
-    },
-    {
-      key: 'patrol-routes',
-      label: '巡检线路',
-      path: '/patrol/routes',
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
-        </svg>
-      ),
-    },
-    {
-      key: 'patrol-tasks',
-      label: '巡检任务',
-      path: '/patrol/tasks',
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-        </svg>
-      ),
-    },
-  ]
+  useEffect(() => {
+    setShowSettings(false)
+    setShowAccount(false)
+  }, [location.pathname])
 
   const handleLogout = () => {
     localStorage.removeItem('user')
     navigate('/login')
   }
 
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen()
+      else await document.documentElement.requestFullscreen()
+    } catch (error) {
+      console.error('切换全屏失败:', error)
+    }
+  }
+
+  const dateText = currentTime.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
+  const weekText = currentTime.toLocaleDateString('zh-CN', { weekday: 'long' })
+  const timeText = currentTime.toLocaleTimeString('zh-CN', { hour12: false })
+
   return (
     <div className="main-layout" id="main-layout">
-      {/* ===== 移动端顶部导航 ===== */}
-      <header className="mobile-header">
-        <div className="mobile-logo">
-          <span className="logo-icon">🛰️</span>
-          <span className="logo-text">集群管理平台</span>
+      <header className="tech-header">
+        <div className="tech-header-grid" />
+        <div className="system-clock">
+          <span className="clock-time">{timeText}</span>
+          <span className="clock-date">{dateText} · {weekText}</span>
         </div>
-        <button className="mobile-logout-btn" onClick={handleLogout} title="退出登录">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-            <polyline points="16 17 21 12 16 7"></polyline>
-            <line x1="21" y1="12" x2="9" y2="12"></line>
-          </svg>
-        </button>
+
+        <div className="system-brand">
+          <span className="brand-wing left" />
+          <div className="brand-title-wrap">
+            <span className="brand-kicker">SMART CAMPUS PATROL</span>
+            <strong>智慧校园巡逻管理系统</strong>
+          </div>
+          <span className="brand-wing right" />
+        </div>
+
+        <div className="header-navigation">
+          <div className="header-tools">
+            <button className="header-tool" onClick={() => navigate('/dashboard')} title="首页"><AppIcon name="home" /></button>
+            <button className={`header-tool ${showSettings ? 'active' : ''}`} onClick={() => { setShowSettings(v => !v); setShowAccount(false) }} title="设置"><AppIcon name="settings" /></button>
+            <button className="header-tool" onClick={toggleFullscreen} title={isFullscreen ? '退出全屏' : '进入全屏'}><AppIcon name={isFullscreen ? 'collapse' : 'fullscreen'} /></button>
+            <button className={`header-tool avatar-tool ${showAccount ? 'active' : ''}`} onClick={() => { setShowAccount(v => !v); setShowSettings(false) }} title="管理员账户">
+              <AppIcon name="user" />
+              <span className="avatar-online" />
+            </button>
+          </div>
+
+          <nav className="primary-nav" aria-label="一级导航">
+            {primaryNav.map(item => {
+              const active = item.match.some(prefix => location.pathname.startsWith(prefix))
+              return <NavLink key={item.path} to={item.path} className={`primary-nav-item ${active ? 'active' : ''}`}>{item.label}</NavLink>
+            })}
+          </nav>
+        </div>
+
+        {showSettings && (
+          <div className="settings-popover">
+            <div className="popover-heading">
+              <div><span>系统设置</span><small>快速访问管理功能</small></div>
+              <button onClick={() => setShowSettings(false)}>×</button>
+            </div>
+            <div className="settings-groups">
+              {settingsGroups.map(group => (
+                <section key={group.title}>
+                  <h3>{group.title}</h3>
+                  <div className="settings-grid">
+                    {group.items.map(item => (
+                      <NavLink key={item.path} to={item.path} className="settings-link">
+                        <span className="settings-link-icon"><AppIcon name={item.icon} /></span>
+                        <span>{item.label}</span>
+                        <AppIcon name="chevron" size={14} />
+                      </NavLink>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {showAccount && (
+          <div className="account-popover">
+            <div className="account-summary">
+              <span className="account-avatar"><AppIcon name="user" size={22} /></span>
+              <div><strong>{user.nickname || user.username || '管理员'}</strong><small>系统管理员 · 在线</small></div>
+            </div>
+            <button onClick={handleLogout}><AppIcon name="users" /><span>切换账号</span></button>
+            <button className="danger" onClick={handleLogout}><AppIcon name="logout" /><span>退出登录</span></button>
+          </div>
+        )}
       </header>
 
-      {/* ===== 侧边栏 ===== */}
-      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`} id="sidebar">
-        {/* Logo 区域 */}
-        <div className="sidebar-header">
-          <div className="sidebar-logo">
-            <span className="logo-icon">🛰️</span>
-            <span className="logo-text">集群管理平台</span>
-          </div>
-        </div>
-
-        {/* 用户信息 */}
-        <div className="sidebar-user">
-          <div className="user-avatar">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-              <circle cx="12" cy="7" r="4"></circle>
-            </svg>
-          </div>
-          <div className="user-info">
-            <span className="user-name">{user.nickname || user.username || '管理员'}</span>
-            <span className="user-role">系统管理员</span>
-          </div>
-        </div>
-
-        {/* 导航菜单 */}
-        <nav className="sidebar-nav">
-          {/* 主菜单 */}
-          {!sidebarCollapsed && (
-            <div style={{
-              fontSize: '0.68rem',
-              fontWeight: 700,
-              color: 'var(--color-text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              padding: '0.4rem 0.85rem 0.3rem',
-            }}>系统概览</div>
-          )}
-          {menuItems.slice(0, 2).map((item) => (
-            <NavLink
-              key={item.key}
-              to={item.path}
-              className={({ isActive }) =>
-                `nav-item ${isActive ? 'active' : ''}`
-              }
-              id={`nav-${item.key}`}
-              title={sidebarCollapsed ? item.label : ''}
-            >
-              <span className="nav-icon">{item.icon}</span>
-              <span className="nav-label">{item.label}</span>
-            </NavLink>
-          ))}
-
-          {/* 设备管理分组 */}
-          {!sidebarCollapsed && (
-            <div style={{
-              fontSize: '0.68rem',
-              fontWeight: 700,
-              color: 'var(--color-text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              padding: '0.75rem 0.85rem 0.3rem',
-              marginTop: '0.25rem',
-              borderTop: '1px solid var(--color-border-light)',
-            }}>设备管理</div>
-          )}
-          {sidebarCollapsed && (
-            <div style={{ borderTop: '1px solid var(--color-border-light)', margin: '0.4rem 0' }} />
-          )}
-          {menuItems.slice(2).map((item) => (
-            <NavLink
-              key={item.key}
-              to={item.path}
-              className={({ isActive }) =>
-                `nav-item ${isActive ? 'active' : ''}`
-              }
-              id={`nav-${item.key}`}
-              title={sidebarCollapsed ? item.label : ''}
-            >
-              <span className="nav-icon">{item.icon}</span>
-              <span className="nav-label">{item.label}</span>
-            </NavLink>
-          ))}
-
-          {/* 巡检管理分组 */}
-          {!sidebarCollapsed && (
-            <div style={{
-              fontSize: '0.68rem',
-              fontWeight: 700,
-              color: 'var(--color-text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              padding: '0.75rem 0.85rem 0.3rem',
-              marginTop: '0.25rem',
-              borderTop: '1px solid var(--color-border-light)',
-            }}>巡检管理</div>
-          )}
-          {sidebarCollapsed && (
-            <div style={{ borderTop: '1px solid var(--color-border-light)', margin: '0.4rem 0' }} />
-          )}
-          {patrolMenuItems.map((item) => (
-            <NavLink
-              key={item.key}
-              to={item.path}
-              className={({ isActive }) =>
-                `nav-item ${isActive ? 'active' : ''}`
-              }
-              id={`nav-${item.key}`}
-              title={sidebarCollapsed ? item.label : ''}
-            >
-              <span className="nav-icon">{item.icon}</span>
-              <span className="nav-label">{item.label}</span>
-            </NavLink>
-          ))}
-        </nav>
-
-        {/* 底部操作 */}
-        <div className="sidebar-footer">
-          <button
-            className="sidebar-btn collapse-btn"
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
-            id="toggle-sidebar"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              style={{ transform: sidebarCollapsed ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s ease' }}>
-              <polyline points="11 17 6 12 11 7"></polyline>
-              <polyline points="18 17 13 12 18 7"></polyline>
-            </svg>
-            {!sidebarCollapsed && <span>收起侧栏</span>}
-          </button>
-          <button className="sidebar-btn logout-btn" onClick={handleLogout} id="logout-btn" title="退出登录">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-              <polyline points="16 17 21 12 16 7"></polyline>
-              <line x1="21" y1="12" x2="9" y2="12"></line>
-            </svg>
-            {!sidebarCollapsed && <span>退出登录</span>}
-          </button>
-        </div>
-      </aside>
-
-      {/* ===== 主内容区域 ===== */}
-      <main className="main-content" id="main-content">
-        <Outlet />
-      </main>
+      <main className="main-content" id="main-content"><Outlet /></main>
     </div>
   )
 }

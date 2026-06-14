@@ -1,7 +1,7 @@
 /* ===== 占位页面样式 ===== */
 
 .placeholder-page {
-  height: 100vh;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;

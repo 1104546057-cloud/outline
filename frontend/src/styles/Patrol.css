@@ -422,10 +422,13 @@
 /* ---- 模态弹窗 ---- */
 .patrol-modal-overlay {
   position: fixed;
-  inset: 0;
+  top: var(--header-height, 92px);
+  right: 0;
+  bottom: 0;
+  left: 0;
   background: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(3px);
-  z-index: 1000;
+  z-index: 450;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -444,7 +447,7 @@
   box-shadow: var(--shadow-xl);
   width: 100%;
   max-width: 520px;
-  max-height: 90vh;
+  max-height: calc(100vh - var(--header-height, 92px) - 2rem);
   display: flex;
   flex-direction: column;
   overflow: hidden;

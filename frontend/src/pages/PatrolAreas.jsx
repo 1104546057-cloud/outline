@@ -83,7 +83,10 @@ export default function PatrolAreas() {
       const map = new AMap.Map(mapRef.current, {
         zoom: 16.8,
         center: [113.584101, 22.349278],
-        mapStyle: 'amap://styles/light',
+        layers: [
+          new AMap.TileLayer.Satellite(),
+          new AMap.TileLayer.RoadNet(),
+        ],
       })
       mapInstanceRef.current = map
     }).catch(console.error)
