@@ -118,7 +118,7 @@ async def proxy_camera_snapshot(
     snapshot_url = f"http://{device.ip_address}:{CAMERA_STREAM_PORT}/?action=snapshot"
 
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=10.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
             response = await client.get(snapshot_url)
             if response.status_code != 200:
                 raise HTTPException(
