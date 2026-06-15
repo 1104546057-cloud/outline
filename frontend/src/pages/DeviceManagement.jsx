@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import ThemedSelect from '../components/ThemedSelect'
 import { authFetch } from '../utils/authFetch'
 import '../styles/DeviceManagement.css'
 
@@ -487,7 +488,7 @@ export default function DeviceManagement() {
           )}
           {extra.usb_devices && extra.usb_devices.length > 0 && (
             <div>
-              <div className="dm-sys-label" style={{ marginBottom: '0.4rem', borderTop: '1px solid #f1f5f9', paddingTop: '0.6rem' }}>USB 外设列表</div>
+              <div className="dm-sys-label" style={{ marginTop: '0.6rem', marginBottom: '0.4rem' }}>USB 外设列表</div>
               <ul className="dm-hardware-list">
                 {extra.usb_devices.map((dev, i) => (
                   <li key={i} style={{ marginBottom: '0.2rem' }}>{dev}</li>
@@ -662,12 +663,12 @@ export default function DeviceManagement() {
                 </div>
                 <div className="dm-form-group">
                   <label>设备类型</label>
-                  <select value={addFormData.type} onChange={e => setAddFormData({...addFormData, type: e.target.value})} disabled={addSubmitting}>
+                  <ThemedSelect value={addFormData.type} onChange={e => setAddFormData({...addFormData, type: e.target.value})} disabled={addSubmitting}>
                     <option value="无人车">无人车</option>
                     <option value="无人机">无人机</option>
                     <option value="无人船">无人船</option>
                     <option value="未知设备">未知设备</option>
-                  </select>
+                  </ThemedSelect>
                 </div>
                 <div className="dm-form-group">
                   <label>IP 地址</label>
@@ -786,12 +787,12 @@ export default function DeviceManagement() {
                 </div>
                 <div className="dm-form-group">
                   <label>设备类型</label>
-                  <select value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})}>
+                  <ThemedSelect value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})}>
                     <option value="无人车">无人车</option>
                     <option value="无人机">无人机</option>
                     <option value="无人船">无人船</option>
                     <option value="未知设备">未知设备</option>
-                  </select>
+                  </ThemedSelect>
                 </div>
                 <div className="dm-form-group">
                   <label>IP 地址</label>

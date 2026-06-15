@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import AMapLoader from '@amap/amap-jsapi-loader'
+import ThemedSelect from '../components/ThemedSelect'
 import { authFetch } from '../utils/authFetch'
 import '../styles/Patrol.css'
 
@@ -286,14 +287,14 @@ export default function PatrolPoints() {
           <span className="patrol-subtitle">在区域内标记关键巡检位置</span>
         </div>
         <div className="patrol-header-actions">
-          <select
+          <ThemedSelect
+            className="patrol-header-select"
             value={selectedAreaId}
             onChange={e => { setSelectedAreaId(e.target.value); setSelectedPoint(null) }}
-            style={{ padding: '0.5rem 0.85rem', borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--color-border)', fontSize: '0.84rem', cursor: 'pointer', outline: 'none', color: 'var(--color-text-primary)', fontFamily: 'inherit' }}
           >
             <option value="">-- 选择巡检区域 --</option>
             {areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
+          </ThemedSelect>
           {selectedAreaId && (
             placing ? (
               <button className="patrol-btn patrol-btn-warning" onClick={disablePlacing}>

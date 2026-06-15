@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import ThemedSelect from '../components/ThemedSelect'
 import { authFetch } from '../utils/authFetch'
 import '../styles/ClusterManagement.css'
 
@@ -256,12 +257,12 @@ export default function ClusterManagement() {
             <form onSubmit={handleAddDevice}>
               <div className="cm-form-group">
                 <label>选择设备</label>
-                <select value={deviceToAdd} onChange={e => setDeviceToAdd(e.target.value)} required>
+                <ThemedSelect value={deviceToAdd} onChange={e => setDeviceToAdd(e.target.value)}>
                   <option value="" disabled>-- 请选择一台设备 --</option>
                   {getAvailableDevicesForCluster(selectedClusterForDevice).map(dev => (
                     <option key={dev.id} value={dev.id}>{dev.name} ({dev.type} - {dev.ip_address})</option>
                   ))}
-                </select>
+                </ThemedSelect>
                 {getAvailableDevicesForCluster(selectedClusterForDevice).length === 0 && (
                   <p style={{ color: '#ef4444', fontSize: '0.85rem', marginTop: '0.25rem' }}>所有设备已加入该集群或暂无设备</p>
                 )}

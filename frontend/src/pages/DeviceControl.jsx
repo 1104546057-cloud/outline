@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import ThemedSelect from '../components/ThemedSelect'
 import { authFetch } from '../utils/authFetch'
 import '../styles/DeviceControl.css'
 
@@ -374,7 +375,7 @@ export default function DeviceControl() {
         <div className="dc-selector-row">
           <div className="dc-selector-left">
             <h2>目标设备</h2>
-            <select 
+            <ThemedSelect
               className="dc-select"
               value={selectedDeviceId}
               onChange={(e) => setSelectedDeviceId(e.target.value)}
@@ -385,7 +386,7 @@ export default function DeviceControl() {
                   [{dev.status === 'online' ? '在线' : '离线'}] {dev.name} ({dev.type}) - {dev.ip_address}:{dev.port || 9000}
                 </option>
               ))}
-            </select>
+            </ThemedSelect>
           </div>
           <div className="dc-selector-right">
             <button className="dc-btn-test" onClick={handleTestConnection} disabled={!selectedDeviceId}>

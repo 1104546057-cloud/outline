@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import AMapLoader from '@amap/amap-jsapi-loader'
 import { useSearchParams } from 'react-router-dom'
+import ThemedSelect from '../components/ThemedSelect'
 import { authFetch } from '../utils/authFetch'
 import { wgs84CoordinatesToGcj02 } from '../utils/coordinates'
 import '../styles/Patrol.css'
@@ -449,17 +450,17 @@ export default function PatrolTasks() {
                 </div>
                 <div className="patrol-form-group">
                   <label>巡检线路 <span style={{ color: '#ef4444' }}>*</span></label>
-                  <select value={createForm.route_id} onChange={e => setCreateForm({ ...createForm, route_id: e.target.value })} disabled={creating}>
+                  <ThemedSelect value={createForm.route_id} onChange={e => setCreateForm({ ...createForm, route_id: e.target.value })} disabled={creating}>
                     <option value="">-- 选择线路 --</option>
                     {routes.map(r => <option key={r.id} value={r.id}>{r.name}（{r.point_count || 0} 点位）</option>)}
-                  </select>
+                  </ThemedSelect>
                 </div>
                 <div className="patrol-form-group">
                   <label>执行设备（可选）</label>
-                  <select value={createForm.device_id} onChange={e => setCreateForm({ ...createForm, device_id: e.target.value })} disabled={creating}>
+                  <ThemedSelect value={createForm.device_id} onChange={e => setCreateForm({ ...createForm, device_id: e.target.value })} disabled={creating}>
                     <option value="">-- 不绑定设备 --</option>
                     {devices.map(d => <option key={d.id} value={d.id}>{d.name}（{d.status === 'online' ? '🟢 在线' : '⚫ 离线'}）</option>)}
-                  </select>
+                  </ThemedSelect>
                   <span className="patrol-form-hint">绑定设备后，任务运行时将自动读取设备GPS位置记录轨迹</span>
                 </div>
                 {createError && <div className="patrol-form-error">{createError}</div>}

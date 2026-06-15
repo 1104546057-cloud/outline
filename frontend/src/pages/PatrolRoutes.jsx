@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import AMapLoader from '@amap/amap-jsapi-loader'
+import ThemedSelect from '../components/ThemedSelect'
 import { authFetch } from '../utils/authFetch'
 import '../styles/Patrol.css'
 
@@ -322,14 +323,14 @@ export default function PatrolRoutes() {
           <span className="patrol-subtitle">串联多个点位规划巡检路径，首尾自动闭环</span>
         </div>
         <div className="patrol-header-actions">
-          <select
+          <ThemedSelect
+            className="patrol-header-select"
             value={selectedAreaId}
             onChange={e => setSelectedAreaId(e.target.value)}
-            style={{ padding: '0.5rem 0.85rem', borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--color-border)', fontSize: '0.84rem', cursor: 'pointer', outline: 'none', color: 'var(--color-text-primary)', fontFamily: 'inherit' }}
           >
             <option value="">-- 选择巡检区域 --</option>
             {areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
+          </ThemedSelect>
           {selectedAreaId && (
             <button className="patrol-btn patrol-btn-primary" onClick={handleNewRoute} disabled={areaPoints.length < 2}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>

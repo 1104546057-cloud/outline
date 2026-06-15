@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import ThemedSelect from '../components/ThemedSelect'
 import { authFetch } from '../utils/authFetch'
 import '../styles/LiveVideo.css'
 
@@ -211,7 +212,7 @@ function LiveVideo() {
       <div className="lv-toolbar" id="lv-toolbar">
         <div className="lv-toolbar-left">
           {/* 设备选择 */}
-          <select
+          <ThemedSelect
             className="lv-device-select"
             id="lv-device-select"
             defaultValue=""
@@ -226,7 +227,7 @@ function LiveVideo() {
                 {d.name} ({d.ip_address}) - {d.status === 'online' ? '在线' : '离线'}
               </option>
             ))}
-          </select>
+          </ThemedSelect>
 
           {/* 添加全部在线设备 */}
           <button

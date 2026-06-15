@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import ThemedSelect from '../components/ThemedSelect'
 import { authFetch } from '../utils/authFetch'
 import '../styles/ClusterControl.css'
 
@@ -432,7 +433,7 @@ export default function ClusterControl() {
         <div className="cc-selector-row">
           <div className="cc-selector-left">
             <h2>目标集群</h2>
-            <select
+            <ThemedSelect
               className="cc-select"
               value={selectedClusterId}
               onChange={(e) => setSelectedClusterId(e.target.value)}
@@ -446,7 +447,7 @@ export default function ClusterControl() {
                   </option>
                 )
               })}
-            </select>
+            </ThemedSelect>
           </div>
           <div className="cc-selector-right">
             <button
