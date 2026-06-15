@@ -1,29 +1,18 @@
 /* eslint-disable react/prop-types */
 import { useEffect, useRef, useState } from 'react'
 import AMapLoader from '@amap/amap-jsapi-loader'
+import { wgs84CoordinatesToGcj02 } from '../utils/coordinates'
 
 const AMAP_KEY = import.meta.env.VITE_AMAP_API_KEY
 const AMAP_SECURITY_KEY = import.meta.env.VITE_AMAP_API_SECURE_KEY
 
 const validCoordinate = (lng, lat) => Number.isFinite(Number(lng)) && Number.isFinite(Number(lat))
 
-const convertGps = (AMap, coordinates) => {
-  if (coordinates.length === 0) return Promise.resolve([])
-  const chunks = []
-  for (let index = 0; index < coordinates.length; index += 40) chunks.push(coordinates.slice(index, index + 40))
-  return Promise.all(chunks.map(chunk => new Promise(resolve => {
-    AMap.convertFrom(chunk, 'gps', (status, result) => {
-      resolve(status === 'complete' && result?.info === 'ok' ? result.locations : [])
-    })
-  }))).then(results => results.flat())
-}
-
 export default function DeviceCockpitMap({ device, task }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const amapRef = useRef(null)
   const objectsRef = useRef([])
-  const renderVersionRef = useRef(0)
   const fittedKeyRef = useRef(null)
   const [status, setStatus] = useState(AMAP_KEY ? 'loading' : 'missing-key')
 
@@ -50,7 +39,6 @@ export default function DeviceCockpitMap({ device, task }) {
 
     return () => {
       mounted = false
-      renderVersionRef.current += 1
       mapRef.current?.destroy()
       mapRef.current = null
     }
@@ -61,7 +49,6 @@ export default function DeviceCockpitMap({ device, task }) {
     const AMap = amapRef.current
     if (status !== 'ready' || !map || !AMap || !device) return
 
-    const version = ++renderVersionRef.current
     objectsRef.current.forEach(object => map.remove(object))
     objectsRef.current = []
     const objects = []
@@ -96,8 +83,8 @@ export default function DeviceCockpitMap({ device, task }) {
     const rawCoordinates = gpsPoints.map(point => [Number(point.lng), Number(point.lat)])
     if (deviceHasLocation) rawCoordinates.push([Number(device.lng), Number(device.lat)])
 
-    convertGps(AMap, rawCoordinates).then(locations => {
-      if (version !== renderVersionRef.current || !mapRef.current) return
+    if (rawCoordinates.length > 0) {
+      const locations = wgs84CoordinatesToGcj02(rawCoordinates)
       const trackLocations = locations.slice(0, gpsPoints.length)
       if (trackLocations.length >= 2) {
         const trackLine = new AMap.Polyline({
@@ -130,9 +117,7 @@ export default function DeviceCockpitMap({ device, task }) {
         map.setFitView(objects, false, [28, 28, 28, 28], 18)
         fittedKeyRef.current = fitKey
       }
-    })
-
-    if (rawCoordinates.length === 0) {
+    } else {
       objectsRef.current = objects
       if (objects.length > 0) map.setFitView(objects, false, [28, 28, 28, 28], 18)
     }

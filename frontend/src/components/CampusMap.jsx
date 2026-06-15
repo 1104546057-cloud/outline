@@ -1,6 +1,7 @@
 /* eslint-disable react/prop-types */
 import { useEffect, useRef, useState } from 'react'
 import AMapLoader from '@amap/amap-jsapi-loader'
+import { wgs84ToGcj02 } from '../utils/coordinates'
 
 const AMAP_KEY = import.meta.env.VITE_AMAP_API_KEY
 const AMAP_SECURITY_KEY = import.meta.env.VITE_AMAP_API_SECURE_KEY
@@ -76,7 +77,7 @@ export default function CampusMap({ devices, selectedDevice, onSelectDevice, mod
       markerNode.title = device.name
 
       const marker = new AMap.Marker({
-        position: [lng, lat],
+        position: wgs84ToGcj02([lng, lat]),
         content: markerNode,
         offset: new AMap.Pixel(-17, -17),
         zIndex: selectedDevice?.id === device.id ? 150 : 100,
@@ -84,27 +85,17 @@ export default function CampusMap({ devices, selectedDevice, onSelectDevice, mod
       marker.on('click', () => onSelectDevice?.(device))
       map.add(marker)
       markersRef.current.push(marker)
-
-      AMap.convertFrom([lng, lat], 'gps', (convertStatus, result) => {
-        if (convertStatus === 'complete' && result?.info === 'ok' && result.locations?.[0]) {
-          marker.setPosition(result.locations[0])
-        }
-      })
     })
   }, [devices, selectedDevice, onSelectDevice, status])
 
   useEffect(() => {
     const map = mapRef.current
     const AMap = amapRef.current
-    if (!map || !AMap || !selectedDeviceLat || !selectedDeviceLng) return
+    if (!map || !AMap) return
     const lng = Number.parseFloat(selectedDeviceLng)
     const lat = Number.parseFloat(selectedDeviceLat)
     if (!Number.isFinite(lng) || !Number.isFinite(lat)) return
-    AMap.convertFrom([lng, lat], 'gps', (convertStatus, result) => {
-      if (convertStatus === 'complete' && result?.info === 'ok' && result.locations?.[0]) {
-        map.setZoomAndCenter(18, result.locations[0], true)
-      }
-    })
+    map.setZoomAndCenter(18, wgs84ToGcj02([lng, lat]), true)
   }, [selectedDeviceId, selectedDeviceLat, selectedDeviceLng])
 
   return (

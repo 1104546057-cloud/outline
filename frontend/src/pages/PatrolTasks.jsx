@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import AMapLoader from '@amap/amap-jsapi-loader'
 import { useSearchParams } from 'react-router-dom'
 import { authFetch } from '../utils/authFetch'
+import { wgs84CoordinatesToGcj02 } from '../utils/coordinates'
 import '../styles/Patrol.css'
 
 const AMAP_KEY = import.meta.env.VITE_AMAP_API_KEY
@@ -122,7 +123,7 @@ function TaskDetailMap({ task, device }) {
       })
     }
 
-    // 绘制 GPS 实际轨迹 + 当前位置 —— GPS 坐标为 WGS-84，需通过高德 API 转换为 GCJ-02
+    // 绘制 GPS 实际轨迹 + 当前位置，GPS 坐标为 WGS-84，需转换为 GCJ-02
     const gpsPoints = task.gps_track || []
     // 收集所有需要转换的 GPS 坐标（轨迹 + 设备当前位置）
     const rawCoords = gpsPoints.map(p => [p.lng, p.lat])
@@ -131,40 +132,37 @@ function TaskDetailMap({ task, device }) {
     }
 
     if (rawCoords.length > 0) {
-      AMap.convertFrom(rawCoords, 'gps', (status, result) => {
-        if (result.info !== 'ok') return
-        const locs = result.locations // 转换后的 GCJ-02 坐标数组
+      const locs = wgs84CoordinatesToGcj02(rawCoords)
 
-        // 绘制 GPS 轨迹线（绿色）
-        if (gpsPoints.length >= 2) {
-          const gpsPath = locs.slice(0, gpsPoints.length).map(l => new AMap.LngLat(l.getLng(), l.getLat()))
-          const gpsLine = new AMap.Polyline({
-            path: gpsPath, strokeColor: '#22c55e', strokeWeight: 4, strokeOpacity: 0.95, lineJoin: 'round', lineCap: 'round',
-          })
-          map.add(gpsLine)
-          objects.push(gpsLine)
-        }
+      // 绘制 GPS 轨迹线（绿色）
+      if (gpsPoints.length >= 2) {
+        const gpsPath = locs.slice(0, gpsPoints.length).map(([lng, lat]) => new AMap.LngLat(lng, lat))
+        const gpsLine = new AMap.Polyline({
+          path: gpsPath, strokeColor: '#22c55e', strokeWeight: 4, strokeOpacity: 0.95, lineJoin: 'round', lineCap: 'round',
+        })
+        map.add(gpsLine)
+        objects.push(gpsLine)
+      }
 
-        // 当前位置标记（取最后一个转换后的坐标）
-        const lastLoc = locs[locs.length - 1]
-        if (lastLoc) {
-          const curMarker = new AMap.Marker({
-            position: [lastLoc.getLng(), lastLoc.getLat()],
-            content: `<div style="width:18px;height:18px;background:#22c55e;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 4px rgba(34,197,94,0.3)"></div>`,
-            anchor: 'center',
-          })
-          map.add(curMarker)
-          objects.push(curMarker)
-        }
+      // 当前位置标记（取最后一个转换后的坐标）
+      const lastLoc = locs[locs.length - 1]
+      if (lastLoc) {
+        const curMarker = new AMap.Marker({
+          position: lastLoc,
+          content: `<div style="width:18px;height:18px;background:#22c55e;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 4px rgba(34,197,94,0.3)"></div>`,
+          anchor: 'center',
+        })
+        map.add(curMarker)
+        objects.push(curMarker)
+      }
 
-        objectsRef.current = objects
+      objectsRef.current = objects
 
-        // 只在初次加载路线时自适应一次视野，避免刷新时乱跳
-        if (objects.length > 0 && !hasFitViewRef.current) {
-          map.setFitView(objects, false, [30, 30, 30, 30], 17)
-          hasFitViewRef.current = true
-        }
-      })
+      // 只在初次加载路线时自适应一次视野，避免刷新时乱跳
+      if (objects.length > 0 && !hasFitViewRef.current) {
+        map.setFitView(objects, false, [30, 30, 30, 30], 17)
+        hasFitViewRef.current = true
+      }
     } else {
       objectsRef.current = objects
 
