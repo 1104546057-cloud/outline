@@ -34,7 +34,7 @@ export default function CampusMap({ devices, selectedDevice, onSelectDevice, mod
           zoom: 16.8,
           center: [113.584101, 22.349278],
           viewMode: '2D',
-          mapStyle: mode === 'normal' ? 'amap://styles/darkblue' : undefined,
+          mapStyle: mode === 'normal' ? 'amap://styles/light' : undefined,
           showLabel: mode === 'normal',
         }
         if (mode === 'satellite') {
