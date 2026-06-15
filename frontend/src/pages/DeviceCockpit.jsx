@@ -221,7 +221,7 @@ export default function DeviceCockpit() {
           keepalive: true,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ robotId: parsedDeviceId }),
-        }).catch(() => {})
+        }).catch(() => { })
       }
     }
   }, [parsedDeviceId, stopSending])
@@ -374,10 +374,10 @@ export default function DeviceCockpit() {
           <CockpitPanel title="摄像头画面" code="CAMERA" meta="01">
             <CameraFeed device={device} label="可见光摄像头" refreshKey={cameraRefreshKey} />
           </CockpitPanel>
-          <CockpitPanel title="红外夜视相机" code="INFRARED" meta="模拟">
+          <CockpitPanel title="红外夜视相机" code="INFRARED" meta="02">
             <CameraFeed device={device} label="红外夜视" simulated refreshKey={cameraRefreshKey} />
           </CockpitPanel>
-          <CockpitPanel title="激光雷达" code="LIDAR" meta="模拟">
+          <CockpitPanel title="激光雷达" code="LIDAR" meta="03">
             <CameraFeed device={device} label="激光雷达" simulated refreshKey={cameraRefreshKey} />
           </CockpitPanel>
           <CockpitPanel title="巡逻路线" code="PATROL ROUTE" meta={runningTask ? '执行中' : '实时定位'} className="cockpit-map-panel">
