@@ -1,7 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import ThemedSelect from '../components/ThemedSelect'
 import { authFetch } from '../utils/authFetch'
 import '../styles/LiveVideo.css'
+
+const ASPECT_RATIO = 4 / 3
+const DEFAULT_CARD_WIDTH = 480
+const MIN_CARD_WIDTH = 160
+const MAX_CARD_WIDTH = 800
 
 /**
  * 实时画面页面
@@ -13,12 +19,15 @@ import '../styles/LiveVideo.css'
 const CAMERA_PORT = 8080
 
 function LiveVideo() {
+  const [searchParams] = useSearchParams()
+  const targetDeviceId = searchParams.get('deviceId') // 从 Dashboard 跳转时携带的设备 ID
   const [devices, setDevices] = useState([])
   const [loading, setLoading] = useState(true)
   const [layout, setLayout] = useState(4) // 1, 4, 6, 9
   const [activeStreams, setActiveStreams] = useState([]) // [{deviceId, device, status}]
   const [fullscreenIndex, setFullscreenIndex] = useState(null) // 全屏的画面索引
   const [toast, setToast] = useState(null)
+  const [cardWidth, setCardWidth] = useState(DEFAULT_CARD_WIDTH) // 同步缩放宽度
   const initializedRef = useRef(false) // 标记是否已自动初始化过
 
   // 获取设备列表
@@ -43,9 +52,25 @@ function LiveVideo() {
   }, [fetchDevices])
 
   // 设备列表加载完成后，自动打开所有设备画面（在线排前面）
+  // 若 URL 带 deviceId 参数，则只打开该设备的单画面
   useEffect(() => {
     if (initializedRef.current || devices.length === 0) return
     initializedRef.current = true
+
+    // 如果有指定设备 ID（从 Dashboard 双击跳转过来的场景）
+    if (targetDeviceId) {
+      const target = devices.find(d => d.id === parseInt(targetDeviceId))
+      if (target) {
+        setLayout(1)
+        setActiveStreams([{
+          deviceId: target.id,
+          device: target,
+          status: 'loading',
+          errorMsg: '',
+        }])
+        return
+      }
+    }
 
     // 排序：在线设备排前面，离线设备排后面
     const sorted = [...devices].sort((a, b) => {
@@ -70,7 +95,7 @@ function LiveVideo() {
       status: 'loading',
       errorMsg: '',
     })))
-  }, [devices])
+  }, [devices, targetDeviceId])
 
   // 添加视频流画面
   const addStream = (deviceId) => {
@@ -173,6 +198,34 @@ function LiveVideo() {
     }
   }
 
+  // ===== 拖拽缩放子画面宽度（统一宽度） =====
+  const resizeRef = useRef({ active: false, startX: 0, origWidth: 0 })
+
+  const handleResizeStart = useCallback((e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    resizeRef.current = {
+      active: true,
+      startX: e.clientX,
+      origWidth: cardWidth,
+    }
+    document.addEventListener('pointermove', handleResizeMove)
+    document.addEventListener('pointerup', handleResizeEnd)
+  }, [cardWidth])
+
+  const handleResizeMove = useCallback((e) => {
+    if (!resizeRef.current.active) return
+    const { startX, origWidth } = resizeRef.current
+    const dx = e.clientX - startX
+    setCardWidth(Math.min(MAX_CARD_WIDTH, Math.max(MIN_CARD_WIDTH, origWidth + dx)))
+  }, [])
+
+  const handleResizeEnd = useCallback(() => {
+    resizeRef.current.active = false
+    document.removeEventListener('pointermove', handleResizeMove)
+    document.removeEventListener('pointerup', handleResizeEnd)
+  }, [handleResizeMove])
+
   // 全屏切换
   const toggleFullscreen = (index) => {
     setFullscreenIndex(fullscreenIndex === index ? null : index)
@@ -261,6 +314,27 @@ function LiveVideo() {
         </div>
 
         <div className="lv-toolbar-right">
+          {/* 同步缩放控制 */}
+          <div className="lv-scale-control">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <polyline points="9 21 3 21 3 15"></polyline>
+              <line x1="21" y1="3" x2="14" y2="10"></line>
+              <line x1="3" y1="21" x2="10" y2="14"></line>
+            </svg>
+            <input
+              type="range"
+              min={MIN_CARD_WIDTH}
+              max={MAX_CARD_WIDTH}
+              step="10"
+              value={cardWidth}
+              onChange={e => setCardWidth(parseInt(e.target.value))}
+              className="lv-scale-slider"
+              title="同步缩放所有画面"
+            />
+            <span className="lv-scale-value">{Math.round(cardWidth)}×{Math.round(cardWidth / ASPECT_RATIO)}px</span>
+          </div>
+
           {/* 布局切换 */}
           <div className="lv-layout-btns">
             {[1, 4, 6, 9].map(n => (
@@ -306,7 +380,7 @@ function LiveVideo() {
           </div>
         </div>
       ) : (
-        <div className={`lv-video-grid layout-${layout}`} id="lv-video-grid">
+        <div className={`lv-video-grid layout-${layout}`} id="lv-video-grid" style={{ '--lv-card-width': `${cardWidth}px`, '--lv-card-height': `${Math.round(cardWidth / ASPECT_RATIO)}px` }}>
           {activeStreams.map((stream, idx) => (
             <VideoCard
               key={stream.deviceId}
@@ -317,6 +391,7 @@ function LiveVideo() {
               onCapture={() => captureSnapshot(stream.deviceId)}
               onToggleFullscreen={() => toggleFullscreen(idx)}
               onStatusChange={(status, err) => updateStreamStatus(stream.deviceId, status, err)}
+              onResizeStart={handleResizeStart}
             />
           ))}
 
@@ -353,7 +428,7 @@ function LiveVideo() {
  * 视频卡片组件
  * 单个设备的视频流展示
  */
-function VideoCard({ stream, index, isFullscreen, onRemove, onCapture, onToggleFullscreen, onStatusChange }) {
+function VideoCard({ stream, index, isFullscreen, onRemove, onCapture, onToggleFullscreen, onStatusChange, onResizeStart }) {
   const { device, status, errorMsg } = stream
   const imgRef = useRef(null)
   const retryTimerRef = useRef(null)
@@ -528,6 +603,12 @@ function VideoCard({ stream, index, isFullscreen, onRemove, onCapture, onToggleF
             <span className="lv-video-fps">15 fps</span>
           </div>
         )}
+
+        {/* 拖拽缩放手柄 */}
+        <div
+          className="lv-resize-handle"
+          onPointerDown={onResizeStart}
+        />
       </div>
     </div>
   )

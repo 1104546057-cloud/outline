@@ -50,6 +50,8 @@
 .panel-heading h2 { color: #e5f8ff; font-size: 13px; line-height: 1; letter-spacing: .7px; white-space: nowrap; }
 .panel-heading small { margin-left: 8px; color: #397c9f; font: 8px/1 'Courier New', monospace; letter-spacing: .7px; white-space: nowrap; }
 .panel-meta { padding: 2px 7px; color: #5cbde4; border: 1px solid rgba(51, 174, 226, .22); background: rgba(15, 92, 139, .18); font-size: 9px; white-space: nowrap; }
+.panel-meta-clickable { cursor: pointer; transition: all .25s ease; }
+.panel-meta-clickable:hover { color: #fff; border-color: rgba(43, 210, 255, .65); background: rgba(43, 210, 255, .18); box-shadow: 0 0 8px rgba(43, 210, 255, .25); text-shadow: 0 0 6px rgba(43, 210, 255, .5); }
 .panel-content { position: relative; z-index: 2; flex: 1; min-height: 0; overflow: hidden; }
 
 .device-scroll, .task-scroll { height: 100%; padding: 7px; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; }
@@ -116,7 +118,8 @@
 
 .video-strip-wrap { position: relative; width: 100%; height: 100%; min-width: 0; overflow: hidden; }
 .video-strip { width: 100%; height: 100%; display: flex; gap: 7px; padding: 7px; overflow-x: auto; overflow-y: hidden; scroll-behavior: smooth; overscroll-behavior-x: contain; scrollbar-width: none; -ms-overflow-style: none; }
-.overview-video-card { min-width: 240px; width: 240px; height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(39, 146, 202, .32); background: #020b18; }
+.overview-video-card { min-width: 240px; width: 240px; height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(39, 146, 202, .32); background: #020b18; cursor: pointer; transition: border-color .25s, box-shadow .25s; }
+.overview-video-card:hover { border-color: rgba(43, 210, 255, .7); box-shadow: 0 0 12px rgba(43, 210, 255, .15); }
 .video-card-head, .video-card-foot { height: 25px; flex: 0 0 25px; display: flex; align-items: center; justify-content: space-between; padding: 0 7px; color: #7097ac; background: rgba(7, 37, 68, .88); font-size: 8px; }
 .video-card-head strong { overflow: hidden; max-width: 165px; color: #bfe2f2; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .video-card-head span.online { color: var(--green); }.video-card-head span.offline { color: #667f8e; }

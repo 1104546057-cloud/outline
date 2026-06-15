@@ -23,22 +23,22 @@ const formatDistance = value => {
   return value >= 1000 ? `${(value / 1000).toFixed(2)} km` : `${Math.round(value)} m`
 }
 
-function Panel({ title, code, meta, className = '', children }) {
+function Panel({ title, code, meta, className = '', children, onMetaClick }) {
   return (
     <section className={`command-panel ${className}`}>
       <div className="panel-corner top-left" /><div className="panel-corner top-right" />
       <div className="panel-heading">
         <div><span className="panel-title-mark" /><h2>{title}</h2><small>{code}</small></div>
-        {meta && <span className="panel-meta">{meta}</span>}
+        {meta && <span className={`panel-meta${onMetaClick ? ' panel-meta-clickable' : ''}`} onClick={onMetaClick}>{meta}</span>}
       </div>
       <div className="panel-content">{children}</div>
     </section>
   )
 }
 
-function DevicePanel({ devices, selectedDevice, onSelect, onOpenCockpit }) {
+function DevicePanel({ devices, selectedDevice, onSelect, onOpenCockpit, onMetaClick }) {
   return (
-    <Panel title="无人设备状态" code="DEVICE STATUS" meta={`${devices.length} 台`} className="device-panel">
+    <Panel title="无人设备状态" code="DEVICE STATUS" meta={`${devices.length} 台`} className="device-panel" onMetaClick={onMetaClick}>
       <div className="device-scroll">
         {devices.length === 0 && <EmptyState text="暂无设备数据" />}
         {devices.map(device => (
@@ -55,9 +55,9 @@ function DevicePanel({ devices, selectedDevice, onSelect, onOpenCockpit }) {
   )
 }
 
-function TaskPanel({ tasks, onView, onStart, onDelete, busyTask }) {
+function TaskPanel({ tasks, onView, onStart, onDelete, busyTask, onMetaClick }) {
   return (
-    <Panel title="巡检任务" code="PATROL MISSIONS" meta={`${tasks.length} 项`} className="task-panel">
+    <Panel title="巡检任务" code="PATROL MISSIONS" meta={`${tasks.length} 项`} className="task-panel" onMetaClick={onMetaClick}>
       <div className="task-scroll">
         {tasks.length === 0 && <EmptyState text="暂无巡检任务" />}
         {tasks.map(task => {
@@ -85,11 +85,11 @@ function TaskPanel({ tasks, onView, onStart, onDelete, busyTask }) {
   )
 }
 
-function VideoCard({ device }) {
+function VideoCard({ device, onClick }) {
   const [failed, setFailed] = useState(false)
   const online = device.status === 'online'
   return (
-    <div className="overview-video-card">
+    <div className="overview-video-card" onClick={onClick}>
       <div className="video-card-head"><strong>{device.name}</strong><span className={online ? 'online' : 'offline'}>{online ? 'LIVE' : 'OFFLINE'}</span></div>
       <div className="video-frame">
         {online && !failed ? (
@@ -104,7 +104,7 @@ function VideoCard({ device }) {
   )
 }
 
-function VideoStrip({ devices }) {
+function VideoStrip({ devices, onVideoClick }) {
   const stripRef = useRef(null)
 
   const handleWheel = event => {
@@ -119,7 +119,7 @@ function VideoStrip({ devices }) {
   return (
     <div className="video-strip-wrap">
       <div className="video-strip" ref={stripRef} onWheel={handleWheel}>
-        {devices.length === 0 ? <EmptyState text="暂无可用设备画面" /> : devices.map(device => <VideoCard device={device} key={device.id} />)}
+        {devices.length === 0 ? <EmptyState text="暂无可用设备画面" /> : devices.map(device => <VideoCard device={device} key={device.id} onClick={() => onVideoClick(device)} />)}
       </div>
     </div>
   )
@@ -244,8 +244,9 @@ function Dashboard() {
             selectedDevice={selectedDevice}
             onSelect={setSelectedDevice}
             onOpenCockpit={device => navigate(`/device-cockpit/${device.id}`)}
+            onMetaClick={() => navigate('/devices')}
           />
-          <TaskPanel tasks={tasks} onView={viewTask} onStart={startTask} onDelete={setDeleteTask} busyTask={busyTask} />
+          <TaskPanel tasks={tasks} onView={viewTask} onStart={startTask} onDelete={setDeleteTask} busyTask={busyTask} onMetaClick={() => navigate('/patrol/tasks')} />
         </div>
 
         <div className="dashboard-column center-column">
@@ -254,7 +255,7 @@ function Dashboard() {
             <div className="map-legend"><span><i className="online" />在线</span><span><i className="warning" />告警</span><span><i className="offline" />离线</span></div>
           </Panel>
           <Panel title="无人设备实时画面" code="LIVE CAMERA STREAMS" meta="横向浏览" className="video-panel">
-            <VideoStrip devices={devices} />
+            <VideoStrip devices={devices} onVideoClick={device => navigate(`/live-video?deviceId=${device.id}`)} />
           </Panel>
         </div>
 

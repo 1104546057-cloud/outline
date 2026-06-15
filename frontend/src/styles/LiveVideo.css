@@ -164,27 +164,24 @@
 .lv-video-grid {
   display: grid;
   gap: 1rem;
-  min-height: 400px;
+  justify-content: center;
+  min-height: 300px;
 }
 
 .lv-video-grid.layout-1 {
-  grid-template-columns: 1fr;
-}
-
-.lv-video-grid.layout-2 {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: var(--lv-card-width, 320px);
 }
 
 .lv-video-grid.layout-4 {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, var(--lv-card-width, 320px));
 }
 
 .lv-video-grid.layout-6 {
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(3, var(--lv-card-width, 320px));
 }
 
 .lv-video-grid.layout-9 {
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(3, var(--lv-card-width, 320px));
 }
 
 /* ===== 视频卡片 ===== */
@@ -307,8 +304,7 @@
 .lv-video-container {
   position: relative;
   background: #0f172a;
-  flex: 1;
-  min-height: 240px;
+  aspect-ratio: 4/3;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -337,8 +333,7 @@
   padding: 2rem;
   text-align: center;
   width: 100%;
-  height: 100%;
-  min-height: 240px;
+  aspect-ratio: 4/3;
 }
 
 .lv-placeholder-icon {
@@ -547,6 +542,103 @@
   background: linear-gradient(135deg, #dc2626, #b91c1c);
 }
 
+/* ===== 同步缩放控制 ===== */
+.lv-scale-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #64748b;
+}
+
+.lv-scale-slider {
+  width: 110px;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #e2e8f0;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.lv-scale-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.3);
+  transition: transform 0.15s;
+}
+
+.lv-scale-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.lv-scale-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.3);
+}
+
+.lv-scale-value {
+  font-size: 0.72rem;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  color: #94a3b8;
+  min-width: 80px;
+  text-align: right;
+}
+
+/* ===== 拖拽缩放手柄 ===== */
+.lv-resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  z-index: 15;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.lv-video-card:hover .lv-resize-handle {
+  opacity: 1;
+}
+
+.lv-resize-handle::before,
+.lv-resize-handle::after {
+  content: '';
+  position: absolute;
+  background: rgba(59, 130, 246, 0.6);
+  border-radius: 1px;
+}
+
+.lv-resize-handle::before {
+  width: 10px;
+  height: 2px;
+  bottom: 4px;
+  right: 4px;
+  transform: rotate(-45deg);
+}
+
+.lv-resize-handle::after {
+  width: 6px;
+  height: 2px;
+  bottom: 3px;
+  right: 3px;
+  transform: rotate(-45deg) translateX(-3px) translateY(-4px);
+}
+
+.lv-video-card.fullscreen .lv-resize-handle {
+  display: none;
+}
+
 /* ===== 动画 ===== */
 @keyframes lv-fadeIn {
   from { opacity: 0; transform: translateY(8px); }
@@ -568,10 +660,15 @@
 }
 
 /* ===== 响应式 ===== */
-@media (max-width: 1024px) {
+@media (max-width: 768px) {
+  .live-video-page {
+    padding: 1rem;
+  }
+
+  .lv-video-grid.layout-4,
   .lv-video-grid.layout-6,
   .lv-video-grid.layout-9 {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
 
   .lv-toolbar {
@@ -582,19 +679,7 @@
   .lv-toolbar-left,
   .lv-toolbar-right {
     justify-content: flex-start;
-  }
-}
-
-@media (max-width: 768px) {
-  .live-video-page {
-    padding: 1rem;
-  }
-
-  .lv-video-grid.layout-2,
-  .lv-video-grid.layout-4,
-  .lv-video-grid.layout-6,
-  .lv-video-grid.layout-9 {
-    grid-template-columns: 1fr;
+    flex-wrap: wrap;
   }
 
   .lv-toolbar-left {
@@ -604,5 +689,13 @@
 
   .lv-device-select {
     min-width: unset;
+  }
+
+  .lv-scale-control {
+    display: none;
+  }
+
+  .lv-resize-handle {
+    display: none;
   }
 }

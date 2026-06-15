@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import AMapLoader from '@amap/amap-jsapi-loader'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import ThemedSelect from '../components/ThemedSelect'
 import { authFetch } from '../utils/authFetch'
 import { wgs84CoordinatesToGcj02 } from '../utils/coordinates'
@@ -215,6 +215,7 @@ function TaskCamera({ deviceIp, devicePort }) {
 
 export default function PatrolTasks() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const [tasks, setTasks] = useState([])
   const [routes, setRoutes] = useState([])
   const [devices, setDevices] = useState([])
@@ -350,6 +351,9 @@ export default function PatrolTasks() {
           <span className="patrol-subtitle">创建并监控无人设备的巡检执行任务</span>
         </div>
         <div className="patrol-header-actions">
+          <button className="patrol-btn patrol-btn-secondary" onClick={() => navigate('/patrol/areas')}>巡检区域</button>
+          <button className="patrol-btn patrol-btn-secondary" onClick={() => navigate('/patrol/points')}>巡检点位</button>
+          <button className="patrol-btn patrol-btn-secondary" onClick={() => navigate('/patrol/routes')}>巡检线路</button>
           <button className="patrol-btn patrol-btn-primary" onClick={() => { setShowCreateModal(true); setCreateError('') }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
             新建任务
