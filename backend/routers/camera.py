@@ -27,8 +27,11 @@ router = APIRouter(prefix="/api/devices", tags=["摄像头"])
 # 格式: { device_id: { "task": asyncio.Task, "stop_event": asyncio.Event, "start_time": datetime, "filename": str } }
 _recording_sessions: dict[int, dict] = {}
 
-# 录制视频保存目录（相对于 backend 目录的 ../camera_videos）
-CAMERA_VIDEOS_DIR = Path(__file__).resolve().parent.parent.parent / "camera_videos"
+# 录制视频保存目录（相对于 backend 目录的 ../data/camera_videos）
+CAMERA_VIDEOS_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "camera_videos"
+
+# 快照保存目录（相对于 backend 目录的 ../data/camera_snapshots）
+CAMERA_SNAPSHOTS_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "camera_snapshots"
 
 
 @router.get("/{device_id}/camera/stream")
@@ -125,6 +128,15 @@ async def proxy_camera_snapshot(
                     status_code=502,
                     detail=f"摄像头快照获取失败 (HTTP {response.status_code})"
                 )
+
+            # 将快照保存到本地文件
+            CAMERA_SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            snapshot_filename = f"{device.name}_{timestamp}.jpg"
+            snapshot_filepath = CAMERA_SNAPSHOTS_DIR / snapshot_filename
+            snapshot_filepath.write_bytes(response.content)
+            print(f"[{datetime.now()}] 快照已保存: {snapshot_filepath}")
+
             return Response(
                 content=response.content,
                 media_type="image/jpeg",
