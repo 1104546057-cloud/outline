@@ -15,6 +15,8 @@ class LoginRequest(BaseModel):
     """登录请求体"""
     username: str
     password: str
+    captcha_id: str
+    captcha_code: str
 
 
 class LoginResponse(BaseModel):

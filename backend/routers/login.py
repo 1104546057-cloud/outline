@@ -14,6 +14,7 @@ from models import User
 from schemas import LoginRequest, LoginResponse
 from auth import create_access_token
 from config import ACCESS_TOKEN_EXPIRE_MINUTES
+from captcha_store import verify_captcha
 
 router = APIRouter(prefix="/api/auth", tags=["认证"])
 
@@ -26,6 +27,10 @@ async def login(request: LoginRequest, response: Response, db: Session = Depends
     从 MySQL 数据库查询用户，使用 bcrypt 验证密码。
     测试账号可在 .env 中配置 (DEFAULT_ADMIN_USER / DEFAULT_ADMIN_PASSWORD)。
     """
+    # 校验图片验证码
+    if not verify_captcha(request.captcha_id, request.captcha_code):
+        raise HTTPException(status_code=422, detail="验证码错误或已过期")
+
     # 从数据库查询用户
     user = db.query(User).filter(User.username == request.username).first()
 

@@ -1,5 +1,5 @@
 /* eslint-disable react/prop-types */
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import '../styles/Login.css'
 
@@ -11,6 +11,8 @@ function LoginIcon({ name, size = 19 }) {
     eyeOff: <><path d="m3 3 18 18M10.6 6.2A10.8 10.8 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-3 3.7M6.2 6.2C3.5 8 2 12 2 12s3.5 6 10 6c1.3 0 2.5-.2 3.5-.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></>,
     shield: <><path d="M12 3 4.5 6v5.5c0 4.7 3.1 7.8 7.5 9.5 4.4-1.7 7.5-4.8 7.5-9.5V6L12 3Z"/><path d="m9 12 2 2 4-5"/></>,
     alert: <><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></>,
+    refresh: <><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></>,
+    captcha: <><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M7 10h.01M12 10h.01M17 10h.01M7 14h10"/></>,
   }
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>
 }
@@ -23,37 +25,68 @@ function Login() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [modalType, setModalType] = useState(null)
+
+  const [captchaId, setCaptchaId] = useState('')
+  const [captchaImage, setCaptchaImage] = useState('')
+  const [captchaCode, setCaptchaCode] = useState('')
+  const [captchaLoading, setCaptchaLoading] = useState(false)
+
   const navigate = useNavigate()
+
+  const fetchCaptcha = useCallback(async () => {
+    setCaptchaLoading(true)
+    setCaptchaCode('')
+    try {
+      const res = await fetch('/api/auth/captcha')
+      const data = await res.json()
+      setCaptchaId(data.captcha_id)
+      setCaptchaImage(data.image)
+    } catch {
+      // 忽略网络错误，保持旧验证码
+    } finally {
+      setCaptchaLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     const saved = localStorage.getItem('dwc_remember')
-    if (!saved) return
-    try {
-      const data = JSON.parse(saved)
-      setUsername(data.username || '')
-      setPassword(data.password || '')
-      setRememberMe(true)
-    } catch {
-      localStorage.removeItem('dwc_remember')
+    if (saved) {
+      try {
+        const data = JSON.parse(saved)
+        setUsername(data.username || '')
+        setPassword(data.password || '')
+        setRememberMe(true)
+      } catch {
+        localStorage.removeItem('dwc_remember')
+      }
     }
-  }, [])
+    fetchCaptcha()
+  }, [fetchCaptcha])
 
   const handleLogin = async event => {
     event.preventDefault()
     setError('')
     if (!username.trim()) { setError('请输入用户名'); return }
     if (!password.trim()) { setError('请输入密码'); return }
+    if (!captchaCode.trim()) { setError('请输入验证码'); return }
     setIsLoading(true)
 
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim(), password }),
+        body: JSON.stringify({
+          username: username.trim(),
+          password,
+          captcha_id: captchaId,
+          captcha_code: captchaCode.trim(),
+        }),
       })
       const data = await response.json()
       if (!response.ok) {
         setError(data.detail || '用户名或密码错误')
+        // 验证失败时刷新验证码
+        fetchCaptcha()
         return
       }
 
@@ -63,6 +96,7 @@ function Login() {
       navigate('/dashboard')
     } catch {
       setError('无法连接到服务器，请检查后端服务是否启动')
+      fetchCaptcha()
     } finally {
       setIsLoading(false)
     }
@@ -122,6 +156,42 @@ function Login() {
               </button>
               <i className="field-focus-line" />
             </label>
+
+            {/* 验证码行 */}
+            <div className="captcha-row">
+              <label className="tech-field captcha-input-field" htmlFor="captcha">
+                <span className="field-icon"><LoginIcon name="captcha" /></span>
+                <span className="field-divider" />
+                <input
+                  id="captcha"
+                  type="text"
+                  placeholder="请输入验证码"
+                  value={captchaCode}
+                  onChange={event => setCaptchaCode(event.target.value)}
+                  autoComplete="off"
+                  maxLength={6}
+                  disabled={isLoading}
+                />
+                <i className="field-focus-line" />
+              </label>
+
+              <button
+                type="button"
+                className="captcha-img-btn"
+                onClick={fetchCaptcha}
+                disabled={captchaLoading}
+                title="点击刷新验证码"
+                aria-label="刷新验证码"
+              >
+                {captchaLoading
+                  ? <span className="captcha-spinner" />
+                  : captchaImage
+                    ? <img src={captchaImage} alt="验证码" className="captcha-img" />
+                    : <span className="captcha-placeholder"><LoginIcon name="refresh" size={18} /></span>
+                }
+                <span className="captcha-refresh-hint"><LoginIcon name="refresh" size={13} /></span>
+              </button>
+            </div>
 
             <div className="login-options">
               <label className="tech-checkbox">
