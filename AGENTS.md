@@ -17,7 +17,7 @@
 在 `backend` 目录中运行：
 
 ```powershell
-D:/ProgramData/miniforge3/envs/DevicesWebControl/python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+D:/ProgramData/miniforge3/envs/DevicesWebControl/python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 --timeout-graceful-shutdown 1
 ```
 
 ## 启动前端

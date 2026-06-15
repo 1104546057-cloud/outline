@@ -25,3 +25,6 @@ DEVICE_ONLINE_TIMEOUT_SECONDS = int(os.getenv("DEVICE_ONLINE_TIMEOUT_SECONDS", "
 
 # 摄像头服务端口（mjpg_streamer 默认 8080）
 CAMERA_STREAM_PORT = int(os.getenv("CAMERA_STREAM_PORT", "8080"))
+
+# 视频录制结束处理超时。FFmpeg 由 imageio-ffmpeg 提供和解析。
+CAMERA_RECORD_FINALIZE_TIMEOUT_SECONDS = int(os.getenv("CAMERA_RECORD_FINALIZE_TIMEOUT_SECONDS", "300"))

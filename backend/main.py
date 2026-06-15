@@ -8,7 +8,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import login, users, devices, robot_control, telemetry, clusters, camera, patrol, captcha
+from routers import login, users, devices, robot_control, telemetry, clusters, camera, patrol, patrol_results, captcha
 
 # 创建 FastAPI 应用实例
 app = FastAPI(
@@ -55,4 +55,5 @@ app.include_router(telemetry.router)
 app.include_router(clusters.router)
 app.include_router(camera.router)
 app.include_router(patrol.router)
+app.include_router(patrol_results.router)
 app.include_router(captcha.router)

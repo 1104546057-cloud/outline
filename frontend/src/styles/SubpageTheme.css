@@ -7,6 +7,7 @@
   .cluster-control-page,
   .live-video-page,
   .patrol-page,
+  .patrol-results-page,
   .placeholder-page
 ) {
   --sub-bg: #020817;
@@ -70,6 +71,7 @@
   .cluster-control-page,
   .live-video-page,
   .patrol-page,
+  .patrol-results-page,
   .placeholder-page
 )::-webkit-scrollbar,
 :is(
@@ -79,7 +81,8 @@
   .device-control-page,
   .cluster-control-page,
   .live-video-page,
-  .patrol-page
+  .patrol-page,
+  .patrol-results-page
 ) *::-webkit-scrollbar {
   display: none;
   width: 0;
@@ -93,7 +96,8 @@
   .device-control-page,
   .cluster-control-page,
   .live-video-page,
-  .patrol-page
+  .patrol-page,
+  .patrol-results-page
 ) * {
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -107,6 +111,7 @@
   .cluster-control-page,
   .live-video-page,
   .patrol-page,
+  .patrol-results-page,
   .placeholder-page
 )::before {
   content: '';

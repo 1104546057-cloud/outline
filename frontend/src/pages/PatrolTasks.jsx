@@ -69,9 +69,9 @@ function TaskDetailMap({ task, device }) {
       setMapReady(true)
     }).catch(console.error)
 
-    return () => { 
+    return () => {
       isMounted = false
-      mapInstanceRef.current?.destroy() 
+      mapInstanceRef.current?.destroy()
       mapInstanceRef.current = null
     }
   }, [])
@@ -354,6 +354,7 @@ export default function PatrolTasks() {
           <button className="patrol-btn patrol-btn-secondary" onClick={() => navigate('/patrol/areas')}>巡检区域</button>
           <button className="patrol-btn patrol-btn-secondary" onClick={() => navigate('/patrol/points')}>巡检点位</button>
           <button className="patrol-btn patrol-btn-secondary" onClick={() => navigate('/patrol/routes')}>巡检线路</button>
+          <button className="patrol-btn patrol-btn-secondary" onClick={() => navigate('/patrol/results')}>巡检成果</button>
           <button className="patrol-btn patrol-btn-primary" onClick={() => { setShowCreateModal(true); setCreateError('') }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
             新建任务
