@@ -476,6 +476,50 @@
   animation: lv-pulse 1.5s infinite;
 }
 
+/* ===== 录制按钮 & REC 标识 ===== */
+.lv-card-btn.lv-recording-active {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  animation: lv-rec-pulse 1.2s ease-in-out infinite;
+}
+
+.lv-card-btn.lv-recording-active:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #dc2626;
+}
+
+.lv-rec-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.2rem 0.6rem;
+  background: rgba(239, 68, 68, 0.9);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+  z-index: 5;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+}
+
+.lv-rec-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: white;
+  animation: lv-pulse 1s infinite;
+}
+
+@keyframes lv-rec-pulse {
+  0%, 100% { background: rgba(239, 68, 68, 0.1); }
+  50% { background: rgba(239, 68, 68, 0.2); }
+}
+
 /* ===== 空状态 ===== */
 .lv-empty-state {
   background: #ffffff;

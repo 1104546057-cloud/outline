@@ -76,3 +76,6 @@ Thumbs.db
 # Temp files
 *.tmp
 *.bak
+
+# Camera record videos
+camera_videos/

@@ -29,6 +29,7 @@ function LiveVideo() {
   const [toast, setToast] = useState(null)
   const [cardWidth, setCardWidth] = useState(DEFAULT_CARD_WIDTH) // 同步缩放宽度
   const initializedRef = useRef(false) // 标记是否已自动初始化过
+  const [recordingDevices, setRecordingDevices] = useState({}) // { deviceId: { recording, startTime, filename } }
 
   // 获取设备列表
   const fetchDevices = useCallback(async () => {
@@ -96,6 +97,40 @@ function LiveVideo() {
       errorMsg: '',
     })))
   }, [devices, targetDeviceId])
+
+  // 页面加载后查询各设备的录制状态（解决刷新后状态丢失的问题）
+  const recordingCheckedRef = useRef(false)
+  useEffect(() => {
+    if (recordingCheckedRef.current || activeStreams.length === 0) return
+    recordingCheckedRef.current = true
+
+    const checkRecordingStatus = async () => {
+      const recovered = {}
+      await Promise.all(
+        activeStreams.map(async (stream) => {
+          try {
+            const res = await authFetch(`/api/devices/${stream.deviceId}/camera/record/status`)
+            if (!res.ok) return
+            const data = await res.json()
+            if (data.recording) {
+              // 用后端返回的 duration 反推 startTime
+              recovered[stream.deviceId] = {
+                recording: true,
+                startTime: Date.now() - (data.duration || 0) * 1000,
+                filename: data.filename,
+              }
+            }
+          } catch {
+            // 忽略查询失败
+          }
+        })
+      )
+      if (Object.keys(recovered).length > 0) {
+        setRecordingDevices(prev => ({ ...prev, ...recovered }))
+      }
+    }
+    checkRecordingStatus()
+  }, [activeStreams])
 
   // 添加视频流画面
   const addStream = (deviceId) => {
@@ -195,6 +230,52 @@ function LiveVideo() {
       showToast('截图已保存', 'success')
     } catch (err) {
       showToast('截图失败: ' + err.message, 'error')
+    }
+  }
+
+  // ===== 录制功能 =====
+  const toggleRecording = async (deviceId) => {
+    const isRecording = recordingDevices[deviceId]?.recording
+
+    try {
+      if (isRecording) {
+        // 停止录制
+        const res = await authFetch(`/api/devices/${deviceId}/camera/record/stop`, {
+          method: 'POST',
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.detail || '停止录制失败')
+        }
+        const data = await res.json()
+        setRecordingDevices(prev => {
+          const next = { ...prev }
+          delete next[deviceId]
+          return next
+        })
+        showToast(`录制已保存: ${data.filename} (${data.duration}秒)`, 'success')
+      } else {
+        // 开始录制
+        const res = await authFetch(`/api/devices/${deviceId}/camera/record/start`, {
+          method: 'POST',
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.detail || '开始录制失败')
+        }
+        const data = await res.json()
+        setRecordingDevices(prev => ({
+          ...prev,
+          [deviceId]: {
+            recording: true,
+            startTime: Date.now(),
+            filename: data.filename,
+          },
+        }))
+        showToast('录制已开始', 'success')
+      }
+    } catch (err) {
+      showToast(err.message, 'error')
     }
   }
 
@@ -392,6 +473,9 @@ function LiveVideo() {
               onToggleFullscreen={() => toggleFullscreen(idx)}
               onStatusChange={(status, err) => updateStreamStatus(stream.deviceId, status, err)}
               onResizeStart={handleResizeStart}
+              isRecording={!!recordingDevices[stream.deviceId]?.recording}
+              recordingStartTime={recordingDevices[stream.deviceId]?.startTime}
+              onToggleRecording={() => toggleRecording(stream.deviceId)}
             />
           ))}
 
@@ -428,10 +512,30 @@ function LiveVideo() {
  * 视频卡片组件
  * 单个设备的视频流展示
  */
-function VideoCard({ stream, index, isFullscreen, onRemove, onCapture, onToggleFullscreen, onStatusChange, onResizeStart }) {
+function VideoCard({ stream, index, isFullscreen, onRemove, onCapture, onToggleFullscreen, onStatusChange, onResizeStart, isRecording, recordingStartTime, onToggleRecording }) {
   const { device, status, errorMsg } = stream
   const imgRef = useRef(null)
   const retryTimerRef = useRef(null)
+  const [recordingDuration, setRecordingDuration] = useState(0)
+
+  // 录制计时器
+  useEffect(() => {
+    if (!isRecording || !recordingStartTime) {
+      setRecordingDuration(0)
+      return
+    }
+    const timer = setInterval(() => {
+      setRecordingDuration(Math.floor((Date.now() - recordingStartTime) / 1000))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [isRecording, recordingStartTime])
+
+  // 格式化录制时长
+  const formatDuration = (seconds) => {
+    const m = Math.floor(seconds / 60).toString().padStart(2, '0')
+    const s = (seconds % 60).toString().padStart(2, '0')
+    return `${m}:${s}`
+  }
 
   // 构建流 URL（通过后端代理）
   const streamUrl = `/api/devices/${device.id}/camera/stream`
@@ -498,6 +602,22 @@ function VideoCard({ stream, index, isFullscreen, onRemove, onCapture, onToggleF
         </div>
 
         <div className="lv-video-card-actions">
+          {/* 录制 */}
+          <button
+            className={`lv-card-btn ${isRecording ? 'lv-recording-active' : ''}`}
+            onClick={onToggleRecording}
+            title={isRecording ? '停止录制' : '开始录制'}
+            disabled={status !== 'streaming'}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {isRecording ? (
+                <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"></rect>
+              ) : (
+                <circle cx="12" cy="12" r="7" fill="currentColor"></circle>
+              )}
+            </svg>
+          </button>
+
           {/* 截图 */}
           <button
             className="lv-card-btn"
@@ -557,6 +677,14 @@ function VideoCard({ stream, index, isFullscreen, onRemove, onCapture, onToggleF
           <div className="lv-live-badge">
             <span className="lv-live-dot"></span>
             LIVE
+          </div>
+        )}
+
+        {/* REC 录制标识 */}
+        {isRecording && status === 'streaming' && (
+          <div className="lv-rec-badge">
+            <span className="lv-rec-dot"></span>
+            REC {formatDuration(recordingDuration)}
           </div>
         )}
 
