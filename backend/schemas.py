@@ -63,10 +63,10 @@ class DeviceCreate(BaseModel):
     """创建设备请求体"""
     name: str
     type: str
-    ip_address: str
+    ip_address: Optional[str] = None
     port: int = 9000
-    password: str  # 设备连接密码，用于向设备注册并获取 token
-    server_address: str  # 后端服务器地址（设备通过此地址上报遥测数据）
+    password: Optional[str] = None  # 兼容旧前端字段，公网 Agent 模式不再使用
+    server_address: Optional[str] = None  # 兼容旧前端字段
 
 
 class DeviceUpdate(BaseModel):
@@ -82,9 +82,11 @@ class DeviceResponse(BaseModel):
     id: int
     name: str
     type: str
-    ip_address: str
+    ip_address: Optional[str]
     port: int
     status: str
+    control_connected: bool = False
+    media_connected: bool = False
     battery: Optional[int]
     health: int
     signal: Optional[int]

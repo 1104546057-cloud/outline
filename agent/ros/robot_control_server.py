@@ -1,328 +1,425 @@
 #!/usr/bin/env python3
-"""TCP cmd_vel bridge for ROS1 (Noetic) wheeltec robot.
+"""Outbound WebSocket agent for ROS1 wheeltec control and media relay."""
 
-运动控制方式：通过 rospy 发布 geometry_msgs/Twist 到 /cmd_vel 话题，
-由 wheeltec_robot_node 底层驱动节点订阅并执行。
-
-依赖：
-  - ROS Noetic 环境（source /opt/ros/noetic/setup.bash）
-  - rospy, geometry_msgs（ROS 标准包）
-"""
-
-
+import argparse
+import asyncio
 import json
+import logging
 import os
-import re
-import secrets
 import signal
-import socket
-import subprocess
+import struct
+import threading
 import time
+import urllib.parse
+import urllib.request
 from configparser import ConfigParser
-from threading import Lock, Thread
-from typing import Tuple
+from pathlib import Path
+from typing import Dict, Tuple
 
 import rospy
+import websockets
 from geometry_msgs.msg import Twist
 
-# ---------------------------------------------------------------------------
-# 配置文件路径
-# ---------------------------------------------------------------------------
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-CONF_PATH = os.path.join(SCRIPT_DIR, "robot_control_server.conf")
-IOT_CONF_PATH = os.path.join(SCRIPT_DIR, "iot_client.conf")
 
-# ---------------------------------------------------------------------------
-# 常量
-# ---------------------------------------------------------------------------
-HOST = "0.0.0.0"
-TCP_PORT = 9000
+SCRIPT_DIR = Path(__file__).resolve().parent
+CONFIG_FILE = SCRIPT_DIR / "iot_client.conf"
 CMD_TIMEOUT_SEC = 0.5
-STATUS_PERIOD_SEC = 1.0
 MAX_LINEAR = 0.6
 MAX_ANGULAR = 2.0
+RECONNECT_DELAY_MAX_SEC = 15
+LOCAL_CAMERA_URL = "http://127.0.0.1:8080/?action=stream&view={view}"
+MEDIA_HEADER = struct.Struct("!BQ")
+MEDIA_VIEW_CODES = {"color": 1, "depth": 2, "lidar": 3}
+MEDIA_MAX_FPS = {"color": 15.0, "depth": 10.0, "lidar": 5.0}
 
-IOT_SERVICE_NAME = "DevicesWebControl-iot_client"
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+log = logging.getLogger("robot_agent")
 
-# ---------------------------------------------------------------------------
-# 全局状态
-# ---------------------------------------------------------------------------
-lock = Lock()
+state_lock = threading.Lock()
 last_cmd_time = 0.0
 current_v = 0.0
 current_w = 0.0
-
-# ROS Publisher（在 main 中初始化）
-cmd_vel_pub = None  # type: rospy.Publisher | None
-
-# ---------------------------------------------------------------------------
-# 鉴权状态
-# ---------------------------------------------------------------------------
-_password: str = ""
+cmd_vel_pub = None
 
 
-def _replace_conf_value(filepath: str, key: str, new_value: str) -> None:
-    """在 INI 配置文件中原地替换某个 key 的值，保留注释和格式。"""
-    pattern = re.compile(
-        rf"^(\s*{re.escape(key)}\s*=\s*)(.*)$", re.MULTILINE
+def configure_local_ros_network() -> None:
+    """Advertise a reachable local address for this single-host vehicle ROS graph."""
+    master_uri = os.environ.get("ROS_MASTER_URI", "http://localhost:11311")
+    ros_ip = os.environ.get("DWC_ROS_IP", "127.0.0.1").strip() or "127.0.0.1"
+    os.environ.pop("ROS_HOSTNAME", None)
+    os.environ["ROS_IP"] = ros_ip
+    log.info(
+        "ROS 网络环境 master=%s ROS_IP=%s ROS_HOSTNAME=%s",
+        master_uri,
+        os.environ.get("ROS_IP", ""),
+        os.environ.get("ROS_HOSTNAME", ""),
     )
-    with open(filepath, "r", encoding="utf-8") as f:
-        content = f.read()
-    new_content, n = pattern.subn(rf"\g<1>{new_value}", content)
-    if n == 0:
-        raise ValueError(f"在 {filepath} 中未找到 key: {key}")
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(new_content)
 
 
-def load_conf() -> None:
-    """冷启动时从配置文件加载 password。"""
-    global _password
-    cfg = ConfigParser()
-    cfg.read(CONF_PATH, encoding="utf-8")
-    _password = cfg.get("server", "password", fallback="").strip()
+def load_config(config_path: Path) -> Tuple[str, str]:
+    parser = ConfigParser()
+    parser.read(str(config_path), encoding="utf-8")
+    server = parser.get("client", "server", fallback="").strip().rstrip("/")
+    token = parser.get("client", "token", fallback="").strip()
+    if not server:
+        raise RuntimeError(f"未在 {config_path} 中配置 server")
+    if not token or token == "YOUR_DEVICE_TOKEN_HERE":
+        raise RuntimeError(f"未在 {config_path} 中配置有效 token")
+    return server, token
 
 
-def update_iot_conf(token: str, server_address: str) -> None:
-    """将 token 和后端服务器地址写入 iot_client.conf（保留注释）。"""
-    _replace_conf_value(IOT_CONF_PATH, "token", token)
-    _replace_conf_value(IOT_CONF_PATH, "server", server_address)
-    print(f"[AUTH] token 和 server 已写入 {IOT_CONF_PATH}", flush=True)
+def websocket_url(server: str, channel: str) -> str:
+    parsed = urllib.parse.urlsplit(server)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise RuntimeError(f"无效的服务器地址: {server}")
+    scheme = "wss" if parsed.scheme == "https" else "ws"
+    base_path = parsed.path.rstrip("/")
+    return urllib.parse.urlunsplit(
+        (scheme, parsed.netloc, f"{base_path}/api/agent/ws/{channel}", "", "")
+    )
 
-
-def restart_iot_service() -> None:
-    """重启 DevicesWebControl-iot_client 系统服务。"""
-    try:
-        subprocess.run(
-            ["sudo", "systemctl", "restart", IOT_SERVICE_NAME],
-            check=True,
-            timeout=15,
-        )
-        print(f"[AUTH] 已重启系统服务: {IOT_SERVICE_NAME}", flush=True)
-    except Exception as exc:
-        print(f"[AUTH] 重启服务 {IOT_SERVICE_NAME} 失败: {exc}", flush=True)
-
-
-# ---------------------------------------------------------------------------
-# ROS /cmd_vel 运动控制
-# ---------------------------------------------------------------------------
 
 def clamp(value: float, limit: float) -> float:
     return max(-limit, min(limit, value))
 
 
-def send_cmd_to_motor(v: float, w: float) -> None:
-    """通过 ROS 发布 Twist 消息到 /cmd_vel 话题来控制运动。
-
-    参数:
-        v: 线速度 (m/s)，正值前进，负值后退
-        w: 角速度 (rad/s)，正值左转，负值右转
-    """
+def send_cmd_to_motor(v: float, w: float, require_subscriber: bool = True) -> int:
     if cmd_vel_pub is None:
-        print("[ROS] cmd_vel_pub 未初始化，跳过发送", flush=True)
-        return
-
+        raise RuntimeError("ROS /cmd_vel Publisher 尚未初始化")
+    subscriber_count = cmd_vel_pub.get_num_connections()
+    if require_subscriber and subscriber_count <= 0:
+        raise RuntimeError("ROS /cmd_vel 没有订阅者，请检查 wheeltec_robot_node 是否运行")
     twist = Twist()
     twist.linear.x = v
     twist.angular.z = w
-
     cmd_vel_pub.publish(twist)
-    print(
-        f"[ROS] /cmd_vel v={v:.3f} w={w:.3f}",
-        flush=True,
+    log.info(
+        "发布 /cmd_vel v=%.3f w=%.3f subscribers=%s",
+        v,
+        w,
+        subscriber_count,
     )
+    return subscriber_count
 
 
 def hard_stop() -> None:
     global current_v, current_w
-    current_v = 0.0
-    current_w = 0.0
-    send_cmd_to_motor(0.0, 0.0)
+    with state_lock:
+        current_v = 0.0
+        current_w = 0.0
+    if cmd_vel_pub is not None:
+        send_cmd_to_motor(0.0, 0.0, require_subscriber=False)
 
 
 def watchdog_loop() -> None:
     global last_cmd_time
     while not rospy.is_shutdown():
         time.sleep(0.05)
-        with lock:
-            expired = last_cmd_time > 0 and (time.time() - last_cmd_time) > CMD_TIMEOUT_SEC
-            if expired:
-                last_cmd_time = 0
-                print("[SAFE] cmd timeout -> STOP", flush=True)
-                hard_stop()
+        should_stop = False
+        with state_lock:
+            if last_cmd_time > 0 and time.time() - last_cmd_time > CMD_TIMEOUT_SEC:
+                last_cmd_time = 0.0
+                should_stop = True
+        if should_stop:
+            log.warning("控制指令超时，执行停车")
+            hard_stop()
 
 
-# ---------------------------------------------------------------------------
-# TCP 指令服务
-# ---------------------------------------------------------------------------
-
-def send_json_line(conn: socket.socket, obj: dict) -> None:
-    data = (json.dumps(obj, separators=(",", ":")) + "\n").encode("utf-8")
-    conn.sendall(data)
-
-
-def status_loop(conn: socket.socket) -> None:
-    while not rospy.is_shutdown():
-        time.sleep(STATUS_PERIOD_SEC)
-        try:
-            send_json_line(conn, {"type": "status", "motor": "ok", "v": current_v, "w": current_w, "ts": int(time.time())})
-        except OSError:
-            return
-
-
-def handle_command(conn: socket.socket, msg: dict) -> None:
+def execute_command(command: dict) -> dict:
     global current_v, current_w, last_cmd_time
-    now = time.time()
-    mtype = msg.get("type")
-    if mtype == "ping":
-        send_json_line(conn, {"type": "pong", "ts": int(now)})
-        return
-    if mtype == "stop":
-        with lock:
-            last_cmd_time = now
+    command_type = command.get("type")
+    now = int(time.time())
+    if command_type == "ping":
+        return {
+            "type": "pong",
+            "ok": True,
+            "subscribers": cmd_vel_pub.get_num_connections() if cmd_vel_pub is not None else 0,
+            "ts": now,
+        }
+    if command_type == "stop":
+        with state_lock:
+            last_cmd_time = 0.0
         hard_stop()
-        send_json_line(conn, {"type": "ack", "ok": True, "ts": int(now)})
-        return
-    if mtype == "cmd_vel":
-        v = clamp(float(msg.get("v", 0.0)), MAX_LINEAR)
-        w = clamp(float(msg.get("w", 0.0)), MAX_ANGULAR)
-        with lock:
-            last_cmd_time = now
-            current_v = v
-            current_w = w
-        send_cmd_to_motor(v, w)
-        send_json_line(conn, {"type": "ack", "ok": True, "ts": int(now)})
-        return
-    send_json_line(conn, {"type": "ack", "ok": False, "err": "unknown_type", "ts": int(now)})
+        return {
+            "type": "ack",
+            "ok": True,
+            "subscribers": cmd_vel_pub.get_num_connections() if cmd_vel_pub is not None else 0,
+            "ts": now,
+        }
+    if command_type == "cmd_vel":
+        try:
+            linear = clamp(float(command.get("v", 0.0)), MAX_LINEAR)
+            angular = clamp(float(command.get("w", 0.0)), MAX_ANGULAR)
+        except (TypeError, ValueError) as exc:
+            return {"type": "ack", "ok": False, "error": str(exc), "ts": now}
+        subscriber_count = send_cmd_to_motor(linear, angular)
+        with state_lock:
+            last_cmd_time = time.time()
+            current_v = linear
+            current_w = angular
+        return {
+            "type": "ack",
+            "ok": True,
+            "v": linear,
+            "w": angular,
+            "subscribers": subscriber_count,
+            "ts": now,
+        }
+    return {"type": "ack", "ok": False, "error": "unknown_type", "ts": now}
 
 
-def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
-    """处理 TCP 客户端连接。
-    无 token 鉴权，支持 register 和其他控制指令。
-    """
-    print("connected:", addr, flush=True)
-    conn.settimeout(2.0)
-    buf = b""
-
-    Thread(target=status_loop, args=(conn,), daemon=True).start()
-
-    try:
-        while not rospy.is_shutdown():
-            chunk = conn.recv(4096)
-            if not chunk:
-                break
-            buf += chunk
-            while b"\n" in buf:
-                line, buf = buf.split(b"\n", 1)
-                if not line.strip():
+async def control_session(url: str, token: str) -> None:
+    headers = {"X-Device-Token": token}
+    async with websockets.connect(
+        url,
+        extra_headers=headers,
+        ping_interval=20,
+        ping_timeout=20,
+        close_timeout=5,
+        max_size=1024 * 1024,
+    ) as websocket:
+        log.info("控制通道已连接")
+        try:
+            while not rospy.is_shutdown():
+                try:
+                    raw_message = await asyncio.wait_for(websocket.recv(), timeout=10)
+                except asyncio.TimeoutError:
+                    await websocket.send(json.dumps({"type": "heartbeat", "ts": int(time.time())}))
                     continue
-                msg = json.loads(line.decode("utf-8"))
-                mtype = msg.get("type")
+                if not isinstance(raw_message, str):
+                    continue
+                message = json.loads(raw_message)
+                if message.get("type") != "command" or not isinstance(message.get("id"), int):
+                    continue
+                command_id = message["id"]
+                try:
+                    response = execute_command(message.get("command") or {})
+                    result = {
+                        "type": "result",
+                        "id": command_id,
+                        "ok": bool(response.get("ok")),
+                        "response": response,
+                    }
+                    if not response.get("ok"):
+                        result["error"] = response.get("error") or "command_failed"
+                except Exception as exc:
+                    hard_stop()
+                    result = {
+                        "type": "result",
+                        "id": command_id,
+                        "ok": False,
+                        "error": str(exc),
+                    }
+                await websocket.send(json.dumps(result, separators=(",", ":")))
+        finally:
+            hard_stop()
+            log.warning("控制通道已断开，车辆已停车")
 
-                # ---- register ----
-                if mtype == "register":
-                    password = str(msg.get("password", ""))
-                    server_address = str(msg.get("server_address", "")).strip()
 
-                    if not password or not server_address:
-                        send_json_line(conn, {"type": "register_result", "ok": False, "err": "password 和 server_address 为必填项", "ts": int(time.time())})
+async def control_loop(url: str, token: str) -> None:
+    delay = 1
+    while not rospy.is_shutdown():
+        try:
+            await control_session(url, token)
+            delay = 1
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            hard_stop()
+            log.error("控制通道连接失败: %s；%s 秒后重试", exc, delay)
+            await asyncio.sleep(delay)
+            delay = min(RECONNECT_DELAY_MAX_SEC, delay * 2)
+
+
+async def send_media_frame(websocket, send_lock: asyncio.Lock, view: str, jpeg: bytes) -> None:
+    payload = MEDIA_HEADER.pack(MEDIA_VIEW_CODES[view], int(time.time() * 1000)) + jpeg
+    async with send_lock:
+        await websocket.send(payload)
+
+
+def media_stream_worker(
+    view: str,
+    stop_event: threading.Event,
+    loop: asyncio.AbstractEventLoop,
+    websocket,
+    send_lock: asyncio.Lock,
+) -> None:
+    frame_interval = 1.0 / MEDIA_MAX_FPS[view]
+    last_sent_at = 0.0
+    while not stop_event.is_set():
+        try:
+            request = urllib.request.Request(
+                LOCAL_CAMERA_URL.format(view=urllib.parse.quote(view)),
+                headers={"Connection": "close"},
+            )
+            with urllib.request.urlopen(request, timeout=5) as response:
+                buffer = bytearray()
+                while not stop_event.is_set():
+                    chunk = response.read(8192)
+                    if not chunk:
+                        raise ConnectionError("本机摄像头流已结束")
+                    buffer.extend(chunk)
+                    while not stop_event.is_set():
+                        start = buffer.find(b"\xff\xd8")
+                        if start < 0:
+                            if len(buffer) > 1:
+                                del buffer[:-1]
+                            break
+                        end = buffer.find(b"\xff\xd9", start + 2)
+                        if end < 0:
+                            if start > 0:
+                                del buffer[:start]
+                            if len(buffer) > 5 * 1024 * 1024:
+                                buffer.clear()
+                            break
+                        end += 2
+                        jpeg = bytes(buffer[start:end])
+                        del buffer[:end]
+                        now = time.monotonic()
+                        if now - last_sent_at < frame_interval:
+                            continue
+                        future = asyncio.run_coroutine_threadsafe(
+                            send_media_frame(websocket, send_lock, view, jpeg),
+                            loop,
+                        )
+                        try:
+                            future.result(timeout=5)
+                        except Exception:
+                            future.cancel()
+                            raise
+                        last_sent_at = now
+        except Exception as exc:
+            if stop_event.is_set():
+                break
+            log.warning("%s 媒体流读取失败: %s；2 秒后重试", view, exc)
+            stop_event.wait(2)
+
+
+async def media_session(url: str, token: str) -> None:
+    headers = {"X-Device-Token": token}
+    workers: Dict[str, Tuple[threading.Thread, threading.Event]] = {}
+    loop = asyncio.get_running_loop()
+    send_lock = asyncio.Lock()
+
+    async with websockets.connect(
+        url,
+        extra_headers=headers,
+        ping_interval=20,
+        ping_timeout=20,
+        close_timeout=5,
+        max_size=1024 * 1024,
+    ) as websocket:
+        log.info("媒体通道已连接")
+        try:
+            async for raw_message in websocket:
+                if not isinstance(raw_message, str):
+                    continue
+                message = json.loads(raw_message)
+                view = message.get("view")
+                if view not in MEDIA_VIEW_CODES:
+                    continue
+                if message.get("type") == "stream_start":
+                    current = workers.get(view)
+                    if current and current[0].is_alive():
                         continue
-
-                    if not secrets.compare_digest(password, _password):
-                        send_json_line(conn, {"type": "register_result", "ok": False, "err": "密码错误", "ts": int(time.time())})
-                        print(f"[AUTH] {addr} 注册失败：密码错误", flush=True)
-                        continue
-
-                    # 生成新 token
-                    new_token = secrets.token_hex(32)
-
-                    # 1) 写入 iot_client.conf
-                    update_iot_conf(new_token, server_address)
-
-                    # 2) 异步重启 iot_client 服务
-                    Thread(target=restart_iot_service, daemon=True).start()
-
-                    send_json_line(conn, {
-                        "type": "register_result",
-                        "ok": True,
-                        "token": new_token,
-                        "message": f"注册成功，{IOT_SERVICE_NAME} 服务正在重启",
-                        "ts": int(time.time()),
-                    })
-                    print(f"[AUTH] {addr} 注册成功，token 已更新", flush=True)
-                else:
-                    # 其他正常指令
-                    handle_command(conn, msg)
-
-    except Exception as exc:
-        print("client error:", exc, flush=True)
-    finally:
-        print("disconnected:", addr, flush=True)
-        hard_stop()
-        conn.close()
+                    stop_event = threading.Event()
+                    worker = threading.Thread(
+                        target=media_stream_worker,
+                        args=(view, stop_event, loop, websocket, send_lock),
+                        name=f"media-{view}",
+                        daemon=True,
+                    )
+                    workers[view] = (worker, stop_event)
+                    worker.start()
+                    log.info("开始上传 %s 媒体流", view)
+                elif message.get("type") == "stream_stop":
+                    current = workers.pop(view, None)
+                    if current:
+                        current[1].set()
+                        log.info("停止上传 %s 媒体流", view)
+        finally:
+            for _, stop_event in workers.values():
+                stop_event.set()
+            log.warning("媒体通道已断开")
 
 
-# ---------------------------------------------------------------------------
-# 主入口
-# ---------------------------------------------------------------------------
+async def media_loop(url: str, token: str) -> None:
+    delay = 1
+    while not rospy.is_shutdown():
+        try:
+            await media_session(url, token)
+            delay = 1
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.error("媒体通道连接失败: %s；%s 秒后重试", exc, delay)
+            await asyncio.sleep(delay)
+            delay = min(RECONNECT_DELAY_MAX_SEC, delay * 2)
 
-def main() -> None:
+
+def init_ros() -> None:
     global cmd_vel_pub
-
-    # 冷启动：加载配置
-    load_conf()
-
-    # 初始化 ROS 节点（anonymous=True 避免节点名冲突）
-    rospy.init_node("robot_control_server", anonymous=True, disable_signals=True)
-    print("[ROS] 节点 robot_control_server 已初始化", flush=True)
-
-    # 创建 /cmd_vel 话题发布者
-    # queue_size=1: 只保留最新指令，丢弃堆积的旧指令
+    configure_local_ros_network()
+    rospy.init_node("devices_web_control_agent", anonymous=False, disable_signals=True)
     cmd_vel_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
-    print("[ROS] /cmd_vel Publisher 已创建", flush=True)
-
-    # 等待 Publisher 连接就绪（最多 5 秒）
-    wait_start = time.time()
-    while cmd_vel_pub.get_num_connections() == 0 and (time.time() - wait_start) < 5.0:
+    wait_started = time.time()
+    while cmd_vel_pub.get_num_connections() == 0 and time.time() - wait_started < 5:
         if rospy.is_shutdown():
             return
         time.sleep(0.1)
-    if cmd_vel_pub.get_num_connections() > 0:
-        print(f"[ROS] /cmd_vel 已连接到 {cmd_vel_pub.get_num_connections()} 个订阅者", flush=True)
-    else:
-        print("[ROS] 警告: /cmd_vel 暂无订阅者（wheeltec_robot_node 可能未启动），但服务器将继续运行", flush=True)
-
-    # 启动看门狗
-    Thread(target=watchdog_loop, daemon=True).start()
-
-    # 注册 SIGINT/SIGTERM 信号处理，优雅退出
-    def _shutdown_handler(signum, frame):
-        print(f"\n[MAIN] 收到信号 {signum}，正在停止...", flush=True)
-        hard_stop()
-        rospy.signal_shutdown("signal received")
-
-    signal.signal(signal.SIGINT, _shutdown_handler)
-    signal.signal(signal.SIGTERM, _shutdown_handler)
-
-    # TCP 指令服务器
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind((HOST, TCP_PORT))
-    server.listen(1)
-    server.settimeout(1.0)  # 允许定期检查 rospy.is_shutdown()
-    print(f"[TCP] 指令服务监听在 {HOST}:{TCP_PORT}", flush=True)
-    while not rospy.is_shutdown():
+    log.info("ROS /cmd_vel Publisher 已就绪，订阅者数量: %s", cmd_vel_pub.get_num_connections())
+    if cmd_vel_pub.get_num_connections() == 0:
         try:
-            conn, addr = server.accept()
-            Thread(target=handle_client, args=(conn, addr), daemon=True).start()
-        except socket.timeout:
-            continue
-        except OSError:
-            break
+            cmd_topics = [
+                f"{name} ({topic_type})"
+                for name, topic_type in rospy.get_published_topics()
+                if "cmd_vel" in name.lower()
+            ]
+            log.warning("ROS 图中可见的 cmd_vel 话题: %s", cmd_topics or "无")
+        except Exception as exc:
+            log.warning("读取 ROS 话题图失败: %s", exc)
+    threading.Thread(target=watchdog_loop, name="control-watchdog", daemon=True).start()
 
-    # 退出前确保停车
-    hard_stop()
-    print("[MAIN] 服务已停止", flush=True)
+
+async def run_agent(server: str, token: str) -> None:
+    control_url = websocket_url(server, "control")
+    media_url = websocket_url(server, "media")
+    shutdown_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    def request_shutdown() -> None:
+        hard_stop()
+        rospy.signal_shutdown("process signal")
+        shutdown_event.set()
+
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(signum, request_shutdown)
+
+    tasks = [
+        asyncio.create_task(control_loop(control_url, token)),
+        asyncio.create_task(media_loop(media_url, token)),
+    ]
+    await shutdown_event.wait()
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="DevicesWebControl ROS1 outbound agent")
+    parser.add_argument("--config", default=str(CONFIG_FILE))
+    args = parser.parse_args()
+    server, token = load_config(Path(args.config))
+    init_ros()
+    log.info("Agent 启动，公网入口: %s", server)
+    try:
+        asyncio.run(run_agent(server, token))
+    finally:
+        hard_stop()
 
 
 if __name__ == "__main__":

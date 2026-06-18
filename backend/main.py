@@ -2,13 +2,13 @@
 智慧校园巡逻管理系统 - 后端服务
 
 基于 FastAPI 框架构建的 RESTful API 后端服务。
-提供用户认证、用户管理、设备管理、真实无人车 TCP 控制和 IoT 遥测接口。
+提供用户认证、用户管理、设备管理、无人车 WebSocket 控制和 IoT 遥测接口。
 """
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import login, users, devices, robot_control, telemetry, clusters, camera, patrol, patrol_results, captcha
+from routers import agent_ws, login, users, devices, robot_control, telemetry, clusters, camera, patrol, patrol_results, captcha
 
 # 创建 FastAPI 应用实例
 app = FastAPI(
@@ -21,9 +21,9 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",  # Vite 默认开发服务器地址
-        "http://127.0.0.1:5173",
-        "http://192.168.31.28:5173",
+        "http://localhost:5273",
+        "http://127.0.0.1:5273",
+        "http://192.168.31.28:5273",
     ],
     allow_credentials=True,
     allow_methods=["*"],  # 允许所有 HTTP 方法
@@ -57,3 +57,4 @@ app.include_router(camera.router)
 app.include_router(patrol.router)
 app.include_router(patrol_results.router)
 app.include_router(captcha.router)
+app.include_router(agent_ws.router)

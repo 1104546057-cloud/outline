@@ -43,22 +43,16 @@ export default function DeviceManagement() {
   // add device modal (手动添加)
   const [showAddModal, setShowAddModal] = useState(false)
   const defaultServerAddr = () => {
-    // 优先使用缓存的地址，否则根据当前浏览器访问的主机推断
-    try {
-      const cached = localStorage.getItem('dwc_server_address')
-      if (cached) return cached
-    } catch (e) { /* ignore */ }
-    const host = window.location.hostname
-    return `http://${host}:8000`
+    return 'http://192.168.31.28:5273'
   }
-  const [addFormData, setAddFormData] = useState({ name: '', type: '无人车', ip_address: '', port: 9000, password: '123456', server_address: defaultServerAddr() })
+  const [addFormData, setAddFormData] = useState({ name: '', type: '无人车', ip_address: '' })
   const [addSubmitting, setAddSubmitting] = useState(false)
   const [addError, setAddError] = useState('')
 
   // edit modal
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingDevice, setEditingDevice] = useState(null)
-  const [formData, setFormData] = useState({ name: '', type: '无人车', ip_address: '', port: 9000 })
+  const [formData, setFormData] = useState({ name: '', type: '无人车' })
 
   // token modal
   const [showTokenModal, setShowTokenModal] = useState(false)
@@ -130,9 +124,6 @@ export default function DeviceManagement() {
       name: deviceInfo.ssid,
       type: deviceInfo.type,
       ip_address: deviceInfo.ip,
-      port: 9000,
-      password: '123456',
-      server_address: defaultServerAddr(),
     })
     setAddError('')
     setShowAddModal(true)
@@ -141,10 +132,6 @@ export default function DeviceManagement() {
   const handleManualAdd = async (e) => {
     e.preventDefault()
     setAddError('')
-    if (!addFormData.password.trim()) {
-      setAddError('请输入设备连接密码')
-      return
-    }
     setAddSubmitting(true)
     try {
       const res = await authFetch('/api/devices', {
@@ -153,10 +140,18 @@ export default function DeviceManagement() {
         body: JSON.stringify(addFormData)
       })
       if (res.ok) {
-        // 缓存成功使用的服务器地址
-        try { localStorage.setItem('dwc_server_address', addFormData.server_address) } catch (e) { /* ignore */ }
+        const created = await res.json()
         setShowAddModal(false)
-        setAddFormData({ name: '', type: '无人车', ip_address: '', port: 9000, password: '123456', server_address: defaultServerAddr() })
+        setAddFormData({ name: '', type: '无人车', ip_address: '' })
+        setTokenDevice(created)
+        setTokens([{
+          id: created.token_id,
+          token: created.token,
+          note: `车端配置：server = ${created.server_address}`,
+          is_active: true,
+          created_at: new Date().toISOString(),
+        }])
+        setShowTokenModal(true)
         fetchDevices()
       } else {
         const err = await res.json()
@@ -183,7 +178,7 @@ export default function DeviceManagement() {
 
   const handleEdit = (device) => {
     setEditingDevice(device)
-    setFormData({ name: device.name, type: device.type, ip_address: device.ip_address, port: device.port || 9000 })
+    setFormData({ name: device.name, type: device.type })
     setShowEditModal(true)
   }
 
@@ -720,7 +715,7 @@ export default function DeviceManagement() {
                 <div className="dm-device-icon">{getDeviceIcon(dev.type)}</div>
                 <div>
                   <h3 className="dm-device-name">{dev.name}</h3>
-                  <p className="dm-device-ip">{dev.ip_address}:{dev.port || 9000}</p>
+                  <p className="dm-device-ip">Agent 主动连接 · 控制{dev.control_connected ? '已连接' : '未连接'} · 媒体{dev.media_connected ? '已连接' : '未连接'}</p>
                 </div>
               </div>
               <span className={`dm-device-status ${dev.status}`}>{getStatusLabel(dev.status)}</span>
@@ -827,30 +822,16 @@ export default function DeviceManagement() {
                   </ThemedSelect>
                 </div>
                 <div className="dm-form-group">
-                  <label>IP 地址</label>
-                  <input type="text" value={addFormData.ip_address} onChange={e => setAddFormData({...addFormData, ip_address: e.target.value})} placeholder="例：192.168.31.200" required disabled={addSubmitting} />
-                </div>
-                <div className="dm-form-group">
-                  <label>控制服务端口号</label>
-                  <input type="number" value={addFormData.port} onChange={e => setAddFormData({...addFormData, port: parseInt(e.target.value) || 9000})} placeholder="缺省为 9000" min="1" max="65535" disabled={addSubmitting} />
-                  <span className="dm-form-hint">树莓派控制服务默认监听 9000 端口</span>
-                </div>
-                <div className="dm-form-group">
-                  <label>连接密码 <span style={{ color: '#ef4444', fontSize: '0.75rem' }}>*必填</span></label>
-                  <input type="password" value={addFormData.password} onChange={e => setAddFormData({...addFormData, password: e.target.value})} placeholder="输入设备连接密码" required disabled={addSubmitting} autoComplete="off" />
-                  <span className="dm-form-hint">设备端预设的连接密码，用于验证身份并获取通信令牌</span>
-                </div>
-                <div className="dm-form-group">
-                  <label>上报服务器地址 <span style={{ color: '#ef4444', fontSize: '0.75rem' }}>*必填</span></label>
-                  <input type="text" value={addFormData.server_address} onChange={e => setAddFormData({...addFormData, server_address: e.target.value})} placeholder="例：http://192.168.31.28:8000" required disabled={addSubmitting} />
-                  <span className="dm-form-hint">设备将通过此地址上报遥测数据，请填写后端服务器的局域网 IP</span>
+                  <label>公网接入地址</label>
+                  <input type="text" value={defaultServerAddr()} readOnly />
+                  <span className="dm-form-hint">添加后平台生成 Token，再将地址和 Token 写入车端 agent/ros/iot_client.conf</span>
                 </div>
                 {addError && <p className="dm-form-error">{addError}</p>}
               </div>
               <div className="dm-modal-footer">
                 <button type="button" className="dm-btn-cancel" onClick={() => setShowAddModal(false)} disabled={addSubmitting}>取消</button>
                 <button type="submit" className="dm-btn-submit" disabled={addSubmitting}>
-                  {addSubmitting ? '正在连接设备...' : '添加设备'}
+                  {addSubmitting ? '正在生成配置...' : '添加并生成 Token'}
                 </button>
               </div>
             </form>
@@ -950,15 +931,6 @@ export default function DeviceManagement() {
                     <option value="未知设备">未知设备</option>
                   </ThemedSelect>
                 </div>
-                <div className="dm-form-group">
-                  <label>IP 地址</label>
-                  <input type="text" value={formData.ip_address} onChange={e => setFormData({...formData, ip_address: e.target.value})} required />
-                </div>
-                <div className="dm-form-group">
-                  <label>控制服务端口号</label>
-                  <input type="number" value={formData.port} onChange={e => setFormData({...formData, port: parseInt(e.target.value) || 9000})} min="1" max="65535" />
-                  <span className="dm-form-hint">树莓派控制服务默认监听 9000 端口</span>
-                </div>
               </div>
               <div className="dm-modal-footer">
                 <button type="button" className="dm-btn-cancel" onClick={() => setShowEditModal(false)}>取消</button>
@@ -978,7 +950,7 @@ export default function DeviceManagement() {
               <button className="dm-modal-close" onClick={() => setShowTokenModal(false)}>✕</button>
             </div>
             <div className="dm-modal-body">
-              <p className="dm-token-desc">设备 Token 在添加设备时自动生成，用于设备 IoT 客户端向后端上报遥测数据的认证凭证。</p>
+              <p className="dm-token-desc">将服务器地址 <code>{defaultServerAddr()}</code> 和下方 Token 写入车端 <code>agent/ros/iot_client.conf</code>。同一 Token 用于 IoT 上报、控制通道和媒体通道。</p>
               <div className="dm-token-list">
                 {tokens.length === 0 ? (
                   <p style={{ color: '#94a3b8' }}>暂无 Token，设备注册时将自动生成</p>

@@ -357,7 +357,7 @@ function LiveVideo() {
             <option value="" disabled>选择设备添加到画面...</option>
             {availableDevices.map(d => (
               <option key={d.id} value={d.id}>
-                {d.name} ({d.ip_address}) - {d.status === 'online' ? '在线' : '离线'}
+                {d.name} - {d.media_connected ? '媒体已连接' : '媒体未连接'}
               </option>
             ))}
           </ThemedSelect>
@@ -593,7 +593,7 @@ function VideoCard({ stream, index, isFullscreen, onRemove, onCapture, onToggleF
       <div className="lv-video-card-header">
         <div className="lv-video-card-info">
           <span className="lv-video-card-name">{device.name}</span>
-          <span className="lv-video-card-ip">{device.ip_address}</span>
+          <span className="lv-video-card-ip">{device.media_connected ? 'Agent 媒体通道' : '等待媒体连接'}</span>
           <div className="lv-video-card-status">
             <span className={`lv-status-dot ${statusDotClass}`}></span>
             <span>{statusLabel}</span>

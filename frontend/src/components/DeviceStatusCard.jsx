@@ -51,7 +51,7 @@ export default function DeviceStatusCard({ device, selected = false, onClick, on
         <span className={`device-symbol ${device.status}`}>{info.icon}</span>
         <div className="device-main">
           <strong>{device.name}</strong>
-          <small>{info.label} · {device.ip_address}:{device.port || 9000}</small>
+          <small>{info.label} · Agent {device.control_connected ? '控制已连接' : '等待连接'}</small>
         </div>
         <span className={`status-pill ${device.status}`}>{STATUS_LABEL[device.status] || '离线'}</span>
       </div>

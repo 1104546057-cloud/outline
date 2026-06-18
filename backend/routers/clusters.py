@@ -9,7 +9,6 @@ import asyncio
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -162,9 +161,8 @@ async def cluster_control_cmd_vel(
     
     async def _send_to_device(device):
         try:
-            response = await run_in_threadpool(
-                send_robot_control_message,
-                device.ip_address, device.port or 9000,
+            response = await send_robot_control_message(
+                device.id,
                 {"type": "cmd_vel", "v": linear, "w": angular},
                 "ack"
             )
@@ -206,9 +204,8 @@ async def cluster_control_stop(
 
     async def _send_to_device(device):
         try:
-            response = await run_in_threadpool(
-                send_robot_control_message,
-                device.ip_address, device.port or 9000,
+            response = await send_robot_control_message(
+                device.id,
                 {"type": "stop"},
                 "ack"
             )
@@ -238,7 +235,7 @@ async def cluster_control_send(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """向集群下发特定的 TCP JSON 指令（需登录）"""
+    """通过 Agent WebSocket 向集群下发特定 JSON 指令（需登录）"""
     cluster = db.query(Cluster).filter(Cluster.id == cluster_id).first()
     if not cluster:
         raise HTTPException(status_code=404, detail="集群不存在")
@@ -262,9 +259,8 @@ async def cluster_control_send(
 
     async def _send_to_device(device):
         try:
-            response = await run_in_threadpool(
-                send_robot_control_message,
-                device.ip_address, device.port or 9000,
+            response = await send_robot_control_message(
+                device.id,
                 payload,
                 expected
             )

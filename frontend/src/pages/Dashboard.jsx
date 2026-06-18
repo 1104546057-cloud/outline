@@ -99,7 +99,7 @@ function VideoCard({ device, onClick }) {
         )}
         <div className="video-scanline" />
       </div>
-      <div className="video-card-foot"><span>{device.ip_address}</span><span>640×480 · 15 FPS</span></div>
+      <div className="video-card-foot"><span>{device.media_connected ? '媒体已连接' : '媒体未连接'}</span><span>640×480 · 15 FPS</span></div>
     </div>
   )
 }

@@ -16,12 +16,12 @@ iot_client.py — ROS1 wheeltec 无人车设备端上报客户端（ROS-like 重
       roslaunch wheeltec_gps_driver wheeltec_dual_rtk_driver_nmea.launch
 
 用法：
-  python3 iot_client.py --server http://<服务器IP>:8000 --token <设备Token>
+  python3 iot_client.py --server http://<服务器IP>:5273 --token <设备Token>
 
 配置文件（可选，与脚本同目录的 iot_client.conf）：
   [client]
-  server   = http://192.168.1.100:8000
-  token    = <从管理后台 /api/iot/tokens 获取的 Token>
+  server   = http://192.168.31.28:5273
+  token    = <从设备管理页面获取的 Token>
   interval = 60
   point_id = 1
   route_id = 1
@@ -79,6 +79,20 @@ CONFIG_FILE = SCRIPT_DIR / "iot_client.conf"
 # 6S 锂电池电压范围（用于换算电量百分比）
 _BATTERY_VOLTAGE_MIN = 18.0   # 3.0V/cell × 6，放电截止
 _BATTERY_VOLTAGE_MAX = 25.2   # 4.2V/cell × 6，满电
+
+
+def configure_local_ros_network() -> None:
+    """Advertise a reachable local address for this single-host vehicle ROS graph."""
+    master_uri = os.environ.get("ROS_MASTER_URI", "http://localhost:11311")
+    ros_ip = os.environ.get("DWC_ROS_IP", "127.0.0.1").strip() or "127.0.0.1"
+    os.environ.pop("ROS_HOSTNAME", None)
+    os.environ["ROS_IP"] = ros_ip
+    log.info(
+        "ROS 网络环境 master=%s ROS_IP=%s ROS_HOSTNAME=%s",
+        master_uri,
+        os.environ.get("ROS_IP", ""),
+        os.environ.get("ROS_HOSTNAME", ""),
+    )
 
 # ── ROS 话题缓存（线程安全）──────────────────────────────────────────────────
 _ros_lock = Lock()
@@ -727,7 +741,7 @@ def collect_telemetry(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
 def load_config() -> Dict[str, Any]:
     """从命令行 + 配置文件合并参数，命令行优先。"""
     parser = argparse.ArgumentParser(description="ROS1 wheeltec 无人车 IoT 上报客户端")
-    parser.add_argument("--server",    default="",  help="后端服务器地址，如 http://192.168.1.100:8000")
+    parser.add_argument("--server",    default="",  help="公网统一入口，如 http://192.168.31.28:5273")
     parser.add_argument("--token",     default="",  help="设备 Token（从管理后台创建）")
     parser.add_argument("--interval",  type=int, default=0, help="遥测上报间隔秒数，默认 60")
     parser.add_argument("--point-id",  type=int, default=0, help="当前巡检点 ID（0 表示不绑定）")
@@ -849,6 +863,7 @@ def main() -> None:
     cfg = load_config()
 
     # 初始化 ROS 节点和所有话题订阅
+    configure_local_ros_network()
     ros_ok = init_ros_subscribers()
     if ros_ok:
         # 等待第一次电压数据到达（最多 3 秒）
@@ -859,6 +874,11 @@ def main() -> None:
             log.info(f"ROS 电源数据已就绪，当前电压: {_ros_voltage:.2f}V")
         else:
             log.warning("ROS 电源数据未就绪（turn_on_wheeltec_robot.launch 可能未启动）")
+            try:
+                topic_types = dict(rospy.get_published_topics())
+                log.warning("ROS 图中 /PowerVoltage 类型: %s", topic_types.get("/PowerVoltage", "未发现"))
+            except Exception as exc:
+                log.warning("读取 ROS 话题图失败: %s", exc)
     else:
         log.warning("ROS 未初始化，电量读取将降级为 sysfs，其余 ROS 数据不可用")
 

@@ -260,7 +260,7 @@ export default function ClusterManagement() {
                 <ThemedSelect value={deviceToAdd} onChange={e => setDeviceToAdd(e.target.value)}>
                   <option value="" disabled>-- 请选择一台设备 --</option>
                   {getAvailableDevicesForCluster(selectedClusterForDevice).map(dev => (
-                    <option key={dev.id} value={dev.id}>{dev.name} ({dev.type} - {dev.ip_address})</option>
+                    <option key={dev.id} value={dev.id}>{dev.name} ({dev.type})</option>
                   ))}
                 </ThemedSelect>
                 {getAvailableDevicesForCluster(selectedClusterForDevice).length === 0 && (

@@ -29,7 +29,7 @@ if [ ! -d "$WORK_DIR" ]; then
   exit 1
 fi
 
-REQUIRED_FILES="iot_client.conf iot_client.py robot_control_server.conf robot_control_server.py ros_camera_server.py rosconsole_camera.config start_camera.sh"
+REQUIRED_FILES="iot_client.conf iot_client.py robot_control_server.py ros_camera_server.py rosconsole_camera.config start_camera.sh"
 
 MISSING_FILES=""
 for file in $REQUIRED_FILES; do
@@ -144,14 +144,14 @@ sudo systemctl restart gpsd
 sudo systemctl enable gpsd
 
 echo ">>> 4. 安装 Python / ROS 图像依赖..."
-sudo apt-get -y install python3-psutil python3-opencv python3-numpy ros-noetic-cv-bridge gstreamer1.0-tools gstreamer1.0-plugins-good
+sudo apt-get -y install python3-psutil python3-opencv python3-numpy python3-websockets ros-noetic-cv-bridge gstreamer1.0-tools gstreamer1.0-plugins-good
 
 echo ">>> 5. 授权并配置服务..."
 
 echo ">> 5.1 将用户加入硬件访问组 (dialout, video, i2c)..."
 sudo usermod -aG dialout,video,i2c ${RUN_USER} || echo "警告: 组分配可能未完全成功，请检查系统组。"
 
-echo ">> 5.2 配置控制服务 (robot_control_server, ROS1)..."
+echo ">> 5.2 配置主动连接服务 (WebSocket Agent, ROS1)..."
 # 检测 ROS setup.bash 路径
 ROS_SETUP="/opt/ros/noetic/setup.bash"
 WHEELTEC_SETUP="/home/${RUN_USER}/wheeltec_robot/devel/setup.bash"
@@ -161,8 +161,9 @@ fi
 
 sudo tee /etc/systemd/system/DevicesWebControl-robot_control_server.service > /dev/null << EOF
 [Unit]
-Description=DevicesWebControl Robot Control Server (ROS1)
-After=network-online.target
+Description=DevicesWebControl Outbound WebSocket Agent (ROS1)
+Requires=turn_on_wheeltec_robot.service
+After=network-online.target turn_on_wheeltec_robot.service
 Wants=network-online.target
 
 [Service]
@@ -174,6 +175,7 @@ RestartSec=3
 User=${RUN_USER}
 Group=${RUN_USER}
 Environment="ROS_MASTER_URI=http://localhost:11311"
+Environment="ROS_IP=127.0.0.1"
 
 [Install]
 WantedBy=multi-user.target
@@ -183,13 +185,14 @@ echo ">> 5.3 配置 IoT 服务 (iot_client)..."
 sudo tee /etc/systemd/system/DevicesWebControl-iot_client.service > /dev/null << EOF
 [Unit]
 Description=DevicesWebControl IoT Client
-After=network-online.target
-Wants=network-online.target
+After=network-online.target turn_on_wheeltec_robot.service
+Wants=network-online.target turn_on_wheeltec_robot.service
 
 [Service]
 Type=simple
 WorkingDirectory=${WORK_DIR}
 Environment="ROS_MASTER_URI=http://localhost:11311"
+Environment="ROS_IP=127.0.0.1"
 ExecStart=/bin/bash -c 'source ${ROS_SETUP} && source ${WHEELTEC_SETUP} 2>/dev/null; exec python3 ${WORK_DIR}/iot_client.py --config ${WORK_DIR}/iot_client.conf'
 Restart=always
 RestartSec=5
@@ -205,7 +208,7 @@ sudo tee /etc/systemd/system/DevicesWebControl-camera.service > /dev/null << EOF
 [Unit]
 Description=DevicesWebControl ROS Gemini Camera Stream
 After=network-online.target turn_on_wheeltec_robot.service
-Wants=network-online.target
+Wants=network-online.target turn_on_wheeltec_robot.service
 
 [Service]
 Type=simple
@@ -223,6 +226,12 @@ EOF
 echo ">> 启动并激活相关服务..."
 sudo systemctl daemon-reload
 
+if ! sudo systemctl cat turn_on_wheeltec_robot.service > /dev/null 2>&1; then
+  echo "错误: 未找到 turn_on_wheeltec_robot.service，无法启动 Wheeltec 底盘控制节点。"
+  exit 1
+fi
+sudo systemctl enable --now turn_on_wheeltec_robot.service
+
 sudo systemctl enable DevicesWebControl-robot_control_server
 sudo systemctl start DevicesWebControl-robot_control_server
 
@@ -232,16 +241,6 @@ sudo systemctl start DevicesWebControl-iot_client
 sudo systemctl enable DevicesWebControl-camera
 sudo systemctl start DevicesWebControl-camera
 
-echo ">>> 5.5 授权 ${RUN_USER} 用户重启 iot 服务..."
-SYSTEMCTL_PATH=$(which systemctl)
-echo ">> systemctl 路径: ${SYSTEMCTL_PATH}"
-cat << EOF | sudo tee /etc/sudoers.d/deviceswebcontrol
-${RUN_USER} ALL=(root) NOPASSWD: ${SYSTEMCTL_PATH} restart DevicesWebControl-iot_client
-EOF
-sudo chmod 0440 /etc/sudoers.d/deviceswebcontrol
-# 验证 sudoers 文件语法
-sudo visudo -cf /etc/sudoers.d/deviceswebcontrol && echo ">> sudoers 配置验证通过" || echo "!! sudoers 配置有误，请检查"
-
 echo "=========================================="
-echo "部署完成！接下来请进入控制台进行添加设备。"
+echo "部署完成！请确认 iot_client.conf 已填写平台生成的设备 Token。"
 echo "=========================================="

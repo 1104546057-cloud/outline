@@ -12,15 +12,15 @@ import secrets
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models import User, Device, DeviceTelemetry, DeviceToken
 from schemas import DeviceCreate, DeviceUpdate
 from auth import get_current_user
-from config import PLATFORM_DEFAULT_GPS_LAT, PLATFORM_DEFAULT_GPS_LNG
-from robot_tcp import register_device_tcp, update_device_online_status
+from config import PLATFORM_DEFAULT_GPS_LAT, PLATFORM_DEFAULT_GPS_LNG, PUBLIC_SERVER_URL
+from agent_gateway import agent_gateway
+from robot_tcp import update_device_online_status
 
 router = APIRouter(prefix="/api", tags=["设备管理"])
 
@@ -47,6 +47,7 @@ def _initial_gps_location() -> tuple[float, float]:
 
 def _build_device_response(dev: Device, db: Session) -> dict:
     """构建设备响应，附带最新遥测扩展信息"""
+    agent_connected = agent_gateway.is_control_connected(dev.id) or agent_gateway.is_media_connected(dev.id)
     extra = None
     # 查询最新遥测记录的扩展信息
     latest_telemetry = db.query(DeviceTelemetry).filter(
@@ -60,9 +61,11 @@ def _build_device_response(dev: Device, db: Session) -> dict:
         "id": dev.id,
         "name": dev.name,
         "type": dev.type,
-        "ip_address": dev.ip_address,
+        "ip_address": None if dev.ip_address.startswith("agent-") else dev.ip_address,
         "port": dev.port or 9000,
-        "status": dev.status or "offline",
+        "status": "online" if agent_connected else (dev.status or "offline"),
+        "control_connected": agent_gateway.is_control_connected(dev.id),
+        "media_connected": agent_gateway.is_media_connected(dev.id),
         "battery": dev.battery,
         "health": dev.health or 100,
         "signal": dev.signal,
@@ -97,50 +100,19 @@ async def create_device(
     """
     添加设备（需登录）。
 
-    流程：
-    1. 通过 TCP 连接到设备的 robot_control_server
-    2. 发送 register 消息（携带连接密码和本后端 server_address）
-    3. 设备验证密码后生成 token 并返回
-    4. 后端将设备信息和 token 存入数据库
+    公网 Agent 模式下平台先创建设备和 Token，再将返回的配置写入车端。
+    车端使用该 Token 主动连接本平台，无需平台访问车端 IP。
     """
-    existing = db.query(Device).filter(Device.ip_address == device_data.ip_address).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="该IP地址的设备已存在")
+    requested_ip = (device_data.ip_address or "").strip()
+    if requested_ip:
+        existing = db.query(Device).filter(Device.ip_address == requested_ip).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="该IP地址的设备已存在")
 
     # 验证端口号范围
     port = device_data.port
     if port < 1 or port > 65535:
         raise HTTPException(status_code=422, detail="端口号必须在 1 到 65535 之间")
-
-    # ---- 通过 TCP 向设备注册，获取 token ----
-    register_payload = {
-        "type": "register",
-        "password": device_data.password,
-        "server_address": device_data.server_address,
-    }
-
-    try:
-        register_response = await run_in_threadpool(
-            register_device_tcp,
-            device_data.ip_address,
-            port,
-            register_payload,
-        )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502,
-            detail=f"无法连接到设备 {device_data.ip_address}:{port}，请检查设备是否在线: {exc}",
-        )
-
-    if not register_response.get("ok"):
-        err_msg = register_response.get("err", "注册失败")
-        raise HTTPException(status_code=400, detail=f"设备注册失败: {err_msg}")
-
-    device_token = register_response.get("token", "")
-    if not device_token:
-        raise HTTPException(status_code=502, detail="设备注册成功但未返回 token")
 
     # ---- 存入数据库 ----
     initial_lat, initial_lng = _initial_gps_location()
@@ -148,9 +120,10 @@ async def create_device(
     new_device = Device(
         name=device_data.name,
         type=device_data.type,
-        ip_address=device_data.ip_address,
+        # 兼容现有非空唯一列；占位值不再参与任何网络路由。
+        ip_address=requested_ip or f"agent-{secrets.token_hex(8)}",
         port=port,
-        status="online",
+        status="offline",
         last_seen=None,
         health=100,
         speed="0 m/s",
@@ -160,11 +133,11 @@ async def create_device(
     db.add(new_device)
     db.flush()
 
-    # 将设备返回的 token 存入 device_tokens 表
+    device_token = secrets.token_hex(32)
     new_token = DeviceToken(
         device_id=new_device.id,
         token=device_token,
-        note=f"设备注册时自动生成，由 {current_user.username} 添加",
+        note=f"公网 Agent 预配置，由 {current_user.username} 添加",
         is_active=True,
     )
     db.add(new_token)
@@ -172,7 +145,7 @@ async def create_device(
     # 在设备首次上报真实 GPS 前，保留一条平台默认定位附近的历史记录。
     initial_telemetry = DeviceTelemetry(
         device_id=new_device.id,
-        status="online",
+        status="offline",
         lat=initial_lat,
         lng=initial_lng,
         extra_json={
@@ -188,7 +161,13 @@ async def create_device(
     db.commit()
     db.refresh(new_device)
 
-    return _build_device_response(new_device, db)
+    response = _build_device_response(new_device, db)
+    response.update({
+        "token": device_token,
+        "token_id": new_token.id,
+        "server_address": PUBLIC_SERVER_URL,
+    })
+    return response
 
 
 @router.put("/devices/{device_id}")

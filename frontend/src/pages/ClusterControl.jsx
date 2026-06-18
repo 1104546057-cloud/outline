@@ -835,7 +835,7 @@ function MiniCameraCard({ device, x, y, width, height, onDragStart, onResizeStar
         )}
         {status === 'streaming' && (
           <div className="cc-mini-cam-info">
-            <span>{device.ip_address}</span>
+            <span>{device.control_connected ? 'Agent 已连接' : 'Agent 未连接'}</span>
           </div>
         )}
       </div>

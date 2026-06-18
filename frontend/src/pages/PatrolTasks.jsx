@@ -178,18 +178,16 @@ function TaskDetailMap({ task, device }) {
 }
 
 /** 摄像头实时画面 */
-function TaskCamera({ deviceIp, devicePort }) {
+function TaskCamera({ deviceId }) {
   const [imgSrc, setImgSrc] = useState(null)
   const [camError, setCamError] = useState(false)
 
   useEffect(() => {
-    if (!deviceIp) return
-    const STREAM_PORT = 8080
-    // 使用 action=stream 获取实时的 MJPEG 视频流，无需 interval 轮询
-    setImgSrc(`http://${deviceIp}:${STREAM_PORT}/?action=stream`)
-  }, [deviceIp])
+    if (!deviceId) return
+    setImgSrc(`/api/devices/${deviceId}/camera/stream?view=color`)
+  }, [deviceId])
 
-  if (!deviceIp) {
+  if (!deviceId) {
     return (
       <div className="patrol-video-placeholder">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"><polygon points="23,7 16,12 23,17 23,7" /><rect x="1" y="5" width="15" height="14" rx="2" /></svg>
@@ -548,13 +546,12 @@ export default function PatrolTasks() {
                   <div className="patrol-video-section">
                     <div className="patrol-video-header">
                       <span>📷 实时摄像头画面</span>
-                      {detailTask.device_ip && (
+                      {detailTask.device_id && (
                         <span className="patrol-video-live-dot">LIVE</span>
                       )}
                     </div>
                     <TaskCamera
-                      deviceIp={detailTask.device_ip}
-                      devicePort={detailTask.device_port}
+                      deviceId={detailTask.device_id}
                     />
                   </div>
 

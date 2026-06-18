@@ -107,6 +107,7 @@ if [ "$START_LIDAR_DRIVER" != "never" ]; then
 fi
 
 "$PYTHON_BIN" "$SCRIPT_DIR/ros_camera_server.py" \
+  --host 127.0.0.1 \
   --port "$CAMERA_HTTP_PORT" \
   --camera-device "$CAMERA_DEVICE" \
   --camera-fps 30 \

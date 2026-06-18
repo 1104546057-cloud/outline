@@ -30,6 +30,7 @@ export default function DeviceControl() {
   const mountedRef = useRef(true)
   const imgRef = useRef(null)
   const retryTimerRef = useRef(null)
+  const commandBusyRef = useRef(false)
 
   useEffect(() => {
     mountedRef.current = true
@@ -125,7 +126,7 @@ export default function DeviceControl() {
       const data = await res.json()
       if (res.ok && data.ok) {
         setConnectionStatus('已连接')
-        addLog(`✅ 连接成功 → ${data.target.host}:${data.target.port}`)
+        addLog(`✅ 连接成功 → Agent WebSocket（设备 ${data.target.deviceId}，ROS订阅者 ${data.response?.subscribers ?? '--'}）`)
         // 刷新设备列表以获取更新后的在线状态
         fetchDevices()
       } else {
@@ -140,7 +141,8 @@ export default function DeviceControl() {
 
   // ===== 发送 cmd_vel =====
   const sendCmdVel = useCallback(async (linear, angular) => {
-    if (!selectedDeviceId) return
+    if (!selectedDeviceId || commandBusyRef.current) return
+    commandBusyRef.current = true
     try {
       const res = await authFetch('/api/robot-control/cmd_vel', {
         method: 'POST',
@@ -154,7 +156,7 @@ export default function DeviceControl() {
       if (res.ok) {
         const data = await res.json()
         if (data.ok) {
-          addLog(`📡 cmd_vel v=${data.linear.toFixed(3)} w=${data.angular.toFixed(3)}`)
+          addLog(`📡 cmd_vel v=${data.linear.toFixed(3)} w=${data.angular.toFixed(3)} · ROS订阅者 ${data.response?.subscribers ?? '--'}`)
         }
       } else {
         const err = await res.json()
@@ -164,6 +166,8 @@ export default function DeviceControl() {
     } catch (e) {
       addLog(`❌ 网络错误: ${e.message}`, 'error')
       stopSending()
+    } finally {
+      commandBusyRef.current = false
     }
   }, [selectedDeviceId, addLog])
 
@@ -367,7 +371,7 @@ export default function DeviceControl() {
     <div className="device-control-page">
       <div className="dc-header">
         <h1 className="page-title">🕹️ 远程遥控无人车</h1>
-        <span className="page-subtitle">通过 TCP 协议向树莓派发送真实控制指令 · 按住方向键持续运动，松开停车</span>
+        <span className="page-subtitle">通过 Agent WebSocket 发送真实控制指令 · 按住方向键持续运动，松开停车</span>
       </div>
 
       {/* 设备选择 + 连接状态 */}
@@ -383,7 +387,7 @@ export default function DeviceControl() {
               {devices.length === 0 && <option value="">暂无可用设备</option>}
               {devices.map(dev => (
                 <option key={dev.id} value={dev.id}>
-                  [{dev.status === 'online' ? '在线' : '离线'}] {dev.name} ({dev.type}) - {dev.ip_address}:{dev.port || 9000}
+                  [{dev.status === 'online' ? '在线' : '离线'}] {dev.name} ({dev.type}) - Agent {dev.control_connected ? '已连接' : '未连接'}
                 </option>
               ))}
             </ThemedSelect>
@@ -628,7 +632,7 @@ export default function DeviceControl() {
           {/* 发送特定指令 */}
           <div className="dc-control-card">
             <h3>📝 发送特定指令</h3>
-            <p className="dc-control-desc">直接输入 JSON 指令通过 TCP 发送到设备端口。</p>
+            <p className="dc-control-desc">直接输入 JSON 指令，通过 Agent WebSocket 发送到设备。</p>
             
             <form className="dc-custom-form" onSubmit={handleCustomSend}>
               <div className="dc-input-group">

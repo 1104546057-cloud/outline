@@ -126,7 +126,7 @@ export default function DeviceCockpit() {
       const data = await response.json()
       if (response.ok && data.ok) {
         setConnectionStatus('已连接')
-        setControlMessage(`控制服务已连接 ${data.target?.host || device.ip_address}:${data.target?.port || device.port || 9000}`)
+        setControlMessage('车端 Agent WebSocket 控制通道已连接')
       } else {
         setConnectionStatus('不可达')
         setControlMessage(data.detail || '设备控制服务不可达')

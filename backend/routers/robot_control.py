@@ -1,24 +1,23 @@
 """
-机器人 TCP 控制路由
+机器人 WebSocket 控制路由
 
-提供无人车运动控制（cmd_vel / stop / send / ping）和配置查询接口。
+通过车端主动连接提供无人车运动控制（cmd_vel / stop / send / ping）和配置查询接口。
 """
 
 from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User, Device
+from models import User
 from schemas import RobotControlCmdVel, RobotControlStop, RobotControlSend
 from auth import get_current_user
 from robot_tcp import (
     send_robot_control_message,
     normalize_control_value,
-    resolve_device_target,
+    require_device,
 )
 from config import ROBOT_CONTROL_MAX_LINEAR, ROBOT_CONTROL_MAX_ANGULAR
 
@@ -42,18 +41,16 @@ async def robot_control_status(
         raise HTTPException(status_code=422, detail="请选择一个设备")
     
     print(f"[{datetime.now()}] [HTTP REQ] GET /api/robot-control/status?robotId={robotId}", flush=True)
-    host, port = resolve_device_target(robotId, db)
-    response = await run_in_threadpool(send_robot_control_message, host, port, {"type": "ping"}, "pong")
+    device = require_device(robotId, db)
+    response = await send_robot_control_message(robotId, {"type": "ping"}, "pong")
     print(f"[{datetime.now()}] [HTTP RES] /api/robot-control/status -> {response}", flush=True)
     
     # TCP ping 成功 → 标记设备在线
-    device = db.query(Device).filter(Device.id == robotId).first()
-    if device:
-        device.status = "online"
-        device.last_seen = datetime.now()
-        db.commit()
+    device.status = "online"
+    device.last_seen = datetime.now()
+    db.commit()
     
-    return {"ok": True, "target": {"host": host, "port": port}, "response": response}
+    return {"ok": True, "target": {"deviceId": robotId, "transport": "websocket"}, "response": response}
 
 
 @router.post("/cmd_vel")
@@ -70,27 +67,24 @@ async def robot_control_cmd_vel(
         raise HTTPException(status_code=422, detail="请选择一个设备")
     
     print(f"[{datetime.now()}] [HTTP REQ] POST /api/robot-control/cmd_vel Body: {cmd.dict()}", flush=True)
-    host, port = resolve_device_target(cmd.robotId, db)
+    device = require_device(cmd.robotId, db)
     linear = normalize_control_value(cmd.linear, ROBOT_CONTROL_MAX_LINEAR, "linear")
     angular = normalize_control_value(cmd.angular, ROBOT_CONTROL_MAX_ANGULAR, "angular")
-    response = await run_in_threadpool(
-        send_robot_control_message,
-        host, port,
+    response = await send_robot_control_message(
+        cmd.robotId,
         {"type": "cmd_vel", "v": linear, "w": angular},
         "ack"
     )
     print(f"[{datetime.now()}] [HTTP RES] /api/robot-control/cmd_vel -> {response}", flush=True)
     
     # TCP 指令成功 → 更新设备在线状态
-    device = db.query(Device).filter(Device.id == cmd.robotId).first()
-    if device:
-        device.status = "online"
-        device.last_seen = datetime.now()
-        db.commit()
+    device.status = "online"
+    device.last_seen = datetime.now()
+    db.commit()
     
     return {
         "ok": bool(response.get("ok")),
-        "target": {"host": host, "port": port},
+        "target": {"deviceId": cmd.robotId, "transport": "websocket"},
         "linear": linear,
         "angular": angular,
         "response": response,
@@ -111,18 +105,16 @@ async def robot_control_stop(
         raise HTTPException(status_code=422, detail="请选择一个设备")
     
     print(f"[{datetime.now()}] [HTTP REQ] POST /api/robot-control/stop Body: {cmd.dict()}", flush=True)
-    host, port = resolve_device_target(cmd.robotId, db)
-    response = await run_in_threadpool(send_robot_control_message, host, port, {"type": "stop"}, "ack")
+    device = require_device(cmd.robotId, db)
+    response = await send_robot_control_message(cmd.robotId, {"type": "stop"}, "ack")
     print(f"[{datetime.now()}] [HTTP RES] /api/robot-control/stop -> {response}", flush=True)
     
     # TCP 指令成功 → 更新设备在线状态
-    device = db.query(Device).filter(Device.id == cmd.robotId).first()
-    if device:
-        device.status = "online"
-        device.last_seen = datetime.now()
-        db.commit()
+    device.status = "online"
+    device.last_seen = datetime.now()
+    db.commit()
     
-    return {"ok": bool(response.get("ok")), "target": {"host": host, "port": port}, "response": response}
+    return {"ok": bool(response.get("ok")), "target": {"deviceId": cmd.robotId, "transport": "websocket"}, "response": response}
 
 
 @router.post("/send")
@@ -132,8 +124,8 @@ async def robot_control_send(
     current_user: User = Depends(get_current_user),
 ):
     """
-    向设备发送自定义 TCP JSON 指令（需登录）。
-    前端直接传入完整的 JSON 字符串，后端转发到设备 TCP 端口。
+    向设备发送自定义 JSON 指令（需登录）。
+    前端直接传入完整的 JSON 字符串，后端通过 Agent WebSocket 转发。
     """
     if cmd.robotId is None:
         raise HTTPException(status_code=422, detail="请选择一个设备")
@@ -153,20 +145,18 @@ async def robot_control_send(
     msg_type = payload.get("type", "")
     expected = "pong" if msg_type == "ping" else "ack"
     
-    host, port = resolve_device_target(cmd.robotId, db)
-    response = await run_in_threadpool(send_robot_control_message, host, port, payload, expected)
+    device = require_device(cmd.robotId, db)
+    response = await send_robot_control_message(cmd.robotId, payload, expected)
     print(f"[{datetime.now()}] [HTTP RES] /api/robot-control/send -> {response}", flush=True)
     
     # 成功发送指令 → 标记设备在线
-    device = db.query(Device).filter(Device.id == cmd.robotId).first()
-    if device:
-        device.status = "online"
-        device.last_seen = datetime.now()
-        db.commit()
+    device.status = "online"
+    device.last_seen = datetime.now()
+    db.commit()
     
     return {
         "ok": True,
-        "target": {"host": host, "port": port},
+        "target": {"deviceId": cmd.robotId, "transport": "websocket"},
         "sent": payload,
         "response": response,
     }
