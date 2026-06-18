@@ -98,39 +98,38 @@ function LiveVideo() {
     })))
   }, [devices, targetDeviceId])
 
-  // 页面加载后查询各设备的录制状态（解决刷新后状态丢失的问题）
-  const recordingCheckedRef = useRef(false)
+  // 页面加载后一次性恢复正在录制的设备状态，避免逐台设备查询。
   useEffect(() => {
-    if (recordingCheckedRef.current || activeStreams.length === 0) return
-    recordingCheckedRef.current = true
+    let cancelled = false
 
     const checkRecordingStatus = async () => {
-      const recovered = {}
-      await Promise.all(
-        activeStreams.map(async (stream) => {
-          try {
-            const res = await authFetch(`/api/devices/${stream.deviceId}/camera/record/status`)
-            if (!res.ok) return
-            const data = await res.json()
-            if (data.recording) {
-              // 用后端返回的 duration 反推 startTime
-              recovered[stream.deviceId] = {
-                recording: true,
-                startTime: Date.now() - (data.duration || 0) * 1000,
-                filename: data.filename,
-              }
-            }
-          } catch {
-            // 忽略查询失败
-          }
-        })
-      )
-      if (Object.keys(recovered).length > 0) {
-        setRecordingDevices(prev => ({ ...prev, ...recovered }))
+      try {
+        const res = await authFetch('/api/devices/camera/recordings')
+        if (!res.ok) return
+        const data = await res.json()
+        const recovered = Object.fromEntries(
+          (data.recordings || []).map(recording => [
+            recording.device_id,
+            {
+              recording: true,
+              startTime: Date.now() - (recording.duration || 0) * 1000,
+              filename: recording.filename,
+            },
+          ])
+        )
+        if (!cancelled && Object.keys(recovered).length > 0) {
+          // 保留请求期间由用户刚刚启动的录制状态。
+          setRecordingDevices(prev => ({ ...recovered, ...prev }))
+        }
+      } catch {
+        // 状态恢复失败不影响实时画面和后续录制操作。
       }
     }
     checkRecordingStatus()
-  }, [activeStreams])
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // 添加视频流画面
   const addStream = (deviceId) => {

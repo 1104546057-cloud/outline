@@ -40,7 +40,7 @@
 .cockpit-device-panel .overview-device { height: 100%; margin: 0; }
 
 .cockpit-camera { position: relative; width: 100%; height: 100%; overflow: hidden; background: #01050c; }
-.cockpit-camera img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.cockpit-camera img { width: 100%; height: 100%; display: block; object-fit: fill; }
 .cockpit-camera.simulated img { filter: saturate(.55) contrast(1.08) hue-rotate(8deg); }
 .cockpit-camera-empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; color: #365a70; background: radial-gradient(circle, rgba(15, 61, 91, .42), #01060e 70%); }
 .cockpit-camera-empty strong { font-size: 9px; font-weight: 500; }

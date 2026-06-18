@@ -6,11 +6,15 @@
 
 import time
 import asyncio
+import subprocess
 import threading
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 import imageio_ffmpeg
+import httpx
 from fastapi import APIRouter, HTTPException, Depends, Response
 from sqlalchemy.orm import Session
 
@@ -25,7 +29,7 @@ from config import (
 router = APIRouter(prefix="/api/devices", tags=["摄像头"])
 
 # ===== 录制状态管理 =====
-# 格式: { device_id: { "task": asyncio.Task, "stop_event": threading.Event, "start_time": datetime, "filename": str } }
+# 格式: { device_id: { "task": asyncio.Task, "control": _RecordingControl, "start_time": datetime, "filename": str } }
 _recording_sessions: dict[int, dict] = {}
 
 # 录制视频保存目录（相对于 backend 目录的 ../data/camera_videos）
@@ -34,6 +38,49 @@ CAMERA_RECORDING_TEMP_DIR = CAMERA_VIDEOS_DIR / ".recording"
 
 # 快照保存目录（相对于 backend 目录的 ../data/camera_snapshots）
 CAMERA_SNAPSHOTS_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "camera_snapshots"
+
+
+@dataclass
+class _RecordingControl:
+    """在线程之间传递精确的停止时间。"""
+
+    stopped_at: float | None = None
+    stop_event: threading.Event = field(default_factory=threading.Event)
+
+    def stop(self) -> None:
+        self.stopped_at = time.monotonic()
+        self.stop_event.set()
+
+
+def _iter_mjpeg_frames(chunks):
+    """从 multipart 或裸 MJPEG 字节流中提取完整 JPEG 帧。"""
+    buffer = bytearray()
+    max_frame_bytes = 20 * 1024 * 1024
+
+    for chunk in chunks:
+        if not chunk:
+            continue
+        buffer.extend(chunk)
+
+        while True:
+            frame_start = buffer.find(b"\xff\xd8")
+            if frame_start < 0:
+                # 保留最后一个字节，以处理跨 chunk 的 JPEG 起始标记。
+                if len(buffer) > 1:
+                    del buffer[:-1]
+                break
+            if frame_start > 0:
+                del buffer[:frame_start]
+
+            frame_end = buffer.find(b"\xff\xd9", 2)
+            if frame_end < 0:
+                if len(buffer) > max_frame_bytes:
+                    raise RuntimeError("摄像头返回的 JPEG 帧超过 20 MB 或数据不完整")
+                break
+
+            frame_end += 2
+            yield bytes(buffer[:frame_end])
+            del buffer[:frame_end]
 
 
 def _resolve_ffmpeg_binary() -> str | None:
@@ -47,13 +94,15 @@ def _resolve_ffmpeg_binary() -> str | None:
 @router.get("/{device_id}/camera/stream")
 async def proxy_camera_stream(
     device_id: int,
+    view: Literal["color", "depth", "lidar"] = "color",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    代理转发设备的 MJPEG 摄像头视频流（需登录）
+    代理转发设备 ROS 相机服务的 MJPEG 视频流（需登录）
 
-    设备端运行 mjpg_streamer，在 8080 端口提供 MJPEG 流。
+    view=color 为 Gemini 彩色画面，view=depth 为伪彩深度图，
+    view=lidar 为车端渲染后的 C16 16 线点云俯视图。
     本接口通过后端代理转发，确保前端访问需要经过 JWT 鉴权。
 
     使用独立的 httpx.AsyncClient 实例避免与其他请求共享连接池，
@@ -68,7 +117,10 @@ async def proxy_camera_stream(
     if not device.ip_address:
         raise HTTPException(status_code=422, detail="设备未配置 IP 地址")
 
-    camera_url = f"http://{device.ip_address}:{CAMERA_STREAM_PORT}/?action=stream"
+    camera_url = (
+        f"http://{device.ip_address}:{CAMERA_STREAM_PORT}/"
+        f"?action=stream&view={view}"
+    )
 
     async def stream_generator():
         """异步读取 MJPEG 流并逐块转发，每路流独立创建连接"""
@@ -111,13 +163,14 @@ async def proxy_camera_stream(
 @router.get("/{device_id}/camera/snapshot")
 async def proxy_camera_snapshot(
     device_id: int,
+    view: Literal["color", "depth", "lidar"] = "color",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
     获取设备摄像头的单帧快照（JPEG 图片）（需登录）
 
-    通过后端代理从 mjpg_streamer 的 ?action=snapshot 接口获取。
+    通过后端代理从设备 ROS 相机服务获取指定视图的快照。
     用于截图保存等功能。
     """
     import httpx
@@ -128,7 +181,10 @@ async def proxy_camera_snapshot(
     if not device.ip_address:
         raise HTTPException(status_code=422, detail="设备未配置 IP 地址")
 
-    snapshot_url = f"http://{device.ip_address}:{CAMERA_STREAM_PORT}/?action=snapshot"
+    snapshot_url = (
+        f"http://{device.ip_address}:{CAMERA_STREAM_PORT}/"
+        f"?action=snapshot&view={view}"
+    )
 
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
@@ -167,6 +223,24 @@ async def proxy_camera_snapshot(
 
 # ===== 视频录制接口 =====
 
+@router.get("/camera/recordings")
+async def recording_statuses(
+    current_user: User = Depends(get_current_user),
+):
+    """一次返回当前所有录制会话，供前端恢复录制状态。"""
+    now = datetime.now()
+    recordings = [
+        {
+            "recording": True,
+            "device_id": device_id,
+            "filename": session["filename"],
+            "duration": round((now - session["start_time"]).total_seconds(), 1),
+        }
+        for device_id, session in list(_recording_sessions.items())
+    ]
+    return {"recordings": recordings}
+
+
 @router.post("/{device_id}/camera/record/start")
 async def start_recording(
     device_id: int,
@@ -203,8 +277,8 @@ async def start_recording(
     filepath = CAMERA_VIDEOS_DIR / filename
     recording_filepath = CAMERA_RECORDING_TEMP_DIR / filename
 
-    # 创建停止事件
-    stop_event = threading.Event()
+    # 停止时间单独记录，避免等待下一帧时把视频尾部无意拉长。
+    control = _RecordingControl()
 
     # 启动录制后台任务
     task = asyncio.create_task(
@@ -215,13 +289,13 @@ async def start_recording(
             device.name,
             recording_filepath,
             filepath,
-            stop_event,
+            control,
         )
     )
 
     _recording_sessions[device_id] = {
         "task": task,
-        "stop_event": stop_event,
+        "control": control,
         "start_time": datetime.now(),
         "filename": filename,
     }
@@ -250,7 +324,7 @@ async def stop_recording(
         raise HTTPException(status_code=404, detail="该设备未在录制")
 
     # 发送停止信号
-    session["stop_event"].set()
+    session["control"].stop()
 
     # 等待录制结束并完成 H.264 转码。
     try:
@@ -309,72 +383,128 @@ def _recording_worker(
     device_name: str,
     recording_filepath: Path,
     final_filepath: Path,
-    stop_event: threading.Event,
+    control: _RecordingControl,
 ):
     """
     录制后台工作函数（通过 asyncio.to_thread 在线程中执行）
 
     连接设备的 MJPEG 流，逐帧提取 JPEG 数据并通过 FFmpeg 管道写入 H.264 MP4。
-    当 stop_event 被设置时停止录制。
+    根据帧的实际到达时间重采样为固定帧率，收到停止信号后结束录制。
     """
     camera_url = f"http://{ip_address}:{CAMERA_STREAM_PORT}/?action=stream"
-    reader = None
-    writer = None
+    process = None
     frame_count = 0
     fps = 15  # 目标帧率
     error_message = None
+    capture_started_at = None
+    last_frame = None
+    recording_started_logged = False
 
     try:
-        reader = imageio_ffmpeg.read_frames(
-            camera_url,
-            pix_fmt="rgb24",
-            input_params=["-f", "mjpeg"],
-            output_params=["-vf", f"fps={fps}"],
-        )
-        metadata = next(reader)
-        frame_size = metadata.get("size")
-        if not frame_size or len(frame_size) != 2:
-            raise RuntimeError("无法获取摄像头画面尺寸")
+        ffmpeg_binary = _resolve_ffmpeg_binary()
+        if not ffmpeg_binary:
+            raise RuntimeError("未找到 FFmpeg")
 
-        writer = imageio_ffmpeg.write_frames(
-            recording_filepath,
-            tuple(frame_size),
-            pix_fmt_in="rgb24",
-            pix_fmt_out="yuv420p",
-            fps=fps,
-            quality=6,
-            codec="libx264",
-            macro_block_size=2,
-            ffmpeg_log_level="error",
-            ffmpeg_timeout=CAMERA_RECORD_FINALIZE_TIMEOUT_SECONDS,
-            output_params=["-preset", "veryfast", "-movflags", "+faststart"],
+        process = subprocess.Popen(
+            [
+                ffmpeg_binary,
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "mjpeg",
+                "-framerate",
+                str(fps),
+                "-i",
+                "pipe:0",
+                "-an",
+                "-vf",
+                "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
+                str(recording_filepath),
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
-        writer.send(None)
 
-        for frame in reader:
-            if stop_event.is_set():
-                break
-            writer.send(frame)
-            frame_count += 1
-            if frame_count == 1:
-                print(
-                    f"[{datetime.now()}] 录制中: 设备 {device_name}, "
-                    f"分辨率 {frame_size[0]}×{frame_size[1]}, H.264 编码已启动"
-                )
+        def write_until(frame: bytes, end_at: float) -> None:
+            nonlocal frame_count
+            if capture_started_at is None or process.stdin is None:
+                return
+            elapsed = max(0.0, end_at - capture_started_at)
+            target_frame_count = max(1, int(elapsed * fps + 0.5))
+            while frame_count < target_frame_count:
+                process.stdin.write(frame)
+                frame_count += 1
+
+        timeout = httpx.Timeout(connect=5.0, read=5.0, write=5.0, pool=5.0)
+        with httpx.Client(timeout=timeout) as client:
+            with client.stream("GET", camera_url) as response:
+                response.raise_for_status()
+                chunks = response.iter_bytes(chunk_size=8192)
+                for frame in _iter_mjpeg_frames(chunks):
+                    now = time.monotonic()
+                    stopping = control.stop_event.is_set()
+
+                    if capture_started_at is None:
+                        capture_started_at = now
+                        last_frame = frame
+                    elif not stopping:
+                        last_frame = frame
+
+                    end_at = control.stopped_at if stopping and control.stopped_at is not None else now
+                    write_until(last_frame, end_at)
+
+                    if not recording_started_logged and frame_count > 0:
+                        print(f"[{datetime.now()}] 录制中: 设备 {device_name}, H.264 编码已启动")
+                        recording_started_logged = True
+                    if stopping:
+                        break
+    except httpx.HTTPError as exc:
+        if not (control.stop_event.is_set() and frame_count > 0):
+            error_message = f"读取摄像头视频流失败: {exc}"
+            print(f"[{datetime.now()}] 录制异常 (设备 {device_id}): {exc}")
     except Exception as exc:
         error_message = f"录制异常: {exc}"
         print(f"[{datetime.now()}] 录制异常 (设备 {device_id}): {exc}")
     finally:
         try:
-            if reader:
-                reader.close()
+            if (
+                process
+                and process.stdin
+                and last_frame is not None
+                and capture_started_at is not None
+                and control.stopped_at is not None
+            ):
+                write_until(last_frame, control.stopped_at)
         except Exception as exc:
-            error_message = error_message or f"关闭视频读取器失败: {exc}"
+            error_message = error_message or f"补齐视频结束帧失败: {exc}"
         try:
-            if writer:
-                writer.close()
+            if process and process.stdin:
+                process.stdin.close()
         except Exception as exc:
-            error_message = error_message or f"完成视频文件失败: {exc}"
+            error_message = error_message or f"关闭视频编码输入失败: {exc}"
+        if process:
+            try:
+                return_code = process.wait(timeout=CAMERA_RECORD_FINALIZE_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+                error_message = error_message or "完成视频文件超时"
+            else:
+                stderr = process.stderr.read().decode("utf-8", errors="replace").strip() if process.stderr else ""
+                if return_code != 0:
+                    error_message = error_message or f"FFmpeg 编码失败: {stderr or f'退出码 {return_code}'}"
 
     saved = False
     if frame_count > 0 and not error_message and recording_filepath.is_file():

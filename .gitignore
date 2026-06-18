@@ -81,3 +81,5 @@ Thumbs.db
 camera_videos/
 camera_snapshots/
 ai_analysis/
+
+.codex_tmp/

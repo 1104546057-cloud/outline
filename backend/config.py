@@ -23,7 +23,7 @@ ROBOT_CONTROL_TIMEOUT_SECONDS = float(os.getenv("ROBOT_CONTROL_TIMEOUT_SECONDS",
 # 设备在线判定超时（秒）：超过此时间未收到遥测则判定为离线
 DEVICE_ONLINE_TIMEOUT_SECONDS = int(os.getenv("DEVICE_ONLINE_TIMEOUT_SECONDS", "180"))
 
-# 摄像头服务端口（mjpg_streamer 默认 8080）
+# 车端 ROS 相机 HTTP 服务端口
 CAMERA_STREAM_PORT = int(os.getenv("CAMERA_STREAM_PORT", "8080"))
 
 # 视频录制结束处理超时。FFmpeg 由 imageio-ffmpeg 提供和解析。

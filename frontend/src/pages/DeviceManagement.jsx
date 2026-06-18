@@ -254,14 +254,24 @@ export default function DeviceManagement() {
     if (extra.cpu && extra.cpu.total !== undefined) {
       items.push({ label: '⚙️ CPU', value: `${extra.cpu.total}%` })
     }
+    if (extra.gpu && extra.gpu.load_percent !== undefined) {
+      const gpuLoad = extra.gpu.load_percent
+      const gpuColor = gpuLoad > 80 ? '#ef4444' : gpuLoad > 50 ? '#f59e0b' : '#10b981'
+      items.push({ label: '🎮 GPU', value: `${gpuLoad}%`, color: gpuColor })
+    }
     if (extra.memory && extra.memory.physical) {
       items.push({ label: '💾 内存', value: `${extra.memory.physical.percent}%` })
     }
     if (extra.system && extra.system.uptime) {
       items.push({ label: '⏱️ 运行', value: extra.system.uptime })
     }
+    if (extra.power) {
+      const pw = extra.power
+      const pwColor = pw.percent > 50 ? '#22c55e' : pw.percent > 20 ? '#f59e0b' : '#ef4444'
+      items.push({ label: '🔋 电源', value: `${Number(pw.voltage_V).toFixed(1)}V (${pw.percent}%)`, color: pwColor })
+    }
     if (extra.ups) {
-      items.push({ label: '🔌 UPS', value: `${extra.ups.voltage_V}V / ${extra.ups.current_A}A` })
+      items.push({ label: '🔌 UPS', value: `${Number(extra.ups.voltage_V).toFixed(1)}V / ${extra.ups.current_A}A` })
     }
     if (extra.gps) {
       const gpsStatus = extra.gps.status === 'fix' ? '已定位' : '未定位'
@@ -324,6 +334,32 @@ export default function DeviceManagement() {
             {cpu.core_count && <span>核心数: {cpu.core_count}</span>}
             {cpu.freq_current_mhz && <span>频率: {cpu.freq_current_mhz} MHz</span>}
             {extra.cpu_temp_c !== undefined && <span>温度: {extra.cpu_temp_c}°C</span>}
+          </div>
+        </div>
+      )
+    }
+
+    // GPU 监控
+    if (extra.gpu) {
+      const gpu = extra.gpu
+      sections.push(
+        <div className="dm-sys-section" key="gpu">
+          <div className="dm-sys-section-title">🎮 GPU 监控</div>
+          {gpu.load_percent !== undefined && (
+            <>
+              <div className="dm-sys-row">
+                <span className="dm-sys-label">GPU 使用率</span>
+                <span className="dm-sys-value">{gpu.load_percent}%</span>
+              </div>
+              <div className="dm-sys-bar-track">
+                <div className="dm-sys-bar-fill" style={{ width: `${Math.min(100, gpu.load_percent)}%`, background: gpu.load_percent > 80 ? '#ef4444' : gpu.load_percent > 50 ? '#f59e0b' : '#10b981' }} />
+              </div>
+            </>
+          )}
+          <div className="dm-sys-meta">
+            {gpu.freq_current_mhz !== undefined && <span>当前频率: {gpu.freq_current_mhz} MHz</span>}
+            {gpu.freq_max_mhz !== undefined && <span>最大频率: {gpu.freq_max_mhz} MHz</span>}
+            {gpu.temp_c !== undefined && <span>温度: {gpu.temp_c}°C</span>}
           </div>
         </div>
       )
@@ -440,7 +476,7 @@ export default function DeviceManagement() {
           <div className="dm-sys-info-grid" style={{ marginTop: '0.5rem' }}>
             <div className="dm-sys-info-item">
               <span className="dm-sys-info-label">电压</span>
-              <span className="dm-sys-info-value">{ups.voltage_V} V</span>
+              <span className="dm-sys-info-value">{Number(ups.voltage_V).toFixed(1)} V</span>
             </div>
             <div className="dm-sys-info-item">
               <span className="dm-sys-info-label">电流</span>
@@ -451,6 +487,126 @@ export default function DeviceManagement() {
               <span className="dm-sys-info-value">{ups.power_W} W</span>
             </div>
           </div>
+        </div>
+      )
+    }
+
+    // ROS 电源详情
+    if (extra.power) {
+      const pw = extra.power
+      const pctColor = pw.percent > 50 ? '#22c55e' : pw.percent > 20 ? '#f59e0b' : '#ef4444'
+      sections.push(
+        <div className="dm-sys-section" key="power">
+          <div className="dm-sys-section-title">🔋 ROS 电源</div>
+          <div className="dm-sys-row">
+            <span className="dm-sys-label">电量</span>
+            <span className="dm-sys-value" style={{ color: pctColor }}>{pw.percent}%</span>
+          </div>
+          <div className="dm-sys-bar-track">
+            <div className="dm-sys-bar-fill" style={{ width: `${Math.min(100, pw.percent)}%`, background: pctColor }} />
+          </div>
+          <div className="dm-sys-info-grid" style={{ marginTop: '0.5rem' }}>
+            <div className="dm-sys-info-item">
+              <span className="dm-sys-info-label">电压</span>
+              <span className="dm-sys-info-value">{Number(pw.voltage_V).toFixed(1)} V</span>
+            </div>
+            {pw.charging !== undefined && (
+              <div className="dm-sys-info-item">
+                <span className="dm-sys-info-label">充电状态</span>
+                <span className="dm-sys-info-value" style={{ color: pw.charging ? '#22c55e' : '#94a3b8' }}>{pw.charging ? '充电中' : '未充电'}</span>
+              </div>
+            )}
+            {pw.charging_current_A !== undefined && (
+              <div className="dm-sys-info-item">
+                <span className="dm-sys-info-label">充电电流</span>
+                <span className="dm-sys-info-value">{pw.charging_current_A} A</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    // 机器人诊断状态
+    if (extra.robot_status) {
+      const rs = extra.robot_status
+      sections.push(
+        <div className="dm-sys-section" key="robot_status">
+          <div className="dm-sys-section-title">🛡️ 机器人安全与诊断</div>
+          <div className="dm-sys-info-grid">
+            {rs.chassis_security !== undefined && (
+              <div className="dm-sys-info-item">
+                <span className="dm-sys-info-label">底盘安全锁定</span>
+                <span className="dm-sys-info-value" style={{ color: rs.chassis_security === 1 ? '#22c55e' : '#ef4444' }}>
+                  {rs.chassis_security === 1 ? '解除锁定 (正常)' : `已锁定 (${rs.chassis_security})`}
+                </span>
+              </div>
+            )}
+            {rs.selfcheck !== undefined && (
+              <div className="dm-sys-info-item">
+                <span className="dm-sys-info-label">自检状态码</span>
+                <span className="dm-sys-info-value" style={{ color: rs.selfcheck === 0 ? '#22c55e' : '#f59e0b' }}>
+                  {rs.selfcheck === 0 ? '全系统正常 (0)' : `异常 (0x${rs.selfcheck.toString(16)})`}
+                </span>
+              </div>
+            )}
+            {rs.red_flag !== undefined && (
+              <div className="dm-sys-info-item">
+                <span className="dm-sys-info-label">急停状态</span>
+                <span className="dm-sys-info-value" style={{ color: rs.red_flag === 1 ? '#ef4444' : '#22c55e' }}>
+                  {rs.red_flag === 1 ? '急停拍下' : '正常'}
+                </span>
+              </div>
+            )}
+            {rs.recharge_flag !== undefined && (
+              <div className="dm-sys-info-item">
+                <span className="dm-sys-info-label">回充状态</span>
+                <span className="dm-sys-info-value" style={{ color: rs.recharge_flag > 0 ? '#3b82f6' : '#94a3b8' }}>
+                  {rs.recharge_flag > 0 ? `回充中 (${rs.recharge_flag})` : '未在回充'}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    // 运动状态
+    if (extra.motion) {
+      const mo = extra.motion
+      sections.push(
+        <div className="dm-sys-section" key="motion">
+          <div className="dm-sys-section-title">🏎️ 底盘运动状态</div>
+          <div className="dm-sys-info-grid">
+            {mo.linear_x_mps !== undefined && (
+              <div className="dm-sys-info-item">
+                <span className="dm-sys-info-label">线速度</span>
+                <span className="dm-sys-info-value">{mo.linear_x_mps.toFixed(2)} m/s</span>
+              </div>
+            )}
+            {mo.angular_z_radps !== undefined && (
+              <div className="dm-sys-info-item">
+                <span className="dm-sys-info-label">角速度</span>
+                <span className="dm-sys-info-value">{mo.angular_z_radps.toFixed(2)} rad/s</span>
+              </div>
+            )}
+          </div>
+          {mo.accel && (
+            <div className="dm-sys-info-grid" style={{ marginTop: '0.5rem' }}>
+              <div className="dm-sys-info-item">
+                <span className="dm-sys-info-label">加速度 X</span>
+                <span className="dm-sys-info-value">{mo.accel.x.toFixed(2)}</span>
+              </div>
+              <div className="dm-sys-info-item">
+                <span className="dm-sys-info-label">加速度 Y</span>
+                <span className="dm-sys-info-value">{mo.accel.y.toFixed(2)}</span>
+              </div>
+              <div className="dm-sys-info-item">
+                <span className="dm-sys-info-label">加速度 Z</span>
+                <span className="dm-sys-info-value">{mo.accel.z.toFixed(2)}</span>
+              </div>
+            </div>
+          )}
         </div>
       )
     }
@@ -609,7 +765,7 @@ export default function DeviceManagement() {
             )}
 
             {/* 系统监控详情面板 */}
-            {dev.extra && (dev.extra.cpu || dev.extra.memory || dev.extra.disk || dev.extra.network || dev.extra.system || dev.extra.hardware || dev.extra.usb_devices || dev.extra.ups) && (
+            {dev.extra && (dev.extra.cpu || dev.extra.gpu || dev.extra.memory || dev.extra.disk || dev.extra.network || dev.extra.system || dev.extra.hardware || dev.extra.usb_devices || dev.extra.ups || dev.extra.power || dev.extra.robot_status || dev.extra.motion) && (
               <>
                 <button
                   className="dm-expand-btn"

@@ -31,21 +31,22 @@ function CockpitPanel({ title, code, meta, className = '', children }) {
   )
 }
 
-function CameraFeed({ device, label, simulated = false, large = false, refreshKey = 0, onStatusChange }) {
+function CameraFeed({ device, label, view = null, unavailableText = '', simulated = false, large = false, refreshKey = 0, onStatusChange }) {
   const [status, setStatus] = useState('loading')
+  const streamEnabled = Boolean(view)
 
   useEffect(() => {
-    setStatus(device?.status === 'online' ? 'loading' : 'offline')
-  }, [device?.id, device?.status, refreshKey])
+    setStatus(streamEnabled && device?.status === 'online' ? 'loading' : 'offline')
+  }, [device?.id, device?.status, refreshKey, streamEnabled])
 
   useEffect(() => {
     onStatusChange?.(status)
   }, [onStatusChange, status])
 
-  const streamUrl = device ? `/api/devices/${device.id}/camera/stream?view=${label}&retry=${refreshKey}` : ''
+  const streamUrl = device && streamEnabled ? `/api/devices/${device.id}/camera/stream?view=${view}&retry=${refreshKey}` : ''
   return (
     <div className={`cockpit-camera ${large ? 'large' : ''} ${simulated ? 'simulated' : ''}`}>
-      {device?.status === 'online' && status !== 'error' ? (
+      {streamEnabled && device?.status === 'online' && status !== 'error' ? (
         <img
           key={streamUrl}
           src={streamUrl}
@@ -56,13 +57,13 @@ function CameraFeed({ device, label, simulated = false, large = false, refreshKe
       ) : (
         <div className="cockpit-camera-empty">
           <span className="cockpit-reticle" />
-          <strong>{status === 'error' ? '视频流连接失败' : '设备当前离线'}</strong>
+          <strong>{!streamEnabled ? unavailableText || '视频源待接入' : status === 'error' ? '视频流连接失败' : '设备当前离线'}</strong>
         </div>
       )}
       <div className="cockpit-camera-scan" />
       <div className="cockpit-camera-label">
         <span>{label}</span>
-        <b className={status}>{status === 'streaming' ? 'LIVE' : status === 'loading' ? 'CONNECTING' : status === 'error' ? 'ERROR' : 'OFFLINE'}</b>
+        <b className={status}>{!streamEnabled ? 'PENDING' : status === 'streaming' ? 'LIVE' : status === 'loading' ? 'CONNECTING' : status === 'error' ? 'ERROR' : 'OFFLINE'}</b>
       </div>
     </div>
   )
@@ -372,13 +373,13 @@ export default function DeviceCockpit() {
             <DeviceStatusCard device={device} selected />
           </CockpitPanel>
           <CockpitPanel title="摄像头画面" code="CAMERA" meta="01">
-            <CameraFeed device={device} label="可见光摄像头" refreshKey={cameraRefreshKey} />
+            <CameraFeed device={device} label="可见光摄像头" view="color" refreshKey={cameraRefreshKey} />
           </CockpitPanel>
-          <CockpitPanel title="红外夜视相机" code="INFRARED" meta="02">
-            <CameraFeed device={device} label="红外夜视" simulated refreshKey={cameraRefreshKey} />
+          <CockpitPanel title="双目深度图" code="DEPTH" meta="02">
+            <CameraFeed device={device} label="双目深度图" view="depth" refreshKey={cameraRefreshKey} />
           </CockpitPanel>
           <CockpitPanel title="激光雷达" code="LIDAR" meta="03">
-            <CameraFeed device={device} label="激光雷达" simulated refreshKey={cameraRefreshKey} />
+            <CameraFeed device={device} label="C16 16线点云" view="lidar" refreshKey={cameraRefreshKey} />
           </CockpitPanel>
           <CockpitPanel title="巡逻路线" code="PATROL ROUTE" meta={runningTask ? '执行中' : '实时定位'} className="cockpit-map-panel">
             <DeviceCockpitMap device={device} task={runningTask} />
@@ -391,7 +392,7 @@ export default function DeviceCockpit() {
 
         <section className="cockpit-right-column">
           <CockpitPanel title={`${device.name} 主摄像头`} code="PRIMARY CAMERA STREAM" meta={mainCameraStatus === 'streaming' ? 'LIVE' : 'MONITORING'} className="cockpit-main-video-panel">
-            <CameraFeed device={device} label="主摄像头" large refreshKey={cameraRefreshKey} onStatusChange={setMainCameraStatus} />
+            <CameraFeed device={device} label="主摄像头" view="color" large refreshKey={cameraRefreshKey} onStatusChange={setMainCameraStatus} />
             <div className="cockpit-video-tools">
               <button type="button" onClick={() => setCameraRefreshKey(key => key + 1)}>重新连接</button>
               <button type="button" onClick={captureSnapshot} disabled={mainCameraStatus !== 'streaming'}>截图保存</button>
