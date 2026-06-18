@@ -28,3 +28,8 @@ CAMERA_STREAM_PORT = int(os.getenv("CAMERA_STREAM_PORT", "8080"))
 
 # 视频录制结束处理超时。FFmpeg 由 imageio-ffmpeg 提供和解析。
 CAMERA_RECORD_FINALIZE_TIMEOUT_SECONDS = int(os.getenv("CAMERA_RECORD_FINALIZE_TIMEOUT_SECONDS", "300"))
+
+# 平台地图默认中心对应的 WGS-84 GPS 坐标。新设备尚未上报定位时，
+# 使用该位置附近的历史坐标作为初始位置。
+PLATFORM_DEFAULT_GPS_LNG = float(os.getenv("PLATFORM_DEFAULT_GPS_LNG", "113.5790599"))
+PLATFORM_DEFAULT_GPS_LAT = float(os.getenv("PLATFORM_DEFAULT_GPS_LAT", "22.3523145"))

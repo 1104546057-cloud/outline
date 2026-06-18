@@ -7,6 +7,7 @@
 import os
 import re
 import hashlib
+import math
 import secrets
 from datetime import datetime
 
@@ -18,9 +19,30 @@ from database import get_db
 from models import User, Device, DeviceTelemetry, DeviceToken
 from schemas import DeviceCreate, DeviceUpdate
 from auth import get_current_user
+from config import PLATFORM_DEFAULT_GPS_LAT, PLATFORM_DEFAULT_GPS_LNG
 from robot_tcp import register_device_tcp, update_device_online_status
 
 router = APIRouter(prefix="/api", tags=["设备管理"])
+
+
+def _initial_gps_location() -> tuple[float, float]:
+    """在平台默认定位周围随机生成 1-3 米的 WGS-84 坐标。"""
+    earth_radius_m = 6378137.0
+    distance_m = 1 + secrets.randbelow(2001) / 1000
+    bearing = math.radians(secrets.randbelow(360000) / 1000)
+    angular_distance = distance_m / earth_radius_m
+    lat1 = math.radians(PLATFORM_DEFAULT_GPS_LAT)
+    lng1 = math.radians(PLATFORM_DEFAULT_GPS_LNG)
+
+    lat2 = math.asin(
+        math.sin(lat1) * math.cos(angular_distance)
+        + math.cos(lat1) * math.sin(angular_distance) * math.cos(bearing)
+    )
+    lng2 = lng1 + math.atan2(
+        math.sin(bearing) * math.sin(angular_distance) * math.cos(lat1),
+        math.cos(angular_distance) - math.sin(lat1) * math.sin(lat2),
+    )
+    return round(math.degrees(lat2), 7), round(math.degrees(lng2), 7)
 
 
 def _build_device_response(dev: Device, db: Session) -> dict:
@@ -121,6 +143,8 @@ async def create_device(
         raise HTTPException(status_code=502, detail="设备注册成功但未返回 token")
 
     # ---- 存入数据库 ----
+    initial_lat, initial_lng = _initial_gps_location()
+    now = datetime.now()
     new_device = Device(
         name=device_data.name,
         type=device_data.type,
@@ -130,10 +154,11 @@ async def create_device(
         last_seen=None,
         health=100,
         speed="0 m/s",
+        lat=str(initial_lat),
+        lng=str(initial_lng),
     )
     db.add(new_device)
-    db.commit()
-    db.refresh(new_device)
+    db.flush()
 
     # 将设备返回的 token 存入 device_tokens 表
     new_token = DeviceToken(
@@ -143,7 +168,25 @@ async def create_device(
         is_active=True,
     )
     db.add(new_token)
+
+    # 在设备首次上报真实 GPS 前，保留一条平台默认定位附近的历史记录。
+    initial_telemetry = DeviceTelemetry(
+        device_id=new_device.id,
+        status="online",
+        lat=initial_lat,
+        lng=initial_lng,
+        extra_json={
+            "gps": {
+                "status": "fix",
+                "source": "platform_default",
+                "is_historical": True,
+            }
+        },
+        reported_at=now,
+    )
+    db.add(initial_telemetry)
     db.commit()
+    db.refresh(new_device)
 
     return _build_device_response(new_device, db)
 
