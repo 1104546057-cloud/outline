@@ -63,13 +63,46 @@ lidar_has_publisher() {
   timeout 2 rostopic echo -n 1 "$LIDAR_TOPIC" >/dev/null 2>&1
 }
 
-if [ "$START_LIDAR_DRIVER" = "always" ] \
-  || { [ "$START_LIDAR_DRIVER" = "auto" ] && ! lidar_has_publisher; }; then
+lidar_watchdog() {
+  local lidar_pid=""
+
+  cleanup_lidar() {
+    if [ -n "$lidar_pid" ]; then
+      kill -TERM "$lidar_pid" 2>/dev/null || true
+      wait "$lidar_pid" 2>/dev/null || true
+    fi
+  }
+  trap cleanup_lidar EXIT
+  trap 'exit 0' INT TERM HUP
+
+  while true; do
+    if [ -n "$lidar_pid" ] && kill -0 "$lidar_pid" 2>/dev/null; then
+      sleep 3
+      continue
+    fi
+    if [ -n "$lidar_pid" ]; then
+      wait "$lidar_pid" 2>/dev/null || true
+    fi
+    lidar_pid=""
+
+    if [ "$START_LIDAR_DRIVER" = "auto" ] && lidar_has_publisher; then
+      sleep 3
+      continue
+    fi
+
+    echo "C16 雷达未运行，正在启动雷达驱动..." >&2
+    roslaunch lslidar_cx_driver lslidar_cx.launch &
+    lidar_pid="$!"
+    sleep 3
+  done
+}
+
+if [ "$START_LIDAR_DRIVER" != "never" ]; then
   if [ ! -f "$LIDAR_SETUP" ]; then
     echo "C16 雷达 ROS 环境未找到: $LIDAR_SETUP" >&2
     exit 1
   fi
-  roslaunch lslidar_cx_driver lslidar_cx.launch &
+  lidar_watchdog &
   children+=("$!")
 fi
 
