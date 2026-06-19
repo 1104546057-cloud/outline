@@ -33,6 +33,8 @@ _recording_sessions: dict[int, dict] = {}
 # 录制视频保存目录（相对于 backend 目录的 ../data/camera_videos）
 CAMERA_VIDEOS_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "camera_videos"
 CAMERA_RECORDING_TEMP_DIR = CAMERA_VIDEOS_DIR / ".recording"
+CAMERA_RECORDING_FPS = 30
+CAMERA_RECORDING_CRF = 21
 
 # 快照保存目录（相对于 backend 目录的 ../data/camera_snapshots）
 CAMERA_SNAPSHOTS_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "camera_snapshots"
@@ -331,7 +333,7 @@ def _recording_worker(
     """
     process = None
     frame_count = 0
-    fps = 15  # 目标帧率
+    fps = CAMERA_RECORDING_FPS
     error_message = None
     capture_started_at = None
     last_frame = None
@@ -362,6 +364,8 @@ def _recording_worker(
                 "libx264",
                 "-preset",
                 "veryfast",
+                "-crf",
+                str(CAMERA_RECORDING_CRF),
                 "-pix_fmt",
                 "yuv420p",
                 "-movflags",
