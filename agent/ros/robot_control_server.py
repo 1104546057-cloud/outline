@@ -26,7 +26,11 @@ CONFIG_FILE = SCRIPT_DIR / "iot_client.conf"
 CMD_TIMEOUT_SEC = 0.5
 MAX_LINEAR = 0.6
 MAX_ANGULAR = 2.0
-RECONNECT_DELAY_MAX_SEC = 15
+RECONNECT_DELAY_MAX_SEC = 2
+WEBSOCKET_OPEN_TIMEOUT_SEC = 5
+WEBSOCKET_PING_INTERVAL_SEC = 5
+WEBSOCKET_PING_TIMEOUT_SEC = 5
+MEDIA_SEND_TIMEOUT_SEC = 3
 LOCAL_CAMERA_URL = "http://127.0.0.1:8080/?action=stream&view={view}"
 MEDIA_HEADER = struct.Struct("!BQ")
 MEDIA_VIEW_CODES = {"color": 1, "depth": 2, "lidar": 3}
@@ -177,9 +181,10 @@ async def control_session(url: str, token: str) -> None:
     async with websockets.connect(
         url,
         extra_headers=headers,
-        ping_interval=20,
-        ping_timeout=20,
-        close_timeout=5,
+        timeout=WEBSOCKET_OPEN_TIMEOUT_SEC,
+        ping_interval=WEBSOCKET_PING_INTERVAL_SEC,
+        ping_timeout=WEBSOCKET_PING_TIMEOUT_SEC,
+        close_timeout=1,
         max_size=1024 * 1024,
     ) as websocket:
         log.info("控制通道已连接")
@@ -238,7 +243,11 @@ async def control_loop(url: str, token: str) -> None:
 async def send_media_frame(websocket, send_lock: asyncio.Lock, view: str, jpeg: bytes) -> None:
     payload = MEDIA_HEADER.pack(MEDIA_VIEW_CODES[view], int(time.time() * 1000)) + jpeg
     async with send_lock:
-        await websocket.send(payload)
+        try:
+            await asyncio.wait_for(websocket.send(payload), timeout=MEDIA_SEND_TIMEOUT_SEC)
+        except asyncio.TimeoutError:
+            await websocket.close(code=1011, reason="media send timeout")
+            raise
 
 
 def media_stream_worker(
@@ -308,9 +317,10 @@ async def media_session(url: str, token: str) -> None:
     async with websockets.connect(
         url,
         extra_headers=headers,
-        ping_interval=20,
-        ping_timeout=20,
-        close_timeout=5,
+        timeout=WEBSOCKET_OPEN_TIMEOUT_SEC,
+        ping_interval=WEBSOCKET_PING_INTERVAL_SEC,
+        ping_timeout=WEBSOCKET_PING_TIMEOUT_SEC,
+        close_timeout=1,
         max_size=1024 * 1024,
     ) as websocket:
         log.info("媒体通道已连接")

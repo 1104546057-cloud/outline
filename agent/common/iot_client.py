@@ -37,6 +37,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+HTTP_TIMEOUT_SEC = 5
+FAILED_REPORT_RETRY_SEC = 5
+
 try:
     import psutil
     PSUTIL_AVAILABLE = True
@@ -1279,7 +1282,7 @@ def _post(server: str, token: str, path: str, body: Dict[str, Any], tls_verify: 
         },
         method="POST",
     )
-    request_kwargs: Dict[str, Any] = {"timeout": 10}
+    request_kwargs: Dict[str, Any] = {"timeout": HTTP_TIMEOUT_SEC}
     if url.lower().startswith("https://") and not tls_verify:
         request_kwargs["context"] = ssl._create_unverified_context()
     try:
@@ -1389,9 +1392,10 @@ def main() -> None:
     while True:
         telemetry, gps_report = collect_telemetry(cfg)
         log_gps_report(gps_report, gps_state, int(cfg["gps_log_every"]))
-        send_telemetry(server, token, telemetry, tls_verify=bool(cfg["tls_verify"]))
-        log.info(f"下次上报: {interval}s 后")
-        time.sleep(interval)
+        sent = send_telemetry(server, token, telemetry, tls_verify=bool(cfg["tls_verify"]))
+        next_delay = interval if sent else min(interval, FAILED_REPORT_RETRY_SEC)
+        log.info(f"下次上报: {next_delay}s 后")
+        time.sleep(next_delay)
 
 
 if __name__ == "__main__":

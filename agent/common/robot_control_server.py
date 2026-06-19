@@ -27,7 +27,11 @@ SERIAL_PORT = "/dev/ttyACM0"
 BAUDRATE = 115200
 MAX_LINEAR = 0.6
 MAX_ANGULAR = 2.0
-RECONNECT_DELAY_MAX_SEC = 15
+RECONNECT_DELAY_MAX_SEC = 2
+WEBSOCKET_OPEN_TIMEOUT_SEC = 5
+WEBSOCKET_PING_INTERVAL_SEC = 5
+WEBSOCKET_PING_TIMEOUT_SEC = 5
+MEDIA_SEND_TIMEOUT_SEC = 3
 LOCAL_CAMERA_URL = "http://127.0.0.1:8080/?action=stream"
 MEDIA_HEADER = struct.Struct("!BQ")
 MEDIA_VIEW_CODE = 1
@@ -80,7 +84,17 @@ def connect_websocket(url: str, token: str):
     except (TypeError, ValueError):
         parameters = {}
     header_arg = "additional_headers" if "additional_headers" in parameters else "extra_headers"
-    return websockets.connect(url, **{header_arg: {"X-Device-Token": token}})
+    open_timeout_arg = "open_timeout" if "open_timeout" in parameters else "timeout"
+    return websockets.connect(
+        url,
+        **{
+            header_arg: {"X-Device-Token": token},
+            open_timeout_arg: WEBSOCKET_OPEN_TIMEOUT_SEC,
+            "ping_interval": WEBSOCKET_PING_INTERVAL_SEC,
+            "ping_timeout": WEBSOCKET_PING_TIMEOUT_SEC,
+            "close_timeout": 1,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +234,11 @@ async def control_loop(url: str, token: str) -> None:
 async def send_media_frame(websocket, send_lock: asyncio.Lock, jpeg: bytes) -> None:
     payload = MEDIA_HEADER.pack(MEDIA_VIEW_CODE, int(time.time() * 1000)) + jpeg
     async with send_lock:
-        await websocket.send(payload)
+        try:
+            await asyncio.wait_for(websocket.send(payload), timeout=MEDIA_SEND_TIMEOUT_SEC)
+        except asyncio.TimeoutError:
+            await websocket.close(code=1011, reason="media send timeout")
+            raise
 
 
 def media_stream_worker(

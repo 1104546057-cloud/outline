@@ -79,6 +79,8 @@ CONFIG_FILE = SCRIPT_DIR / "iot_client.conf"
 # 6S 锂电池电压范围（用于换算电量百分比）
 _BATTERY_VOLTAGE_MIN = 18.0   # 3.0V/cell × 6，放电截止
 _BATTERY_VOLTAGE_MAX = 25.2   # 4.2V/cell × 6，满电
+HTTP_TIMEOUT_SEC = 5
+FAILED_REPORT_RETRY_SEC = 5
 
 
 def configure_local_ros_network() -> None:
@@ -802,7 +804,7 @@ def _post(server: str, token: str, path: str, body: Dict[str, Any], tls_verify: 
         },
         method="POST",
     )
-    request_kwargs: Dict[str, Any] = {"timeout": 10}
+    request_kwargs: Dict[str, Any] = {"timeout": HTTP_TIMEOUT_SEC}
     if url.lower().startswith("https://") and not tls_verify:
         request_kwargs["context"] = ssl._create_unverified_context()
     try:
@@ -934,9 +936,10 @@ def main() -> None:
         else:
             log.debug("GPS /fix 话题暂无数据（wheeltec_dual_rtk_driver_nmea.launch 可能未启动）")
 
-        send_telemetry(server, token, telemetry, tls_verify=bool(cfg["tls_verify"]))
-        log.info(f"下次上报: {interval}s 后")
-        time.sleep(interval)
+        sent = send_telemetry(server, token, telemetry, tls_verify=bool(cfg["tls_verify"]))
+        next_delay = interval if sent else min(interval, FAILED_REPORT_RETRY_SEC)
+        log.info(f"下次上报: {next_delay}s 后")
+        time.sleep(next_delay)
 
 
 if __name__ == "__main__":

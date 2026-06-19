@@ -35,6 +35,27 @@ if [ -f "$LIDAR_SETUP" ]; then
 fi
 set -u
 
+wait_for_ros_master() {
+  local waited=0
+  local timeout_seconds=60
+
+  until rosparam get /run_id >/dev/null 2>&1; do
+    if [ "$waited" -ge "$timeout_seconds" ]; then
+      echo "等待 ROS Master 就绪超时 (${timeout_seconds}s): ${ROS_MASTER_URI:-未设置}" >&2
+      return 1
+    fi
+    if [ "$waited" -eq 0 ]; then
+      echo "正在等待 ROS Master 就绪: ${ROS_MASTER_URI:-未设置}" >&2
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+}
+
+# systemd 的 After= 只保证底盘服务已开始启动，不保证 rosmaster 已可用。
+# 先等待底盘 ROS Master，避免 roslaunch 临时拉起另一个 Master 导致订阅随后丢失。
+wait_for_ros_master
+
 children=()
 cleanup() {
   local pid
