@@ -3,6 +3,12 @@ import ThemedSelect from '../components/ThemedSelect'
 import { authFetch } from '../utils/authFetch'
 import '../styles/DeviceControl.css'
 
+const rosSubscriberLabel = (response, prefix = '') => (
+  Number.isFinite(response?.subscribers)
+    ? `${prefix}ROS订阅者 ${response.subscribers}`
+    : ''
+)
+
 /**
  * 真实无人车遥控页面
  * 
@@ -126,7 +132,7 @@ export default function DeviceControl() {
       const data = await res.json()
       if (res.ok && data.ok) {
         setConnectionStatus('已连接')
-        addLog(`✅ 连接成功 → Agent WebSocket（设备 ${data.target.deviceId}，ROS订阅者 ${data.response?.subscribers ?? '--'}）`)
+        addLog(`✅ 连接成功 → Agent WebSocket（设备 ${data.target.deviceId}${rosSubscriberLabel(data.response, '，')}）`)
         // 刷新设备列表以获取更新后的在线状态
         fetchDevices()
       } else {
@@ -156,7 +162,7 @@ export default function DeviceControl() {
       if (res.ok) {
         const data = await res.json()
         if (data.ok) {
-          addLog(`📡 cmd_vel v=${data.linear.toFixed(3)} w=${data.angular.toFixed(3)} · ROS订阅者 ${data.response?.subscribers ?? '--'}`)
+          addLog(`📡 cmd_vel v=${data.linear.toFixed(3)} w=${data.angular.toFixed(3)}${rosSubscriberLabel(data.response, ' · ')}`)
         }
       } else {
         const err = await res.json()

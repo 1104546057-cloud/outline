@@ -29,7 +29,7 @@ if [ ! -d "$WORK_DIR" ]; then
   exit 1
 fi
 
-REQUIRED_FILES="iot_client.conf iot_client.py robot_control_server.conf robot_control_server.py start_camera.sh"
+REQUIRED_FILES="iot_client.conf iot_client.py robot_control_server.py start_camera.sh"
 
 MISSING_FILES=""
 for file in $REQUIRED_FILES; do
@@ -151,23 +151,35 @@ EOF
 sudo systemctl restart gpsd
 sudo systemctl enable gpsd
 
-echo ">>> 4. 安装 Python 依赖 (系统状态、串口通信与 UPS 电量读取)..."
-sudo apt-get -y install python3-smbus python3-serial python3-psutil
+echo ">>> 4. 安装 Python 依赖 (系统状态、串口通信、WebSocket 与 UPS 电量读取)..."
+sudo apt-get -y install python3-smbus python3-serial python3-psutil python3-websockets iw wireless-tools
+
+if [ -f /etc/nv_tegra_release ]; then
+    echo ">> 检测到 NVIDIA Jetson，安装 jtop 遥测依赖..."
+    sudo apt-get -y install python3-pip
+    sudo -H /usr/bin/python3 -m pip install jetson-stats
+    sudo systemctl daemon-reload
+    sudo systemctl restart jtop.service || echo "警告: jtop.service 启动失败，GPU 遥测将自动跳过。"
+fi
 
 echo ">>> 5. 授权并配置服务..."
 
 echo ">> 5.1 将用户加入硬件访问组 (dialout, video, i2c)..."
 sudo usermod -aG dialout,video,i2c ${RUN_USER} || echo "警告: 组分配可能未完全成功，请检查系统组。"
 
-echo ">> 5.2 配置控制服务 (robot_control_server)..."
+echo ">> 5.2 配置主动连接服务 (WebSocket Agent)..."
 sudo tee /etc/systemd/system/DevicesWebControl-robot_control_server.service > /dev/null << EOF
 [Unit]
-Description=DevicesWebControl Robot Control Server
+Description=DevicesWebControl Outbound WebSocket Agent
+After=network-online.target DevicesWebControl-camera.service
+Wants=network-online.target DevicesWebControl-camera.service
 
 [Service]
-ExecStart=/usr/bin/python3 ${WORK_DIR}/robot_control_server.py
+Type=simple
+ExecStart=/usr/bin/python3 ${WORK_DIR}/robot_control_server.py --config ${WORK_DIR}/iot_client.conf
 WorkingDirectory=${WORK_DIR}/
 Restart=always
+RestartSec=3
 User=${RUN_USER}
 Group=${RUN_USER}
 
@@ -225,16 +237,6 @@ sudo systemctl start DevicesWebControl-iot_client
 sudo systemctl enable DevicesWebControl-camera
 sudo systemctl start DevicesWebControl-camera
 
-echo ">>> 5.5 授权 ${RUN_USER} 用户重启 iot 服务..."
-SYSTEMCTL_PATH=$(which systemctl)
-echo ">> systemctl 路径: ${SYSTEMCTL_PATH}"
-cat << EOF | sudo tee /etc/sudoers.d/deviceswebcontrol
-${RUN_USER} ALL=(root) NOPASSWD: ${SYSTEMCTL_PATH} restart DevicesWebControl-iot_client
-EOF
-sudo chmod 0440 /etc/sudoers.d/deviceswebcontrol
-# 验证 sudoers 文件语法
-sudo visudo -cf /etc/sudoers.d/deviceswebcontrol && echo ">> sudoers 配置验证通过" || echo "!! sudoers 配置有误，请检查"
-
 echo "=========================================="
-echo "部署完成！接下来请进入控制台进行添加设备。"
+echo "部署完成！请确认 iot_client.conf 已填写公网入口和平台生成的设备 Token。"
 echo "=========================================="

@@ -8,11 +8,11 @@ iot_client.py — 树莓派巡检机器人设备端上报客户端
   3. 检测到巡检点时，调用打卡接口
 
 用法：
-  python3 iot_client.py --server http://<服务器IP>:8000 --token <设备Token>
+  python3 iot_client.py --server https://<公网域名> --token <设备Token>
 
 配置文件（可选，与脚本同目录的 iot_client.conf）：
   [client]
-  server   = http://192.168.1.100:8000
+  server   = https://example.com
   token    = <从管理后台 /api/iot/tokens 获取的 Token>
   interval = 60
   point_id = 1
@@ -66,7 +66,7 @@ COMMON_GPS_SERIAL_DEVICES = ("/dev/serial0", "/dev/ttyAMA0", "/dev/serial1", "/d
 def load_config() -> Dict[str, Any]:
     """从命令行 + 配置文件合并参数，命令行优先。"""
     parser = argparse.ArgumentParser(description="树莓派 IoT 上报客户端")
-    parser.add_argument("--server", default="", help="后端服务器地址，如 http://192.168.1.100:8000")
+    parser.add_argument("--server", default="", help="公网统一入口，如 https://example.com")
     parser.add_argument("--token", default="", help="设备 Token（从管理后台创建）")
     parser.add_argument("--interval", type=int, default=0, help="遥测上报间隔秒数，默认 60")
     parser.add_argument("--point-id", type=int, default=0, help="当前巡检点 ID（0 表示不绑定）")
@@ -311,23 +311,35 @@ def read_battery() -> Optional[int]:
     return None
 
 
-def read_signal() -> Optional[int]:
+def _wifi_signal_percent(dbm: float) -> int:
+    return int(max(0, min(100, 2 * (dbm + 100))))
+
+
+def read_signal(interface: str = "wlan0") -> Optional[int]:
     """
     读取 Wi-Fi 信号强度（RSSI），转换为 0~100 百分比。
-    仅在 Linux 下有效。
+    优先使用 iw，兼容回退到 iwconfig。
     """
-    try:
-        out = subprocess.check_output(
-            ["iwconfig", "wlan0"], stderr=subprocess.DEVNULL, text=True, timeout=3
-        )
-        for part in out.split():
-            if part.startswith("level="):
-                dbm = int(part.split("=")[1])
-                # RSSI 通常在 -30（极好）到 -90（极差）之间
-                pct = max(0, min(100, 2 * (dbm + 100)))
-                return pct
-    except Exception:
-        pass
+    interface = interface.strip() or "wlan0"
+    attempts = (
+        (["iw", "dev", interface, "link"], r"signal:\s*(-?\d+(?:\.\d+)?)\s*dBm"),
+        (["iwconfig", interface], r"Signal\s+level[=:]\s*(-?\d+(?:\.\d+)?)\s*dBm"),
+    )
+    errors: List[str] = []
+    for command, pattern in attempts:
+        result = _run_command(command, 3)
+        output = f"{result.get('stdout') or ''}\n{result.get('stderr') or ''}"
+        match = re.search(pattern, output, re.IGNORECASE)
+        if match:
+            return _wifi_signal_percent(float(match.group(1)))
+        error = str(result.get("stderr") or "").strip()
+        if error:
+            errors.append(f"{command[0]}: {error}")
+    log.warning(
+        "Wi-Fi 信号读取失败 | 网卡=%s | %s",
+        interface,
+        " | ".join(errors) or "未找到 RSSI，请确认无线网卡已连接",
+    )
     return None
 
 
@@ -470,7 +482,9 @@ def read_system_info() -> Optional[Dict[str, Any]]:
 def read_pi_hardware() -> Optional[Dict[str, Any]]:
     """尝试使用 pinout 命令读取树莓派硬件详情（型号、SoC、RAM等）以及引脚图"""
     try:
-        out = subprocess.check_output(["pinout"], text=True, stderr=subprocess.DEVNULL, timeout=5)
+        out = subprocess.check_output(
+            ["pinout"], universal_newlines=True, stderr=subprocess.DEVNULL, timeout=5
+        )
         hw_list = []
         diagram_lines = []
         is_diagram = False
@@ -517,10 +531,79 @@ def read_pi_hardware() -> Optional[Dict[str, Any]]:
         return None
 
 
+def read_gpu_info() -> Optional[Dict[str, Any]]:
+    """读取 Jetson GPU 使用率、频率和温度；非 Jetson 或未安装 jtop 时返回 None。"""
+    gpu_data: Dict[str, Any] = {}
+    jetson = None
+    try:
+        from jtop import jtop
+
+        jetson = jtop()
+        jetson.start()
+
+        gpu_status = jetson.gpu
+        if hasattr(gpu_status, "items"):
+            for _, info in gpu_status.items():
+                if not isinstance(info, dict):
+                    continue
+                status = info.get("status")
+                if isinstance(status, dict) and "load" in status:
+                    gpu_data["load_percent"] = round(float(status["load"]), 1)
+                elif "val" in info:
+                    gpu_data["load_percent"] = round(float(info["val"]), 1)
+                elif "load" in info:
+                    gpu_data["load_percent"] = round(float(info["load"]), 1)
+
+                freq_info = info.get("freq")
+                if isinstance(freq_info, dict):
+                    current_freq = freq_info.get("cur")
+                    max_freq = freq_info.get("max")
+                    if current_freq is not None:
+                        current_freq = float(current_freq)
+                        gpu_data["freq_current_mhz"] = round(
+                            current_freq / 1000.0 if current_freq > 10000 else current_freq,
+                            1,
+                        )
+                    if max_freq is not None:
+                        max_freq = float(max_freq)
+                        gpu_data["freq_max_mhz"] = round(
+                            max_freq / 1000.0 if max_freq > 10000 else max_freq,
+                            1,
+                        )
+        elif isinstance(gpu_status, (int, float)):
+            gpu_data["load_percent"] = round(float(gpu_status), 1)
+        elif isinstance(gpu_status, (tuple, list)) and gpu_status:
+            gpu_data["load_percent"] = round(float(gpu_status[0]), 1)
+
+        temperatures = jetson.temperature
+        if hasattr(temperatures, "items"):
+            for name, value in temperatures.items():
+                if "gpu" not in name.lower():
+                    continue
+                if isinstance(value, dict) and "temp" in value:
+                    gpu_data["temp_c"] = round(float(value["temp"]), 1)
+                else:
+                    gpu_data["temp_c"] = round(float(value), 1)
+                break
+    except ImportError:
+        pass
+    except Exception as exc:
+        log.debug(f"jtop GPU 采集出错: {exc}")
+    finally:
+        if jetson is not None:
+            try:
+                jetson.close()
+            except Exception as exc:
+                log.debug(f"jtop 连接关闭出错: {exc}")
+    return gpu_data if gpu_data else None
+
+
 def read_usb_devices() -> Optional[List[str]]:
     """读取 USB 外设列表，过滤掉基础 Hub"""
     try:
-        out = subprocess.check_output(["lsusb"], text=True, stderr=subprocess.DEVNULL, timeout=3)
+        out = subprocess.check_output(
+            ["lsusb"], universal_newlines=True, stderr=subprocess.DEVNULL, timeout=3
+        )
         devices = []
         for line in out.splitlines():
             # 过滤掉系统自带的 root hub 和常见内置 hub
@@ -660,7 +743,14 @@ def build_gps_report(
 
 def _run_command(command: List[str], timeout: int) -> Dict[str, Any]:
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
+        result = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            timeout=timeout,
+            check=False,
+        )
         return {
             "ok": result.returncode == 0,
             "stdout": result.stdout,
@@ -1037,7 +1127,7 @@ def collect_telemetry(cfg: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, A
         "reportedAt": datetime.now().isoformat(timespec="seconds"),
     }
     battery = read_battery()
-    signal  = read_signal()
+    signal = read_signal(str(cfg.get("network_interface") or "wlan0"))
     if battery is not None:
         payload["battery"] = battery
     if signal is not None:
@@ -1103,6 +1193,11 @@ def collect_telemetry(cfg: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, A
             extra["hardware"] = hw_data["info"]
         if hw_data.get("diagram"):
             extra["hw_diagram"] = hw_data["diagram"]
+
+    # Jetson GPU（可选依赖 jtop；非 Jetson 平台自动跳过）
+    gpu_info = read_gpu_info()
+    if gpu_info is not None:
+        extra["gpu"] = gpu_info
 
     usb_devs = read_usb_devices()
     if usb_devs is not None:

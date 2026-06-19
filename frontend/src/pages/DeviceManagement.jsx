@@ -43,7 +43,7 @@ export default function DeviceManagement() {
   // add device modal (手动添加)
   const [showAddModal, setShowAddModal] = useState(false)
   const defaultServerAddr = () => {
-    return 'http://192.168.31.28:5273'
+    return window.location.origin
   }
   const [addFormData, setAddFormData] = useState({ name: '', type: '无人车', ip_address: '' })
   const [addSubmitting, setAddSubmitting] = useState(false)
