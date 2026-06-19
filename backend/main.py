@@ -5,8 +5,11 @@
 提供用户认证、用户管理、设备管理、无人车 WebSocket 控制和 IoT 遥测接口。
 """
 
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from routers import agent_ws, login, users, devices, robot_control, telemetry, clusters, camera, patrol, patrol_results, captcha
 
@@ -31,14 +34,6 @@ app.add_middleware(
 )
 
 
-# ===== 根路由 =====
-
-@app.get("/")
-async def root():
-    """根路径接口，返回欢迎信息"""
-    return {"message": "欢迎使用智慧校园巡逻管理系统 API"}
-
-
 @app.get("/api/health")
 async def health_check():
     """健康检查接口"""
@@ -58,3 +53,25 @@ app.include_router(patrol.router)
 app.include_router(patrol_results.router)
 app.include_router(captcha.router)
 app.include_router(agent_ws.router)
+
+
+# ===== 前端静态文件 =====
+
+FRONTEND_DIST_DIR = (Path(__file__).resolve().parent.parent / "frontend" / "dist").resolve()
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_frontend(full_path: str):
+    """提供前端构建文件，并为 React BrowserRouter 回退到 index.html。"""
+    if full_path == "api" or full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    requested_file = (FRONTEND_DIST_DIR / full_path).resolve()
+    if requested_file.is_relative_to(FRONTEND_DIST_DIR) and requested_file.is_file():
+        return FileResponse(requested_file)
+
+    index_file = FRONTEND_DIST_DIR / "index.html"
+    if index_file.is_file():
+        return FileResponse(index_file)
+
+    raise HTTPException(status_code=404, detail="前端尚未构建，请先生成 frontend/dist")
