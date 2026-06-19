@@ -24,7 +24,7 @@ from geometry_msgs.msg import Twist
 SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_FILE = SCRIPT_DIR / "iot_client.conf"
 CMD_TIMEOUT_SEC = 0.5
-MAX_LINEAR = 0.6
+MAX_LINEAR = 3.0
 MAX_ANGULAR = 2.0
 RECONNECT_DELAY_MAX_SEC = 2
 WEBSOCKET_OPEN_TIMEOUT_SEC = 5

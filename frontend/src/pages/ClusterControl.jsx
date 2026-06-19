@@ -22,7 +22,7 @@ export default function ClusterControl() {
   const [selectedClusterId, setSelectedClusterId] = useState('')
   const [logs, setLogs] = useState([])
   const [controlConfig, setControlConfig] = useState({ maxLinear: 0.4, maxAngular: 1.2 })
-  const [speedRatio, setSpeedRatio] = useState(1.0)
+  const [speedRatio, setSpeedRatio] = useState(0.5)
   const [activeDirection, setActiveDirection] = useState(null)
   const [customCommand, setCustomCommand] = useState('{"type":"ping"}')
   const [showCameras, setShowCameras] = useState(true)

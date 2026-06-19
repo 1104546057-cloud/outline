@@ -78,7 +78,7 @@ export default function DeviceCockpit() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [controlConfig, setControlConfig] = useState({ maxLinear: .4, maxAngular: 1.2 })
-  const [speedRatio, setSpeedRatio] = useState(.65)
+  const [speedRatio, setSpeedRatio] = useState(0.5)
   const [connectionStatus, setConnectionStatus] = useState('未检测')
   const [controlMessage, setControlMessage] = useState('等待连接设备控制服务')
   const [activeDirection, setActiveDirection] = useState(null)
