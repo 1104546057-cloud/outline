@@ -35,7 +35,6 @@ MEDIA_SEND_TIMEOUT_SEC = 3
 LOCAL_CAMERA_URL = "http://127.0.0.1:8080/?action=stream"
 MEDIA_HEADER = struct.Struct("!BQ")
 MEDIA_VIEW_CODE = 1
-MEDIA_MAX_FPS = 15.0
 
 logging.basicConfig(
     level=logging.INFO,
@@ -247,8 +246,6 @@ def media_stream_worker(
     websocket,
     send_lock: asyncio.Lock,
 ) -> None:
-    frame_interval = 1.0 / MEDIA_MAX_FPS
-    last_sent_at = 0.0
     while not stop_event.is_set():
         try:
             request = urllib.request.Request(LOCAL_CAMERA_URL, headers={"Connection": "close"})
@@ -275,9 +272,6 @@ def media_stream_worker(
                         end += 2
                         jpeg = bytes(buffer[start:end])
                         del buffer[:end]
-                        now = time.monotonic()
-                        if now - last_sent_at < frame_interval:
-                            continue
                         future = asyncio.run_coroutine_threadsafe(
                             send_media_frame(websocket, send_lock, jpeg), loop
                         )
@@ -286,7 +280,6 @@ def media_stream_worker(
                         except Exception:
                             future.cancel()
                             raise
-                        last_sent_at = now
         except Exception as exc:
             if stop_event.is_set():
                 break
