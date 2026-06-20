@@ -4,7 +4,7 @@ iot_client.py — ROS1 wheeltec 无人车设备端上报客户端（ROS-like 重
 ========================================================
 功能：
   1. 定期（默认 60 秒）上报遥测数据（电量、信号、GPS、机器人状态）到后端
-  2. GPS 坐标通过订阅 ROS /fix (sensor_msgs/NavSatFix) 话题获取
+  2. GPS 坐标通过订阅 ROS /gps/fix (sensor_msgs/NavSatFix) 话题获取
      （需在车端启动 G70 RTK 驱动，见下方 "前置 launch" 说明）
   3. 电源状态通过 /PowerVoltage、/robot_charging_flag 等话题获取
   4. 底盘安全、自检、充电、里程计、IMU 等均通过 ROS 话题获取
@@ -12,8 +12,8 @@ iot_client.py — ROS1 wheeltec 无人车设备端上报客户端（ROS-like 重
 前置 launch（车端需预先启动）：
   - 底盘驱动（提供 /PowerVoltage /odom /chassis_security 等）：
       roslaunch turn_on_wheeltec_robot turn_on_wheeltec_robot.launch
-  - G70 RTK 差分定位驱动（提供 /fix）：
-      roslaunch wheeltec_gps_driver wheeltec_dual_rtk_driver_nmea.launch
+  - G70 定位驱动（提供 /gps/fix）：
+      roslaunch wheeltec_gps_driver wheeltec_nmea_driver.launch
 
 用法：
   python3 iot_client.py --server http://<服务器IP>:5273 --token <设备Token>
@@ -31,6 +31,7 @@ import argparse
 import configparser
 import json
 import logging
+import math
 import os
 import ssl
 import subprocess
@@ -81,6 +82,8 @@ _BATTERY_VOLTAGE_MIN = 18.0   # 3.0V/cell × 6，放电截止
 _BATTERY_VOLTAGE_MAX = 25.2   # 4.2V/cell × 6，满电
 HTTP_TIMEOUT_SEC = 5
 FAILED_REPORT_RETRY_SEC = 5
+GPS_TOPIC = os.environ.get("DWC_GPS_TOPIC", "/gps/fix").strip() or "/gps/fix"
+GPS_STALE_SEC = max(1.0, float(os.environ.get("DWC_GPS_STALE_SEC", "10")))
 
 
 def configure_local_ros_network() -> None:
@@ -105,10 +108,11 @@ _ros_voltage: Optional[float] = None
 _ros_charging: Optional[bool] = None
 _ros_charging_current: Optional[float] = None
 
-# GPS（/fix，sensor_msgs/NavSatFix，由 wheeltec_dual_rtk_driver_nmea.launch 发布）
+# GPS（sensor_msgs/NavSatFix，由 wheeltec_nmea_driver.launch 发布）
 _ros_gps_lat: Optional[float] = None
 _ros_gps_lng: Optional[float] = None
 _ros_gps_status: Optional[int] = None   # NavSatStatus: -1=NO_FIX, 0=FIX, 1=SBAS, 2=GBAS(RTK)
+_ros_gps_received_at: Optional[float] = None
 
 # 底盘安全锁定（/chassis_security, std_msgs/Int8，1=正常解除，0=锁定）
 _ros_chassis_security: Optional[int] = 1
@@ -156,12 +160,19 @@ def _on_charging_current(msg) -> None:
 
 
 def _on_gps_fix(msg) -> None:
-    """回调：/fix GPS 定位数据更新（G70 RTK 驱动发布）。"""
-    global _ros_gps_lat, _ros_gps_lng, _ros_gps_status
+    """回调：G70 GPS/RTK 定位数据更新。"""
+    global _ros_gps_lat, _ros_gps_lng, _ros_gps_status, _ros_gps_received_at
     with _ros_lock:
         _ros_gps_status = msg.status.status
+        _ros_gps_received_at = time.monotonic()
         # STATUS_NO_FIX=-1, STATUS_FIX=0, STATUS_SBAS_FIX=1, STATUS_GBAS_FIX=2(RTK)
-        if msg.status.status >= NavSatStatus.STATUS_FIX:
+        coordinates_valid = (
+            math.isfinite(msg.latitude)
+            and math.isfinite(msg.longitude)
+            and -90.0 <= msg.latitude <= 90.0
+            and -180.0 <= msg.longitude <= 180.0
+        )
+        if msg.status.status >= NavSatStatus.STATUS_FIX and coordinates_valid:
             _ros_gps_lat = msg.latitude
             _ros_gps_lng = msg.longitude
         else:
@@ -232,8 +243,8 @@ def init_ros_subscribers() -> bool:
         rospy.Subscriber("/robot_charging_flag", RosBool, _on_charging_flag, queue_size=1)
         rospy.Subscriber("/robot_charging_current", RosFloat32, _on_charging_current, queue_size=1)
 
-        # GPS（需启动 wheeltec_dual_rtk_driver_nmea.launch）
-        rospy.Subscriber("/fix", NavSatFix, _on_gps_fix, queue_size=1)
+        # GPS（默认 /gps/fix，可通过 DWC_GPS_TOPIC 覆盖）
+        rospy.Subscriber(GPS_TOPIC, NavSatFix, _on_gps_fix, queue_size=1)
 
         # 底盘状态（由 turn_on_wheeltec_robot.launch 提供）
         rospy.Subscriber("/chassis_security", RosInt8, _on_chassis_security, queue_size=1)
@@ -248,7 +259,7 @@ def init_ros_subscribers() -> bool:
         _ros_initialized = True
         log.info(
             "ROS 话题订阅已初始化 | 电源: /PowerVoltage /robot_charging_* "
-            "| GPS: /fix | 底盘: /chassis_security /robot_selfcheck /robot_red_flag /robot_recharge_flag "
+            f"| GPS: {GPS_TOPIC} | 底盘: /chassis_security /robot_selfcheck /robot_red_flag /robot_recharge_flag "
             "| 运动: /odom /imu"
         )
         return True
@@ -298,14 +309,24 @@ def read_battery() -> Optional[int]:
 
 
 def read_gps() -> Tuple[Optional[float], Optional[float]]:
-    """从 /fix 话题缓存读取 GPS 坐标；G70 RTK 无定位时返回 (None, None)。"""
+    """从 G70 NavSatFix 话题缓存读取坐标；无定位时返回 (None, None)。"""
     with _ros_lock:
+        if (
+            _ros_gps_received_at is None
+            or time.monotonic() - _ros_gps_received_at > GPS_STALE_SEC
+        ):
+            return None, None
         return _ros_gps_lat, _ros_gps_lng
 
 
 def read_gps_status() -> Optional[int]:
-    """读取最近一次 /fix 消息的 NavSatStatus.status 值（-1/0/1/2）。"""
+    """读取最近一次 G70 消息的 NavSatStatus.status 值（-1/0/1/2）。"""
     with _ros_lock:
+        if (
+            _ros_gps_received_at is None
+            or time.monotonic() - _ros_gps_received_at > GPS_STALE_SEC
+        ):
+            return None
         return _ros_gps_status
 
 
@@ -646,7 +667,7 @@ def collect_telemetry(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     if signal is not None:
         payload["signal"] = signal
 
-    # GPS（通过 /fix 话题，G70 RTK）
+    # GPS（通过 G70 NavSatFix 话题）
     lat, lng = read_gps()
     gps_status_code = read_gps_status()
     if lat is not None and lng is not None:
@@ -657,22 +678,28 @@ def collect_telemetry(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
 
     # GPS 元信息
     if lat is not None:
-        gps_source_label = {2: "RTK_Fix", 1: "SBAS_Fix", 0: "GPS_Fix"}.get(gps_status_code or 0, "Fix")
+        # NMEA 驱动将 GGA 质量码 4（固定解）和 5（浮点解）都映射为 GBAS=2，
+        # 因此这里只能确认正在使用 RTK，不能仅凭 NavSatStatus 区分固定解和浮点解。
+        gps_source_label = {
+            2: "RTK_FloatOrFix",
+            1: "DGPS_SBAS",
+            0: "GPS_Fix",
+        }.get(gps_status_code, "Fix")
         extra["gps"] = {
             "status": "fix", 
-            "source": "ros:/fix", 
+            "source": f"ros:{GPS_TOPIC}",
             "fix_type": gps_source_label, 
             "status_code": gps_status_code,
-            "message": "通过 ROS /fix 话题获取到有效定位"
+            "message": f"通过 ROS {GPS_TOPIC} 话题获取到有效定位"
         }
-        extra["locationSource"] = "ros:/fix"
+        extra["locationSource"] = f"ros:{GPS_TOPIC}"
     else:
         status_label = "no_fix" if gps_status_code is not None else "driver_not_started"
         extra["gps"] = {
             "status": status_label, 
-            "source": "ros:/fix", 
+            "source": f"ros:{GPS_TOPIC}",
             "status_code": gps_status_code,
-            "message": "ROS /fix 话题尚未发布有效定位，或 RTK 驱动未启动"
+            "message": f"ROS {GPS_TOPIC} 话题尚未发布有效定位，或 G70 驱动未启动"
         }
         extra["locationSource"] = "none"
 
@@ -925,16 +952,21 @@ def main() -> None:
 
         # GPS 状态日志
         gps_status_code = read_gps_status()
-        with _ros_lock:
-            lat = _ros_gps_lat
-            lng = _ros_gps_lng
+        lat, lng = read_gps()
         if lat is not None:
-            fix_type = {2: "RTK_Fix", 1: "SBAS_Fix", 0: "GPS_Fix"}.get(gps_status_code or 0, "Fix")
+            fix_type = {
+                2: "RTK_FloatOrFix",
+                1: "DGPS_SBAS",
+                0: "GPS_Fix",
+            }.get(gps_status_code, "Fix")
             log.info(f"GPS 定位成功 [{fix_type}] | 坐标={lat:.7f},{lng:.7f}")
         elif gps_status_code is not None:
-            log.warning(f"GPS 无定位 | NavSatStatus={gps_status_code}（/fix 话题已收到，但当前无有效定位）")
+            log.warning(
+                f"GPS 无定位 | NavSatStatus={gps_status_code}"
+                f"（{GPS_TOPIC} 话题已收到，但当前无有效定位）"
+            )
         else:
-            log.debug("GPS /fix 话题暂无数据（wheeltec_dual_rtk_driver_nmea.launch 可能未启动）")
+            log.debug(f"GPS {GPS_TOPIC} 话题暂无数据（wheeltec_nmea_driver.launch 可能未启动）")
 
         sent = send_telemetry(server, token, telemetry, tls_verify=bool(cfg["tls_verify"]))
         next_delay = interval if sent else min(interval, FAILED_REPORT_RETRY_SEC)

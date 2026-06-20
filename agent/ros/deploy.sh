@@ -119,29 +119,10 @@ else
     echo ">> 跳过清华源配置"
 fi
 
-echo ">>> 3. 安装 GPS 工具并配置..."
-sudo apt-get -y install gpsd gpsd-clients
-
-GPS_DEVICE="/dev/wheeltec_gnss"
-if [ ! -e "$GPS_DEVICE" ]; then
-    GPS_DEVICE="/dev/serial/by-id/usb-u-blox_AG_-_www.u-blox.com_u-blox_GNSS_receiver-if00"
-fi
-if [ ! -e "$GPS_DEVICE" ]; then
-    GPS_DEVICE="/dev/ttyACM0"
-fi
-
-echo ">> 配置 /etc/default/gpsd..."
-sudo tee /etc/default/gpsd > /dev/null << EOF
-# /etc/default/gpsd
-START_DAEMON="true"
-GPSD_OPTIONS="-n -s 38400"
-DEVICES="${GPS_DEVICE}"
-USBAUTO="true"
-GPSD_SOCKET="/var/run/gpsd.sock"
-EOF
-
-sudo systemctl restart gpsd
-sudo systemctl enable gpsd
+echo ">>> 3. 为 ROS G70 驱动释放 GNSS 串口..."
+# iot_client 通过 ROS /gps/fix 获取定位；gpsd 与 ROS 驱动不能同时读取
+# /dev/wheeltec_gnss。兼容曾经运行过旧版部署脚本的设备，同时关闭 socket 激活。
+sudo systemctl disable --now gpsd.socket gpsd.service 2>/dev/null || true
 
 echo ">>> 4. 安装 Python / ROS 图像依赖..."
 sudo apt-get -y install python3-psutil python3-opencv python3-numpy python3-websockets ros-noetic-cv-bridge gstreamer1.0-tools gstreamer1.0-plugins-good
@@ -181,18 +162,44 @@ Environment="ROS_IP=127.0.0.1"
 WantedBy=multi-user.target
 EOF
 
-echo ">> 5.3 配置 IoT 服务 (iot_client)..."
+echo ">> 5.3 配置 G70 GNSS 驱动服务..."
+sudo tee /etc/systemd/system/DevicesWebControl-g70.service > /dev/null << EOF
+[Unit]
+Description=DevicesWebControl WHEELTEC G70 GNSS Driver
+Requires=turn_on_wheeltec_robot.service
+After=turn_on_wheeltec_robot.service
+Conflicts=gpsd.service gpsd.socket
+Before=DevicesWebControl-iot_client.service
+
+[Service]
+Type=simple
+User=${RUN_USER}
+Group=${RUN_USER}
+SupplementaryGroups=dialout
+Environment="ROS_MASTER_URI=http://localhost:11311"
+Environment="ROS_IP=127.0.0.1"
+ExecStart=/bin/bash -c 'source ${ROS_SETUP} && source ${WHEELTEC_SETUP} 2>/dev/null; for i in \$(seq 1 60); do rosparam get /run_id >/dev/null 2>&1 && exec roslaunch wheeltec_gps_driver wheeltec_nmea_driver.launch; sleep 1; done; echo "等待 ROS Master 就绪超时" >&2; exit 1'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+echo ">> 5.4 配置 IoT 服务 (iot_client)..."
 sudo tee /etc/systemd/system/DevicesWebControl-iot_client.service > /dev/null << EOF
 [Unit]
 Description=DevicesWebControl IoT Client
-After=network-online.target turn_on_wheeltec_robot.service
-Wants=network-online.target turn_on_wheeltec_robot.service
+After=network-online.target turn_on_wheeltec_robot.service DevicesWebControl-g70.service
+Wants=network-online.target turn_on_wheeltec_robot.service DevicesWebControl-g70.service
 
 [Service]
 Type=simple
 WorkingDirectory=${WORK_DIR}
 Environment="ROS_MASTER_URI=http://localhost:11311"
 Environment="ROS_IP=127.0.0.1"
+Environment="DWC_GPS_TOPIC=/gps/fix"
+Environment="DWC_GPS_STALE_SEC=10"
 ExecStart=/bin/bash -c 'source ${ROS_SETUP} && source ${WHEELTEC_SETUP} 2>/dev/null; exec python3 ${WORK_DIR}/iot_client.py --config ${WORK_DIR}/iot_client.conf'
 Restart=always
 RestartSec=5
@@ -203,7 +210,7 @@ Group=${RUN_USER}
 WantedBy=multi-user.target
 EOF
 
-echo ">> 5.4 配置摄像头采集服务 (camera)..."
+echo ">> 5.5 配置摄像头采集服务 (camera)..."
 sudo tee /etc/systemd/system/DevicesWebControl-camera.service > /dev/null << EOF
 [Unit]
 Description=DevicesWebControl ROS Gemini Camera Stream
@@ -234,6 +241,9 @@ sudo systemctl enable --now turn_on_wheeltec_robot.service
 
 sudo systemctl enable DevicesWebControl-robot_control_server
 sudo systemctl start DevicesWebControl-robot_control_server
+
+sudo systemctl enable DevicesWebControl-g70
+sudo systemctl start DevicesWebControl-g70
 
 sudo systemctl enable DevicesWebControl-iot_client
 sudo systemctl start DevicesWebControl-iot_client
