@@ -16,8 +16,8 @@ echo "=========================================="
 read -p "请输入运行服务的普通用户名 [直接回车则默认为 wheeltec]: " RUN_USER
 RUN_USER=${RUN_USER:-wheeltec}
 
-read -p "请输入部署工作路径 [直接回车则默认为 /home/${RUN_USER}/DevicesWebControl]: " WORK_DIR
-WORK_DIR=${WORK_DIR:-/home/${RUN_USER}/DevicesWebControl}
+read -p "请输入部署工作路径 [直接回车则默认为 /home/${RUN_USER}/Dong/DevicesWebControl]: " WORK_DIR
+WORK_DIR=${WORK_DIR:-/home/${RUN_USER}/Dong/DevicesWebControl}
 # 移除末尾可能的斜杠，保证后续拼接格式统一
 WORK_DIR=${WORK_DIR%/}
 
@@ -200,6 +200,7 @@ Environment="ROS_MASTER_URI=http://localhost:11311"
 Environment="ROS_IP=127.0.0.1"
 Environment="DWC_GPS_TOPIC=/gps/fix"
 Environment="DWC_GPS_STALE_SEC=10"
+Environment="DWC_USE_SYSTEM_PROXY=0"
 ExecStart=/bin/bash -c 'source ${ROS_SETUP} && source ${WHEELTEC_SETUP} 2>/dev/null; exec python3 ${WORK_DIR}/iot_client.py --config ${WORK_DIR}/iot_client.conf'
 Restart=always
 RestartSec=5

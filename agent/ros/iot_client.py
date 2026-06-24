@@ -77,13 +77,16 @@ log = logging.getLogger("iot_client")
 SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_FILE = SCRIPT_DIR / "iot_client.conf"
 
-# 6S 锂电池电压范围（用于换算电量百分比）
-_BATTERY_VOLTAGE_MIN = 18.0   # 3.0V/cell × 6，放电截止
-_BATTERY_VOLTAGE_MAX = 25.2   # 4.2V/cell × 6，满电
+# Wheeltec Plus 底盘的电量换算范围，与车端 auto_recharger.py 保持一致。
+_BATTERY_VOLTAGE_MIN = 20.0   # 0%
+_BATTERY_VOLTAGE_MAX = 25.0   # 100%
 HTTP_TIMEOUT_SEC = 5
 FAILED_REPORT_RETRY_SEC = 5
 GPS_TOPIC = os.environ.get("DWC_GPS_TOPIC", "/gps/fix").strip() or "/gps/fix"
 GPS_STALE_SEC = max(1.0, float(os.environ.get("DWC_GPS_STALE_SEC", "10")))
+USE_SYSTEM_PROXY = os.environ.get("DWC_USE_SYSTEM_PROXY", "0").strip().lower() in {
+    "1", "true", "yes", "on"
+}
 
 
 def configure_local_ros_network() -> None:
@@ -831,11 +834,16 @@ def _post(server: str, token: str, path: str, body: Dict[str, Any], tls_verify: 
         },
         method="POST",
     )
-    request_kwargs: Dict[str, Any] = {"timeout": HTTP_TIMEOUT_SEC}
+    handlers = []
+    if not USE_SYSTEM_PROXY:
+        # 车端经常从交互式 shell 继承仅供桌面使用的 127.0.0.1 代理；
+        # agent 默认直连公网平台，避免本地代理未启动时持续 Connection refused。
+        handlers.append(urllib.request.ProxyHandler({}))
     if url.lower().startswith("https://") and not tls_verify:
-        request_kwargs["context"] = ssl._create_unverified_context()
+        handlers.append(urllib.request.HTTPSHandler(context=ssl._create_unverified_context()))
+    opener = urllib.request.build_opener(*handlers)
     try:
-        with urllib.request.urlopen(req, **request_kwargs) as resp:
+        with opener.open(req, timeout=HTTP_TIMEOUT_SEC) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         body_text = exc.read().decode("utf-8", errors="replace")

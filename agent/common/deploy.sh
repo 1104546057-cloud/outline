@@ -16,8 +16,8 @@ echo "=========================================="
 read -p "请输入运行服务的普通用户名 [直接回车则默认为 nano]: " RUN_USER
 RUN_USER=${RUN_USER:-nano}
 
-read -p "请输入部署工作路径 [直接回车则默认为 /home/${RUN_USER}/DevicesWebControl]: " WORK_DIR
-WORK_DIR=${WORK_DIR:-/home/${RUN_USER}/DevicesWebControl}
+read -p "请输入部署工作路径 [直接回车则默认为 /home/${RUN_USER}/Dong/DevicesWebControl]: " WORK_DIR
+WORK_DIR=${WORK_DIR:-/home/${RUN_USER}/Dong/DevicesWebControl}
 # 移除末尾可能的斜杠，保证后续拼接格式统一
 WORK_DIR=${WORK_DIR%/}
 

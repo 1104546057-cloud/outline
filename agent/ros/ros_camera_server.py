@@ -425,6 +425,7 @@ class NativeMjpegCapture:
         self.process: Optional[subprocess.Popen] = None
         self.capture_thread: Optional[threading.Thread] = None
         self.stderr_thread: Optional[threading.Thread] = None
+        self.watchdog_thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
         gst_launch = shutil.which("gst-launch-1.0")
@@ -452,8 +453,10 @@ class NativeMjpegCapture:
         )
         self.capture_thread = threading.Thread(target=self._capture_loop, name="native-mjpeg", daemon=True)
         self.stderr_thread = threading.Thread(target=self._stderr_loop, name="native-mjpeg-log", daemon=True)
+        self.watchdog_thread = threading.Thread(target=self._watchdog_loop, name="native-mjpeg-watchdog", daemon=True)
         self.capture_thread.start()
         self.stderr_thread.start()
+        self.watchdog_thread.start()
 
     def stop(self) -> None:
         if self.stop_event.is_set():
@@ -472,6 +475,8 @@ class NativeMjpegCapture:
             self.capture_thread.join(timeout=2.0)
         if self.stderr_thread is not None and self.stderr_thread is not current_thread:
             self.stderr_thread.join(timeout=2.0)
+        if self.watchdog_thread is not None and self.watchdog_thread is not current_thread:
+            self.watchdog_thread.join(timeout=2.0)
 
     def _capture_loop(self) -> None:
         process = self.process
@@ -523,6 +528,24 @@ class NativeMjpegCapture:
             line = raw_line.decode("utf-8", errors="replace").strip()
             if line:
                 rospy.logwarn("GStreamer camera: %s", line)
+
+    def _watchdog_loop(self) -> None:
+        version = 0
+        while not self.stop_event.is_set():
+            _, next_version = self.store.wait_for_update("color", version, timeout=10.0)
+            if self.stop_event.is_set():
+                return
+            if next_version != version:
+                version = next_version
+                continue
+
+            process = self.process
+            if process is None or process.poll() is not None:
+                return
+            rospy.logerr("Native MJPEG capture produced no frames for 10 seconds; restarting media service")
+            process.terminate()
+            rospy.signal_shutdown("native MJPEG capture stalled")
+            return
 
 
 class CameraHTTPServer(ThreadingHTTPServer):
