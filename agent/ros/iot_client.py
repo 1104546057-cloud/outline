@@ -77,9 +77,9 @@ log = logging.getLogger("iot_client")
 SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_FILE = SCRIPT_DIR / "iot_client.conf"
 
-# Wheeltec Plus 底盘的电量换算范围，与车端 auto_recharger.py 保持一致。
-_BATTERY_VOLTAGE_MIN = 20.0   # 0%
-_BATTERY_VOLTAGE_MAX = 25.0   # 100%
+# 6S 锂电池电压范围（用于换算电量百分比）
+_BATTERY_VOLTAGE_MIN = 18.0   # 3.0V/cell × 6，放电截止
+_BATTERY_VOLTAGE_MAX = 25.2   # 4.2V/cell × 6，满电
 HTTP_TIMEOUT_SEC = 5
 FAILED_REPORT_RETRY_SEC = 5
 GPS_TOPIC = os.environ.get("DWC_GPS_TOPIC", "/gps/fix").strip() or "/gps/fix"
