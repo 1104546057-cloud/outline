@@ -907,6 +907,238 @@
   font-size: 0.82rem;
 }
 
+/* ---- 巡检导航 ---- */
+.patrol-navigation-page {
+  --cockpit-cyan: #2bd2ff;
+  --cockpit-blue: #2587ff;
+  --cockpit-green: #36ef9b;
+  --cockpit-red: #ff536b;
+}
+
+.patrol-navigation-page .patrol-header-select {
+  min-width: 220px;
+}
+
+.patrol-navigation-page .patrol-body {
+  display: grid;
+  grid-template-columns: clamp(300px, 22vw, 360px) minmax(420px, 1fr) clamp(270px, 20vw, 330px);
+  gap: 12px;
+  padding: 12px;
+  background: #031025;
+}
+
+.patrol-nav-layout {
+  min-height: 0;
+}
+
+.patrol-nav-sidebar {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  border-right: 1px solid var(--color-border);
+}
+
+.patrol-nav-map-section {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.patrol-nav-sensors {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: repeat(3, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.patrol-nav-sensors .cockpit-panel {
+  border-color: rgba(43, 177, 228, .34);
+  background: linear-gradient(145deg, rgba(5, 35, 64, .95), rgba(2, 13, 31, .98));
+}
+
+.patrol-nav-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-width: 0;
+  margin: 0.5rem;
+  padding: 0.85rem;
+  background: var(--color-bg-white);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+}
+
+.patrol-nav-row,
+.patrol-nav-coordinate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.patrol-nav-row strong,
+.patrol-nav-coordinate span {
+  color: var(--color-text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.patrol-nav-coordinate {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.patrol-nav-coordinate span {
+  min-width: 0;
+  padding: 0.45rem 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+}
+
+.patrol-nav-label {
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.patrol-nav-range {
+  width: 100%;
+  accent-color: var(--color-primary);
+}
+
+.patrol-nav-heading-buttons,
+.patrol-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.patrol-nav-actions {
+  min-width: 0;
+  margin: 0.5rem;
+}
+
+.patrol-nav-actions .patrol-btn {
+  flex: 1 1 105px;
+  justify-content: center;
+}
+
+.patrol-nav-map-container {
+  min-height: 360px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: #07111f;
+}
+
+.patrol-nav-map-toolbar {
+  position: absolute;
+  z-index: 130;
+  top: 1rem;
+  left: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: calc(100% - 2rem);
+}
+
+.patrol-nav-map-toolbar .themed-select,
+.patrol-nav-map-toolbar .patrol-header-select {
+  min-width: 230px;
+  max-width: 320px;
+}
+
+.patrol-nav-map-status {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.65rem;
+  color: #85b9ce;
+  border: 1px solid rgba(43, 177, 228, .38);
+  border-radius: 3px;
+  background: rgba(3, 24, 49, .9);
+  box-shadow: 0 8px 22px rgba(0,0,0,.32);
+  font-size: 0.76rem;
+}
+
+.patrol-nav-map-status span,
+.patrol-nav-map-status b {
+  overflow: hidden;
+  max-width: 150px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.patrol-nav-map-status b {
+  color: #e4f8ff;
+  font-weight: 700;
+}
+
+.patrol-nav-map-status i {
+  flex: 0 0 auto;
+  color: #8fa9b8;
+  font-style: normal;
+}
+
+.patrol-nav-map-status i.running {
+  color: #31e3a1;
+}
+
+.patrol-nav-control-dock {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(210px, .9fr) minmax(330px, 1.35fr) minmax(240px, .85fr);
+  gap: 10px;
+}
+
+.patrol-nav-control-dock .patrol-form-error {
+  grid-column: 1 / -1;
+}
+
+.patrol-nav-target-panel {
+  gap: 0.55rem;
+}
+
+.patrol-nav-map-info {
+  top: auto;
+  right: 1rem;
+  bottom: 1rem;
+}
+
+.patrol-nav-target-badge {
+  top: 1rem;
+  right: 1rem;
+}
+
+.patrol-nav-map-canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  background: #1f2937;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.42);
+  cursor: crosshair;
+}
+
+.patrol-nav-legend {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  z-index: 120;
+}
+
 /* ---- 图例 ---- */
 .patrol-legend {
   display: flex;
@@ -993,9 +1225,56 @@
 }
 
 /* 响应式 */
+@media (max-width: 1200px) {
+  .patrol-navigation-page .patrol-body {
+    grid-template-columns: 1fr;
+  }
+
+  .patrol-nav-sensors {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: minmax(160px, 220px);
+  }
+
+  .patrol-nav-control-dock {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .patrol-nav-actions {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 768px) {
   .patrol-body {
     flex-direction: column;
+  }
+  .patrol-navigation-page .patrol-body {
+    grid-template-columns: 1fr;
+    padding: 10px;
+  }
+  .patrol-nav-map-section,
+  .patrol-nav-control-dock,
+  .patrol-nav-sensors {
+    grid-template-columns: 1fr;
+  }
+  .patrol-nav-sensors {
+    grid-template-rows: repeat(3, 180px);
+  }
+  .patrol-nav-map-container {
+    min-height: 320px;
+  }
+  .patrol-nav-map-toolbar {
+    right: 0.75rem;
+    left: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .patrol-nav-map-toolbar .themed-select,
+  .patrol-nav-map-toolbar .patrol-header-select {
+    min-width: 0;
+    flex: 1 1 180px;
+  }
+  .patrol-nav-map-status {
+    flex: 1 1 100%;
   }
   .patrol-sidebar {
     width: 100%;

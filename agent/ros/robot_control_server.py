@@ -3,11 +3,14 @@
 
 import argparse
 import asyncio
+import base64
 import json
 import logging
+import math
 import os
 import signal
 import struct
+import subprocess
 import threading
 import time
 import urllib.parse
@@ -18,7 +21,7 @@ from typing import Dict, Tuple
 
 import rospy
 import websockets
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -34,6 +37,12 @@ MEDIA_SEND_TIMEOUT_SEC = 3
 LOCAL_CAMERA_URL = "http://127.0.0.1:8080/?action=stream&view={view}"
 MEDIA_HEADER = struct.Struct("!BQ")
 MEDIA_VIEW_CODES = {"color": 1, "depth": 2, "lidar": 3}
+SLAM_MAP_DIR = Path(os.environ.get("DWC_SLAM_MAP_DIR", "/home/wheeltec/Dong/DevicesWebControl/slam_map"))
+NAV_LOG_FILE = Path(os.environ.get("DWC_NAV_LOG_FILE", "/tmp/devices_web_control_navigation.log"))
+NAV_PREVIEW_MAX_SIZE = int(os.environ.get("DWC_NAV_PREVIEW_MAX_SIZE", "1000"))
+ROS_SETUP = os.environ.get("DWC_ROS_SETUP", "/opt/ros/noetic/setup.bash")
+LIDAR_SETUP = os.environ.get("DWC_LIDAR_SETUP", "/home/wheeltec/wheeltec_lidar/devel/setup.bash")
+WHEELTEC_SETUP = os.environ.get("DWC_WHEELTEC_SETUP", "/home/wheeltec/wheeltec_robot/devel/setup.bash")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,6 +56,13 @@ last_cmd_time = 0.0
 current_v = 0.0
 current_w = 0.0
 cmd_vel_pub = None
+simple_goal_pub = None
+nav_lock = threading.Lock()
+nav_process = None
+nav_map_name = None
+nav_pose_lock = threading.Lock()
+nav_pose = None
+nav_pose_time = 0.0
 
 
 def configure_local_ros_network() -> None:
@@ -118,6 +134,287 @@ def hard_stop() -> None:
         send_cmd_to_motor(0.0, 0.0, require_subscriber=False)
 
 
+def quaternion_to_yaw(z: float, w: float) -> float:
+    return math.atan2(2.0 * w * z, 1.0 - 2.0 * z * z)
+
+
+def on_amcl_pose(msg: PoseWithCovarianceStamped) -> None:
+    global nav_pose, nav_pose_time
+    pose = msg.pose.pose
+    with nav_pose_lock:
+        nav_pose = {
+            "frame_id": msg.header.frame_id or "map",
+            "x": pose.position.x,
+            "y": pose.position.y,
+            "yaw": quaternion_to_yaw(pose.orientation.z, pose.orientation.w),
+            "stamp": msg.header.stamp.to_sec() if msg.header.stamp else time.time(),
+        }
+        nav_pose_time = time.time()
+
+
+def current_navigation_pose() -> dict:
+    with nav_pose_lock:
+        if nav_pose is None:
+            return {}
+        pose = dict(nav_pose)
+        pose["age"] = max(0.0, time.time() - nav_pose_time)
+        return pose
+
+
+def path_is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path.resolve().relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def parse_map_yaml(path: Path) -> dict:
+    data = {}
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if not line or ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        if value.startswith("[") and value.endswith("]"):
+            items = [item.strip() for item in value[1:-1].split(",") if item.strip()]
+            parsed = []
+            for item in items:
+                try:
+                    parsed.append(float(item))
+                except ValueError:
+                    parsed.append(item)
+            data[key] = parsed
+            continue
+        try:
+            data[key] = float(value)
+            continue
+        except ValueError:
+            data[key] = value.strip("\"'")
+    return data
+
+
+def resolve_map_yaml(map_name: str) -> Path:
+    if not map_name or "/" in map_name or "\\" in map_name:
+        raise ValueError("地图名称非法")
+    path = (SLAM_MAP_DIR / map_name).resolve()
+    if path.suffix.lower() != ".yaml" or not path_is_relative_to(path, SLAM_MAP_DIR):
+        raise ValueError("地图必须是 slam_map 目录中的 yaml 文件")
+    if not path.exists():
+        raise FileNotFoundError(f"地图不存在: {map_name}")
+    return path
+
+
+def map_summary(path: Path) -> dict:
+    meta = parse_map_yaml(path)
+    image_value = str(meta.get("image", "")).strip()
+    image_path = Path(image_value)
+    if not image_path.is_absolute():
+        image_path = path.parent / image_path
+    image_path = image_path.resolve()
+    return {
+        "name": path.name,
+        "path": str(path),
+        "image": str(image_path),
+        "resolution": meta.get("resolution"),
+        "origin": meta.get("origin", [0.0, 0.0, 0.0]),
+        "imageExists": image_path.exists(),
+    }
+
+
+def list_navigation_maps() -> list:
+    if not SLAM_MAP_DIR.exists():
+        return []
+    maps = []
+    for path in sorted(SLAM_MAP_DIR.glob("*.yaml")):
+        try:
+            maps.append(map_summary(path))
+        except Exception as exc:
+            maps.append({"name": path.name, "path": str(path), "error": str(exc)})
+    return maps
+
+
+def read_pgm(path: Path) -> Tuple[int, int, int, bytes]:
+    data = path.read_bytes()
+    index = 0
+
+    def next_token() -> bytes:
+        nonlocal index
+        while index < len(data):
+            byte = data[index]
+            if byte == 35:
+                while index < len(data) and data[index] not in (10, 13):
+                    index += 1
+            elif chr(byte).isspace():
+                index += 1
+            else:
+                break
+        start = index
+        while index < len(data) and not chr(data[index]).isspace():
+            index += 1
+        return data[start:index]
+
+    magic = next_token()
+    if magic != b"P5":
+        raise ValueError("仅支持 P5 PGM 地图")
+    width = int(next_token())
+    height = int(next_token())
+    max_value = int(next_token())
+    while index < len(data) and chr(data[index]).isspace():
+        index += 1
+    if max_value > 255:
+        raise ValueError("暂不支持 16-bit PGM 地图")
+    pixels = data[index:index + width * height]
+    if len(pixels) != width * height:
+        raise ValueError("PGM 像素数据长度异常")
+    return width, height, max_value, pixels
+
+
+def downsample_gray8(width: int, height: int, pixels: bytes, max_size: int) -> Tuple[int, int, int, bytes]:
+    stride = max(1, math.ceil(max(width, height) / max(1, max_size)))
+    preview_width = math.ceil(width / stride)
+    preview_height = math.ceil(height / stride)
+    sampled = bytearray(preview_width * preview_height)
+    out_index = 0
+    for y in range(0, height, stride):
+        row_offset = y * width
+        for x in range(0, width, stride):
+            sampled[out_index] = pixels[row_offset + x]
+            out_index += 1
+    return preview_width, preview_height, stride, bytes(sampled)
+
+
+def navigation_map_preview(map_name: str) -> dict:
+    yaml_path = resolve_map_yaml(map_name)
+    summary = map_summary(yaml_path)
+    image_path = Path(summary["image"])
+    if not path_is_relative_to(image_path, SLAM_MAP_DIR):
+        raise ValueError("地图 image 必须位于 slam_map 目录内")
+    width, height, max_value, pixels = read_pgm(image_path)
+    preview_width, preview_height, stride, preview_pixels = downsample_gray8(
+        width,
+        height,
+        pixels,
+        NAV_PREVIEW_MAX_SIZE,
+    )
+    return {
+        "type": "nav_map_preview",
+        "ok": True,
+        **summary,
+        "width": width,
+        "height": height,
+        "previewWidth": preview_width,
+        "previewHeight": preview_height,
+        "previewScale": stride,
+        "maxValue": max_value,
+        "encoding": "gray8",
+        "data": base64.b64encode(preview_pixels).decode("ascii"),
+    }
+
+
+def navigation_status_response(ok: bool = True, error: str = "") -> dict:
+    with nav_lock:
+        proc = nav_process
+        map_name = nav_map_name
+    running = proc is not None and proc.poll() is None
+    code = None if proc is None or running else proc.poll()
+    return {
+        "type": "nav_status",
+        "ok": ok,
+        "running": running,
+        "pid": proc.pid if proc is not None else None,
+        "returncode": code,
+        "mapName": map_name,
+        "pose": current_navigation_pose(),
+        "logFile": str(NAV_LOG_FILE),
+        "error": error,
+        "ts": int(time.time()),
+    }
+
+
+def stop_navigation_process() -> None:
+    global nav_process, nav_map_name
+    with nav_lock:
+        proc = nav_process
+        nav_process = None
+        nav_map_name = None
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGINT)
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+
+
+def start_navigation_process(map_name: str) -> dict:
+    global nav_process, nav_map_name
+    yaml_path = resolve_map_yaml(map_name)
+    with nav_lock:
+        current = nav_process
+    if current is not None and current.poll() is None:
+        stop_navigation_process()
+    if cmd_vel_pub is not None and cmd_vel_pub.get_num_connections() <= 0:
+        raise RuntimeError("底盘 /cmd_vel 无订阅者，请先恢复 turn_on_wheeltec_robot.service")
+    NAV_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    log_file = open(NAV_LOG_FILE, "ab", buffering=0)
+    command = (
+        f"source {sh_quote(ROS_SETUP)} 2>/dev/null || true; "
+        f"source {sh_quote(LIDAR_SETUP)} 2>/dev/null || true; "
+        f"source {sh_quote(WHEELTEC_SETUP)} 2>/dev/null || true; "
+        "export ROS_MASTER_URI=${ROS_MASTER_URI:-http://localhost:11311}; "
+        "export ROS_IP=${DWC_ROS_IP:-127.0.0.1}; unset ROS_HOSTNAME; "
+        f"exec roslaunch turn_on_wheeltec_robot navigation.launch "
+        f"map_file:={sh_quote(str(yaml_path))} "
+        "start_base:=false start_lidar_driver:=false start_scan_converter:=true"
+    )
+    proc = subprocess.Popen(
+        ["/bin/bash", "-lc", command],
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
+        preexec_fn=os.setsid,
+        close_fds=True,
+    )
+    with nav_lock:
+        nav_process = proc
+        nav_map_name = yaml_path.name
+    time.sleep(0.8)
+    if proc.poll() is not None:
+        return navigation_status_response(False, "navigation.launch 启动后立即退出，请查看日志")
+    return navigation_status_response(True)
+
+
+def sh_quote(value: str) -> str:
+    return "'" + value.replace("'", "'\"'\"'") + "'"
+
+
+def publish_navigation_goal(x: float, y: float, yaw: float) -> int:
+    if simple_goal_pub is None:
+        raise RuntimeError("ROS /move_base_simple/goal Publisher 尚未初始化")
+    pose = PoseStamped()
+    pose.header.frame_id = "map"
+    pose.header.stamp = rospy.Time.now()
+    pose.pose.position.x = x
+    pose.pose.position.y = y
+    pose.pose.position.z = 0.0
+    pose.pose.orientation.z = math.sin(yaw / 2.0)
+    pose.pose.orientation.w = math.cos(yaw / 2.0)
+    simple_goal_pub.publish(pose)
+    subscribers = simple_goal_pub.get_num_connections()
+    log.info(
+        "发布 /move_base_simple/goal x=%.3f y=%.3f yaw=%.3f subscribers=%s",
+        x,
+        y,
+        yaw,
+        subscribers,
+    )
+    return subscribers
+
+
 def watchdog_loop() -> None:
     global last_cmd_time
     while not rospy.is_shutdown():
@@ -169,6 +466,63 @@ def execute_command(command: dict) -> dict:
             "ok": True,
             "v": linear,
             "w": angular,
+            "subscribers": subscriber_count,
+            "ts": now,
+        }
+    if command_type == "nav_maps":
+        return {
+            "type": "nav_maps",
+            "ok": True,
+            "mapDir": str(SLAM_MAP_DIR),
+            "maps": list_navigation_maps(),
+            "ts": now,
+        }
+    if command_type == "nav_map_preview":
+        try:
+            return navigation_map_preview(str(command.get("mapName", "")))
+        except Exception as exc:
+            return {"type": "nav_map_preview", "ok": False, "error": str(exc), "ts": now}
+    if command_type == "nav_start":
+        try:
+            return start_navigation_process(str(command.get("mapName", "")))
+        except Exception as exc:
+            return navigation_status_response(False, str(exc))
+    if command_type == "nav_stop":
+        try:
+            hard_stop()
+            stop_navigation_process()
+            return navigation_status_response(True)
+        except Exception as exc:
+            return navigation_status_response(False, str(exc))
+    if command_type == "nav_status":
+        return navigation_status_response(True)
+    if command_type == "nav_goal":
+        try:
+            x = float(command.get("x", 0.0))
+            y = float(command.get("y", 0.0))
+            yaw = float(command.get("yaw", 0.0))
+        except (TypeError, ValueError) as exc:
+            return {"type": "ack", "ok": False, "error": str(exc), "ts": now}
+        try:
+            subscriber_count = publish_navigation_goal(x, y, yaw)
+        except Exception as exc:
+            return {"type": "ack", "ok": False, "error": str(exc), "ts": now}
+        if subscriber_count <= 0:
+            return {
+                "type": "ack",
+                "ok": False,
+                "error": "ROS /move_base_simple/goal 没有订阅者，请先启动 navigation.launch",
+                "subscribers": subscriber_count,
+                "ts": now,
+            }
+        return {
+            "type": "ack",
+            "ok": True,
+            "topic": "/move_base_simple/goal",
+            "frame_id": "map",
+            "x": x,
+            "y": y,
+            "yaw": yaw,
             "subscribers": subscriber_count,
             "ts": now,
         }
@@ -365,10 +719,12 @@ async def media_loop(url: str, token: str) -> None:
 
 
 def init_ros() -> None:
-    global cmd_vel_pub
+    global cmd_vel_pub, simple_goal_pub
     configure_local_ros_network()
     rospy.init_node("devices_web_control_agent", anonymous=False, disable_signals=True)
     cmd_vel_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
+    simple_goal_pub = rospy.Publisher("/move_base_simple/goal", PoseStamped, queue_size=1)
+    rospy.Subscriber("/amcl_pose", PoseWithCovarianceStamped, on_amcl_pose, queue_size=1)
     wait_started = time.time()
     while cmd_vel_pub.get_num_connections() == 0 and time.time() - wait_started < 5:
         if rospy.is_shutdown():
@@ -422,6 +778,7 @@ def main() -> None:
     try:
         asyncio.run(run_agent(server, token))
     finally:
+        stop_navigation_process()
         hard_stop()
 
 

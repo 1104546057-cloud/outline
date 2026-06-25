@@ -123,6 +123,33 @@ class RobotControlSend(BaseModel):
     command: str  # 直接发送的 JSON 指令代码，例如 '{"type":"ping"}'
 
 
+# ===== 巡检导航 =====
+
+class NavigationMapPreviewRequest(BaseModel):
+    """获取车端 SLAM 地图预览"""
+    robotId: Optional[int] = None
+    mapName: str
+
+
+class NavigationStartRequest(BaseModel):
+    """启动车端 navigation.launch"""
+    robotId: Optional[int] = None
+    mapName: str
+
+
+class NavigationGoalRequest(BaseModel):
+    """发送地图坐标系目标点"""
+    robotId: Optional[int] = None
+    x: float
+    y: float
+    yaw: float = 0.0
+
+
+class NavigationStopRequest(BaseModel):
+    """停止 Web 平台启动的导航进程"""
+    robotId: Optional[int] = None
+
+
 # ===== 集群管理 =====
 
 class ClusterCreate(BaseModel):

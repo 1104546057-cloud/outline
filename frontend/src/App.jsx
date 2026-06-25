@@ -16,6 +16,7 @@ import PatrolPoints from './pages/PatrolPoints'
 import PatrolRoutes from './pages/PatrolRoutes'
 import PatrolTasks from './pages/PatrolTasks'
 import PatrolResults from './pages/PatrolResults'
+import PatrolNavigation from './pages/PatrolNavigation'
 import './styles/SubpageTheme.css'
 
 /**
@@ -78,6 +79,7 @@ function App() {
           <Route path="patrol/points" element={<PatrolPoints />} />
           <Route path="patrol/routes" element={<PatrolRoutes />} />
           <Route path="patrol/tasks" element={<PatrolTasks />} />
+          <Route path="patrol/navigation" element={<PatrolNavigation />} />
           <Route path="patrol/results" element={<PatrolResults />} />
           <Route path="video-analysis" element={<PlaceholderPage title="视频识别分析" description="视频智能识别与事件分析模块正在建设中" icon="◈" />} />
           <Route path="warning-response" element={<PlaceholderPage title="安全预警处置" description="校园安全事件协同处置模块正在建设中" icon="△" />} />

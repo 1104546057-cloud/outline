@@ -737,6 +737,12 @@
 .patrol-card.active .patrol-card-tag { color: #8eddf4; border-color: rgba(43, 210, 255, .25); background: rgba(7, 66, 102, .5); }
 .patrol-card-actions, .patrol-task-actions { border-color: var(--sub-border-soft); }
 .patrol-map-container, .patrol-task-map-container { background: #031025; }
+.patrol-nav-panel { border-color: var(--sub-border-soft); background: rgba(5, 35, 64, .72); }
+.patrol-nav-row, .patrol-nav-label { color: var(--sub-text-secondary); }
+.patrol-nav-row strong, .patrol-nav-coordinate span { color: var(--sub-text); }
+.patrol-nav-coordinate span { border-color: var(--sub-border-soft); background: rgba(3, 24, 49, .82); }
+.patrol-nav-map-container { background: #031025; }
+.patrol-nav-map-canvas { border-color: rgba(43, 177, 228, .34); box-shadow: 0 18px 50px rgba(0,0,0,.42); }
 .patrol-map-hint { color: var(--sub-text-secondary); border: 1px solid rgba(43, 183, 235, .4); border-radius: 4px; background: rgba(4, 24, 51, .9); box-shadow: 0 12px 35px rgba(0,0,0,.38); }
 .patrol-map-badge { color: var(--sub-text-secondary); border: 1px solid rgba(43, 177, 228, .38); border-radius: 3px; background: rgba(3, 24, 49, .9); box-shadow: 0 8px 22px rgba(0,0,0,.32); }
 .patrol-map-badge strong { color: #e4f8ff; }
