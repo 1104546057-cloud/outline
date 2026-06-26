@@ -21,7 +21,12 @@ from typing import Dict, Tuple
 
 import rospy
 import websockets
+from actionlib_msgs.msg import GoalStatus, GoalStatusArray
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
+try:
+    from move_base_msgs.msg import MoveBaseActionResult
+except ImportError:
+    MoveBaseActionResult = None
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -63,6 +68,23 @@ nav_map_name = None
 nav_pose_lock = threading.Lock()
 nav_pose = None
 nav_pose_time = 0.0
+nav_goal_lock = threading.Lock()
+nav_goal_status = None
+nav_goal_status_time = 0.0
+nav_goal_sent_time = 0.0
+
+GOAL_STATUS_LABELS = {
+    GoalStatus.PENDING: "PENDING",
+    GoalStatus.ACTIVE: "ACTIVE",
+    GoalStatus.PREEMPTED: "PREEMPTED",
+    GoalStatus.SUCCEEDED: "SUCCEEDED",
+    GoalStatus.ABORTED: "ABORTED",
+    GoalStatus.REJECTED: "REJECTED",
+    GoalStatus.PREEMPTING: "PREEMPTING",
+    GoalStatus.RECALLING: "RECALLING",
+    GoalStatus.RECALLED: "RECALLED",
+    GoalStatus.LOST: "LOST",
+}
 
 
 def configure_local_ros_network() -> None:
@@ -152,6 +174,60 @@ def on_amcl_pose(msg: PoseWithCovarianceStamped) -> None:
         nav_pose_time = time.time()
 
 
+def status_stamp_to_sec(status) -> float:
+    try:
+        return status.goal_id.stamp.to_sec()
+    except Exception:
+        return 0.0
+
+
+def remember_move_base_status(status, source: str) -> None:
+    global nav_goal_status, nav_goal_status_time
+    with nav_goal_lock:
+        sent_time = nav_goal_sent_time
+        stamp = status_stamp_to_sec(status)
+        if sent_time > 0 and stamp > 0 and stamp < sent_time - 1.0:
+            return
+        now = time.time()
+        nav_goal_status = {
+            "source": source,
+            "status": int(status.status),
+            "label": GOAL_STATUS_LABELS.get(int(status.status), str(status.status)),
+            "text": status.text or "",
+            "goalId": status.goal_id.id or "",
+            "stamp": stamp,
+            "updatedAt": now,
+            "sentAt": sent_time,
+        }
+        nav_goal_status_time = now
+
+
+def on_move_base_status(msg: GoalStatusArray) -> None:
+    if not msg.status_list:
+        return
+    status = max(msg.status_list, key=status_stamp_to_sec)
+    remember_move_base_status(status, "status")
+
+
+def on_move_base_result(msg) -> None:
+    remember_move_base_status(msg.status, "result")
+
+
+def clear_navigation_pose() -> None:
+    global nav_pose, nav_pose_time
+    with nav_pose_lock:
+        nav_pose = None
+        nav_pose_time = 0.0
+
+
+def clear_navigation_goal_status() -> None:
+    global nav_goal_status, nav_goal_status_time, nav_goal_sent_time
+    with nav_goal_lock:
+        nav_goal_status = None
+        nav_goal_status_time = 0.0
+        nav_goal_sent_time = 0.0
+
+
 def current_navigation_pose() -> dict:
     with nav_pose_lock:
         if nav_pose is None:
@@ -159,6 +235,15 @@ def current_navigation_pose() -> dict:
         pose = dict(nav_pose)
         pose["age"] = max(0.0, time.time() - nav_pose_time)
         return pose
+
+
+def current_navigation_goal_status() -> dict:
+    with nav_goal_lock:
+        if nav_goal_status is None:
+            return {}
+        status = dict(nav_goal_status)
+        status["age"] = max(0.0, time.time() - nav_goal_status_time)
+        return status
 
 
 def path_is_relative_to(path: Path, parent: Path) -> bool:
@@ -327,7 +412,8 @@ def navigation_status_response(ok: bool = True, error: str = "") -> dict:
         "pid": proc.pid if proc is not None else None,
         "returncode": code,
         "mapName": map_name,
-        "pose": current_navigation_pose(),
+        "pose": current_navigation_pose() if running else {},
+        "goalStatus": current_navigation_goal_status(),
         "logFile": str(NAV_LOG_FILE),
         "error": error,
         "ts": int(time.time()),
@@ -336,6 +422,8 @@ def navigation_status_response(ok: bool = True, error: str = "") -> dict:
 
 def stop_navigation_process() -> None:
     global nav_process, nav_map_name
+    clear_navigation_pose()
+    clear_navigation_goal_status()
     with nav_lock:
         proc = nav_process
         nav_process = None
@@ -358,6 +446,8 @@ def start_navigation_process(map_name: str) -> dict:
         current = nav_process
     if current is not None and current.poll() is None:
         stop_navigation_process()
+    clear_navigation_pose()
+    clear_navigation_goal_status()
     if cmd_vel_pub is not None and cmd_vel_pub.get_num_connections() <= 0:
         raise RuntimeError("底盘 /cmd_vel 无订阅者，请先恢复 turn_on_wheeltec_robot.service")
     NAV_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -393,8 +483,13 @@ def sh_quote(value: str) -> str:
 
 
 def publish_navigation_goal(x: float, y: float, yaw: float) -> int:
+    global nav_goal_status, nav_goal_status_time, nav_goal_sent_time
     if simple_goal_pub is None:
         raise RuntimeError("ROS /move_base_simple/goal Publisher 尚未初始化")
+    with nav_goal_lock:
+        nav_goal_sent_time = time.time()
+        nav_goal_status = None
+        nav_goal_status_time = 0.0
     pose = PoseStamped()
     pose.header.frame_id = "map"
     pose.header.stamp = rospy.Time.now()
@@ -725,6 +820,11 @@ def init_ros() -> None:
     cmd_vel_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
     simple_goal_pub = rospy.Publisher("/move_base_simple/goal", PoseStamped, queue_size=1)
     rospy.Subscriber("/amcl_pose", PoseWithCovarianceStamped, on_amcl_pose, queue_size=1)
+    rospy.Subscriber("/move_base/status", GoalStatusArray, on_move_base_status, queue_size=1)
+    if MoveBaseActionResult is not None:
+        rospy.Subscriber("/move_base/result", MoveBaseActionResult, on_move_base_result, queue_size=1)
+    else:
+        log.warning("move_base_msgs 不可用，将仅通过 /move_base/status 判断导航目标状态")
     wait_started = time.time()
     while cmd_vel_pub.get_num_connections() == 0 and time.time() - wait_started < 5:
         if rospy.is_shutdown():

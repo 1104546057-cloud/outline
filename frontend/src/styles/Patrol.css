@@ -942,6 +942,8 @@
   min-width: 0;
   min-height: 0;
   display: flex;
+  padding: 0;
+  background: #031025;
 }
 
 .patrol-nav-sensors {
@@ -1031,12 +1033,89 @@
   justify-content: center;
 }
 
+.patrol-nav-actions-primary,
+.patrol-nav-actions-route {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.patrol-nav-actions-primary .patrol-btn,
+.patrol-nav-actions-route .patrol-btn {
+  min-width: 0;
+  flex: none;
+}
+
+.patrol-waypoint-panel {
+  gap: 0.55rem;
+}
+
+.patrol-waypoint-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.patrol-waypoint-item {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+}
+
+.patrol-waypoint-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: 0 0 1.15rem;
+  border-radius: 50%;
+  color: #fff;
+  background: #ff4f64;
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.patrol-waypoint-item.active .patrol-waypoint-marker {
+  background: #f59e0b;
+}
+
+.patrol-waypoint-item.reached .patrol-waypoint-marker {
+  background: #22c55e;
+}
+
+.patrol-waypoint-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.patrol-waypoint-empty {
+  padding: 0.55rem 0.65rem;
+  color: var(--color-text-muted);
+  background: var(--color-bg-subtle);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+}
+
 .patrol-nav-map-container {
   min-height: 360px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1rem;
+  padding: 0;
   background: #07111f;
 }
 
@@ -1122,14 +1201,21 @@
 
 .patrol-nav-map-canvas {
   display: block;
-  max-width: 100%;
-  max-height: 100%;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
+  box-sizing: border-box;
+  touch-action: none;
+  user-select: none;
   image-rendering: pixelated;
-  background: #1f2937;
+  background: #031025;
   border: 1px solid rgba(255, 255, 255, 0.18);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.42);
-  cursor: crosshair;
+  cursor: grab;
+}
+
+.patrol-nav-map-canvas:active {
+  cursor: grabbing;
 }
 
 .patrol-nav-legend {

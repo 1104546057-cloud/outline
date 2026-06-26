@@ -12,6 +12,31 @@ const formatNumber = value => (
 
 const formatMapDisplayName = name => String(name || '').replace(/\.yaml$/i, '')
 
+const POSE_TRAIL_MIN_DISTANCE = 0.03
+const POSE_TRAIL_MAX_POINTS = 1200
+const MAP_MIN_SCALE = 0.25
+const MAP_MAX_SCALE = 8
+const MAP_ZOOM_STEP = 0.001
+const MAP_DRAG_THRESHOLD = 4
+const WAYPOINT_REACHED_DISTANCE = 0.35
+const MOVE_BASE_SUCCEEDED = 3
+const MOVE_BASE_FAILURE_STATUSES = new Set([2, 4, 5, 8, 9])
+const NAV_MAP_CANVAS_BACKGROUND = '#031025'
+const NAV_MAP_CANVAS_BACKGROUND_RGB = [3, 16, 37]
+const NAV_MAP_FREE_RGB = [25, 115, 148]
+const NAV_MAP_FREE_GRAY_MIN = 245
+const NAV_MAP_UNKNOWN_GRAY_MIN = 190
+const NAV_MAP_UNKNOWN_GRAY_MAX = 220
+
+const createDefaultMapView = () => ({
+  scale: 1,
+  offsetX: 0,
+  offsetY: 0,
+  rotation: 0,
+})
+
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+
 function decodeGray8(base64) {
   const binary = atob(base64 || '')
   const bytes = new Uint8Array(binary.length)
@@ -49,10 +74,117 @@ function mapToPreview(preview, x, y) {
   }
 }
 
-function drawArrow(ctx, px, py, yaw, fillStyle, radius = 18) {
+function getMapBaseScale(preview, width, height) {
+  if (!preview || width <= 0 || height <= 0) return 1
+  return Math.min(width / preview.previewWidth, height / preview.previewHeight) * 0.96
+}
+
+function rotatePoint(x, y, angle) {
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  return {
+    x: x * cos - y * sin,
+    y: x * sin + y * cos,
+  }
+}
+
+function canvasToPreviewPoint(preview, view, canvasX, canvasY, width, height) {
+  const baseScale = getMapBaseScale(preview, width, height)
+  const scale = baseScale * view.scale
+  if (!Number.isFinite(scale) || scale === 0) return null
+  const dx = canvasX - width / 2 - view.offsetX
+  const dy = canvasY - height / 2 - view.offsetY
+  const unrotated = rotatePoint(dx, dy, -view.rotation)
+  return {
+    px: preview.previewWidth / 2 + unrotated.x / scale,
+    py: preview.previewHeight / 2 + unrotated.y / scale,
+  }
+}
+
+function getCanvasPoint(event, canvas) {
+  const rect = canvas.getBoundingClientRect()
+  return {
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top,
+    width: rect.width,
+    height: rect.height,
+  }
+}
+
+function poseDistance(a, b) {
+  if (!a || !b) return Infinity
+  const dx = Number(a.x) - Number(b.x)
+  const dy = Number(a.y) - Number(b.y)
+  return Math.hypot(dx, dy)
+}
+
+function normalizeTrailPoint(pose) {
+  if (!pose || !Number.isFinite(pose.x) || !Number.isFinite(pose.y)) return null
+  return {
+    x: Number(pose.x),
+    y: Number(pose.y),
+    yaw: Number.isFinite(pose.yaw) ? Number(pose.yaw) : 0,
+    ts: Date.now(),
+  }
+}
+
+function mergeCurrentIntoTrail(trail, pose) {
+  const current = normalizeTrailPoint(pose)
+  if (!current) return trail
+  if (!trail.length) return [current]
+  const last = trail[trail.length - 1]
+  if (poseDistance(last, current) < POSE_TRAIL_MIN_DISTANCE) {
+    if (trail.length === 1) return trail
+    return [...trail.slice(0, -1), current]
+  }
+  return [...trail, current]
+}
+
+function drawTrail(ctx, preview, trail) {
+  if (!preview || trail.length === 0) return
+  const points = trail.map(point => mapToPreview(preview, point.x, point.y))
+
+  if (points.length > 1) {
+    ctx.save()
+    ctx.lineJoin = 'round'
+    ctx.lineCap = 'round'
+    ctx.strokeStyle = 'rgba(2, 8, 23, 0.78)'
+    ctx.lineWidth = 8
+    ctx.beginPath()
+    points.forEach((point, index) => {
+      if (index === 0) ctx.moveTo(point.px, point.py)
+      else ctx.lineTo(point.px, point.py)
+    })
+    ctx.stroke()
+
+    ctx.strokeStyle = '#22d3ee'
+    ctx.lineWidth = 4
+    ctx.beginPath()
+    points.forEach((point, index) => {
+      if (index === 0) ctx.moveTo(point.px, point.py)
+      else ctx.lineTo(point.px, point.py)
+    })
+    ctx.stroke()
+    ctx.restore()
+  }
+
+  const origin = points[0]
+  ctx.save()
+  ctx.beginPath()
+  ctx.arc(origin.px, origin.py, 8, 0, Math.PI * 2)
+  ctx.fillStyle = '#3b82f6'
+  ctx.strokeStyle = '#ffffff'
+  ctx.lineWidth = 2
+  ctx.fill()
+  ctx.stroke()
+  ctx.restore()
+}
+
+function drawArrow(ctx, px, py, mapYaw, fillStyle, radius = 18) {
   ctx.save()
   ctx.translate(px, py)
-  ctx.rotate(yaw)
+  // Canvas y-axis points down, while ROS map yaw is counterclockwise.
+  ctx.rotate(-mapYaw)
   ctx.fillStyle = fillStyle
   ctx.strokeStyle = '#fff'
   ctx.lineWidth = 2
@@ -67,15 +199,65 @@ function drawArrow(ctx, px, py, yaw, fillStyle, radius = 18) {
   ctx.restore()
 }
 
+function drawWaypointMarkers(ctx, preview, waypoints, activeWaypointId) {
+  if (!preview || waypoints.length === 0) return
+  const points = waypoints.map(point => ({
+    ...point,
+    ...mapToPreview(preview, point.x, point.y),
+  }))
+
+  if (points.length > 1) {
+    ctx.save()
+    ctx.lineJoin = 'round'
+    ctx.lineCap = 'round'
+    ctx.setLineDash([8, 6])
+    ctx.strokeStyle = 'rgba(255, 79, 100, 0.72)'
+    ctx.lineWidth = 4
+    ctx.beginPath()
+    points.forEach((point, index) => {
+      if (index === 0) ctx.moveTo(point.px, point.py)
+      else ctx.lineTo(point.px, point.py)
+    })
+    ctx.stroke()
+    ctx.restore()
+  }
+
+  points.forEach((point, index) => {
+    const reached = point.status === 'reached'
+    const active = point.id === activeWaypointId
+    ctx.save()
+    ctx.beginPath()
+    ctx.arc(point.px, point.py, 11, 0, Math.PI * 2)
+    ctx.fillStyle = reached ? '#22c55e' : active ? '#f59e0b' : '#ff4f64'
+    ctx.strokeStyle = active ? '#fef3c7' : '#ffffff'
+    ctx.lineWidth = active ? 3 : 2
+    ctx.fill()
+    ctx.stroke()
+    ctx.font = '700 10px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText(reached ? '✓' : String(index + 1), point.px, point.py + 0.5)
+    ctx.restore()
+  })
+}
+
 export default function PatrolNavigation() {
   const canvasRef = useRef(null)
+  const dragRef = useRef(null)
+  const waypointIdRef = useRef(1)
   const [devices, setDevices] = useState([])
   const [selectedDeviceId, setSelectedDeviceId] = useState('')
   const [maps, setMaps] = useState([])
   const [selectedMap, setSelectedMap] = useState('')
   const [preview, setPreview] = useState(null)
   const [previewPixels, setPreviewPixels] = useState(null)
+  const [mapView, setMapView] = useState(createDefaultMapView)
   const [target, setTarget] = useState(null)
+  const [waypoints, setWaypoints] = useState([])
+  const [activeWaypointId, setActiveWaypointId] = useState(null)
+  const [routeSending, setRouteSending] = useState(false)
+  const [poseTrail, setPoseTrail] = useState([])
   const [yawDeg, setYawDeg] = useState(0)
   const [navStatus, setNavStatus] = useState(null)
   const [loadingDevices, setLoadingDevices] = useState(true)
@@ -88,6 +270,10 @@ export default function PatrolNavigation() {
     () => devices.find(device => String(device.id) === String(selectedDeviceId)),
     [devices, selectedDeviceId],
   )
+  const pendingWaypointCount = useMemo(
+    () => waypoints.filter(point => point.status !== 'reached').length,
+    [waypoints],
+  )
   const robotPose = navStatus?.pose && Number.isFinite(navStatus.pose.x) && Number.isFinite(navStatus.pose.y)
     ? navStatus.pose
     : null
@@ -95,19 +281,56 @@ export default function PatrolNavigation() {
   const drawMap = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas || !preview || !previewPixels) return
-    canvas.width = preview.previewWidth
-    canvas.height = preview.previewHeight
+    const rect = canvas.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return
+    const dpr = window.devicePixelRatio || 1
+    const nextWidth = Math.round(rect.width * dpr)
+    const nextHeight = Math.round(rect.height * dpr)
+    if (canvas.width !== nextWidth) canvas.width = nextWidth
+    if (canvas.height !== nextHeight) canvas.height = nextHeight
     const ctx = canvas.getContext('2d')
-    const imageData = ctx.createImageData(preview.previewWidth, preview.previewHeight)
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, rect.width, rect.height)
+    ctx.fillStyle = NAV_MAP_CANVAS_BACKGROUND
+    ctx.fillRect(0, 0, rect.width, rect.height)
+
+    const mapCanvas = document.createElement('canvas')
+    mapCanvas.width = preview.previewWidth
+    mapCanvas.height = preview.previewHeight
+    const mapCtx = mapCanvas.getContext('2d')
+    const imageData = mapCtx.createImageData(preview.previewWidth, preview.previewHeight)
     for (let i = 0; i < previewPixels.length; i += 1) {
       const value = previewPixels[i]
       const offset = i * 4
-      imageData.data[offset] = value
-      imageData.data[offset + 1] = value
-      imageData.data[offset + 2] = value
+      const isUnknownGray = value >= NAV_MAP_UNKNOWN_GRAY_MIN && value <= NAV_MAP_UNKNOWN_GRAY_MAX
+      const isFreeGray = value >= NAV_MAP_FREE_GRAY_MIN
+      let red = value
+      let green = value
+      let blue = value
+      if (isUnknownGray) {
+        [red, green, blue] = NAV_MAP_CANVAS_BACKGROUND_RGB
+      } else if (isFreeGray) {
+        [red, green, blue] = NAV_MAP_FREE_RGB
+      }
+      imageData.data[offset] = red
+      imageData.data[offset + 1] = green
+      imageData.data[offset + 2] = blue
       imageData.data[offset + 3] = 255
     }
-    ctx.putImageData(imageData, 0, 0)
+    mapCtx.putImageData(imageData, 0, 0)
+
+    const baseScale = getMapBaseScale(preview, rect.width, rect.height)
+    const displayScale = baseScale * mapView.scale
+    ctx.save()
+    ctx.translate(rect.width / 2 + mapView.offsetX, rect.height / 2 + mapView.offsetY)
+    ctx.rotate(mapView.rotation)
+    ctx.scale(displayScale, displayScale)
+    ctx.translate(-preview.previewWidth / 2, -preview.previewHeight / 2)
+    ctx.imageSmoothingEnabled = false
+    ctx.drawImage(mapCanvas, 0, 0)
+
+    const visibleTrail = mergeCurrentIntoTrail(poseTrail, robotPose)
+    drawTrail(ctx, preview, visibleTrail)
     if (robotPose) {
       const { px, py } = mapToPreview(preview, robotPose.x, robotPose.y)
       drawArrow(ctx, px, py, robotPose.yaw || 0, '#22c55e', 18)
@@ -116,14 +339,17 @@ export default function PatrolNavigation() {
       ctx.fillStyle = '#dfffee'
       ctx.fill()
     }
-    if (!target) return
-    const { px, py } = mapToPreview(preview, target.x, target.y)
-    drawArrow(ctx, px, py, degToRad(yawDeg), '#ff4f64', 16)
-    ctx.beginPath()
-    ctx.arc(px, py, 5, 0, Math.PI * 2)
-    ctx.fillStyle = '#22d3ee'
-    ctx.fill()
-  }, [preview, previewPixels, robotPose, target, yawDeg])
+    drawWaypointMarkers(ctx, preview, waypoints, activeWaypointId)
+    if (target) {
+      const { px, py } = mapToPreview(preview, target.x, target.y)
+      drawArrow(ctx, px, py, degToRad(yawDeg), '#ff4f64', 16)
+      ctx.beginPath()
+      ctx.arc(px, py, 5, 0, Math.PI * 2)
+      ctx.fillStyle = '#22d3ee'
+      ctx.fill()
+    }
+    ctx.restore()
+  }, [activeWaypointId, mapView, preview, previewPixels, poseTrail, robotPose, target, waypoints, yawDeg])
 
   const loadDevices = useCallback(async () => {
     setLoadingDevices(true)
@@ -160,7 +386,12 @@ export default function PatrolNavigation() {
     setSelectedMap('')
     setPreview(null)
     setPreviewPixels(null)
+    setMapView(createDefaultMapView())
     setTarget(null)
+    setWaypoints([])
+    setActiveWaypointId(null)
+    setRouteSending(false)
+    setPoseTrail([])
     try {
       const response = await authFetch(`/api/navigation/maps?robotId=${selectedDeviceId}`)
       if (!response.ok) throw new Error(await response.text())
@@ -181,7 +412,12 @@ export default function PatrolNavigation() {
     setLoadingPreview(true)
     setPreview(null)
     setPreviewPixels(null)
+    setMapView(createDefaultMapView())
     setTarget(null)
+    setWaypoints([])
+    setActiveWaypointId(null)
+    setRouteSending(false)
+    setPoseTrail([])
     try {
       const response = await authFetch('/api/navigation/map-preview', {
         method: 'POST',
@@ -203,6 +439,23 @@ export default function PatrolNavigation() {
   useEffect(() => { loadDevices() }, [loadDevices])
   useEffect(() => { loadMaps(); loadStatus() }, [loadMaps, loadStatus])
   useEffect(() => { loadPreview() }, [loadPreview])
+  useEffect(() => {
+    if (!preview) return undefined
+    const handleResize = () => drawMap()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [drawMap, preview])
+  useEffect(() => {
+    const point = normalizeTrailPoint(robotPose)
+    if (!point) return
+    setPoseTrail(current => {
+      const next = mergeCurrentIntoTrail(current, point)
+      if (next.length > POSE_TRAIL_MAX_POINTS) {
+        return [next[0], ...next.slice(next.length - POSE_TRAIL_MAX_POINTS + 1)]
+      }
+      return next
+    })
+  }, [robotPose])
   useEffect(() => { drawMap() }, [drawMap])
   useEffect(() => {
     if (!selectedDeviceId) return undefined
@@ -210,8 +463,8 @@ export default function PatrolNavigation() {
     return () => clearInterval(timer)
   }, [loadStatus, selectedDeviceId])
 
-  const runAction = async (action, request) => {
-    if (!selectedDeviceId) return
+  const runAction = async (action, request, successMessage) => {
+    if (!selectedDeviceId) return null
     setBusyAction(action)
     setMessage('')
     try {
@@ -223,42 +476,241 @@ export default function PatrolNavigation() {
       if (!response.ok) throw new Error(await response.text())
       const data = await response.json()
       if (data.response?.type === 'nav_status') setNavStatus(data.response)
-      setMessage(action === 'goal' ? '目标点已发送' : '指令已下发')
+      setMessage(successMessage || (action === 'goal' ? '目标点已发送' : '指令已下发'))
       await loadStatus()
+      return data
     } catch (error) {
       setMessage(`指令失败：${error.message}`)
+      return null
     } finally {
       setBusyAction('')
     }
   }
 
-  const startNavigation = () => runAction('start', {
-    robotId: Number(selectedDeviceId),
-    mapName: selectedMap,
-  })
-
-  const stopNavigation = () => runAction('stop', {
-    robotId: Number(selectedDeviceId),
-  })
-
-  const sendGoal = () => {
-    if (!target) return
-    runAction('goal', {
+  const startNavigation = () => {
+    setPoseTrail([])
+    setRouteSending(false)
+    setActiveWaypointId(null)
+    setWaypoints(current => current.map(point => ({ ...point, status: 'pending', sentAt: null })))
+    return runAction('start', {
       robotId: Number(selectedDeviceId),
-      x: target.x,
-      y: target.y,
-      yaw: degToRad(yawDeg),
+      mapName: selectedMap,
     })
   }
 
+  const stopNavigation = () => {
+    setRouteSending(false)
+    setActiveWaypointId(null)
+    setWaypoints(current => current.map(point => (
+      point.status === 'active' ? { ...point, status: 'pending', sentAt: null } : point
+    )))
+    return runAction('stop', {
+      robotId: Number(selectedDeviceId),
+    })
+  }
+
+  const sendWaypointGoal = waypoint => runAction('goal', {
+    robotId: Number(selectedDeviceId),
+    x: waypoint.x,
+    y: waypoint.y,
+    yaw: waypoint.yaw,
+  }, `巡航点 ${waypoints.findIndex(point => point.id === waypoint.id) + 1} 已发送`)
+
+  const markWaypointActive = waypointId => {
+    const sentAt = Date.now() / 1000
+    setWaypoints(current => current.map(point => (
+      point.id === waypointId ? { ...point, status: 'active', sentAt } : point
+    )))
+    setActiveWaypointId(waypointId)
+    return sentAt
+  }
+
+  const addWaypoint = () => {
+    if (!target) return
+    setWaypoints(current => [
+      ...current,
+      {
+        id: waypointIdRef.current,
+        x: target.x,
+        y: target.y,
+        yaw: degToRad(yawDeg),
+        status: 'pending',
+        sentAt: null,
+      },
+    ])
+    waypointIdRef.current += 1
+    setMessage(`已添加巡航点 ${waypoints.length + 1}`)
+  }
+
+  const sendRoute = async () => {
+    const next = waypoints.find(point => point.status !== 'reached')
+    if (!next) return
+    setRouteSending(true)
+    markWaypointActive(next.id)
+    const result = await sendWaypointGoal(next)
+    if (!result?.ok) {
+      setRouteSending(false)
+      setActiveWaypointId(null)
+      setWaypoints(current => current.map(point => (
+        point.id === next.id ? { ...point, status: 'pending', sentAt: null } : point
+      )))
+    }
+  }
+
+  useEffect(() => {
+    if (!routeSending || !activeWaypointId) return
+    const activeWaypoint = waypoints.find(point => point.id === activeWaypointId)
+    if (!activeWaypoint || activeWaypoint.status === 'reached') return
+
+    const goalStatus = navStatus?.goalStatus
+    const goalStatusCode = Number(goalStatus?.status)
+    const goalUpdatedAt = Number(goalStatus?.updatedAt)
+    const sentAt = Number(activeWaypoint.sentAt)
+    const goalStatusMatchesActive = (
+      Number.isFinite(goalUpdatedAt)
+      && Number.isFinite(sentAt)
+      && goalUpdatedAt >= sentAt - 0.5
+    )
+    const reachedByMoveBase = goalStatusMatchesActive && goalStatusCode === MOVE_BASE_SUCCEEDED
+    const failedByMoveBase = goalStatusMatchesActive && MOVE_BASE_FAILURE_STATUSES.has(goalStatusCode)
+
+    if (failedByMoveBase) {
+      const activeIndex = waypoints.findIndex(point => point.id === activeWaypointId)
+      setRouteSending(false)
+      setActiveWaypointId(null)
+      setWaypoints(current => current.map(point => (
+        point.id === activeWaypointId ? { ...point, status: 'pending', sentAt: null } : point
+      )))
+      setMessage(`巡航点 ${activeIndex + 1} 导航失败：${goalStatus?.label || goalStatusCode}${goalStatus?.text ? `，${goalStatus.text}` : ''}`)
+      return
+    }
+
+    const reachedByDistance = robotPose && poseDistance(robotPose, activeWaypoint) <= WAYPOINT_REACHED_DISTANCE
+    if (!reachedByMoveBase && !reachedByDistance) return
+
+    const activeIndex = waypoints.findIndex(point => point.id === activeWaypointId)
+    const nextWaypoint = waypoints.slice(activeIndex + 1).find(point => point.status !== 'reached')
+    setWaypoints(current => current.map(point => (
+      point.id === activeWaypointId ? { ...point, status: 'reached', sentAt: null } : point
+    )))
+
+    if (!nextWaypoint) {
+      setActiveWaypointId(null)
+      setRouteSending(false)
+      setMessage('巡航线路已完成')
+      return
+    }
+
+    markWaypointActive(nextWaypoint.id)
+    sendWaypointGoal(nextWaypoint).then(result => {
+      if (result?.ok) return
+      setRouteSending(false)
+      setActiveWaypointId(null)
+      setWaypoints(current => current.map(point => (
+        point.id === nextWaypoint.id ? { ...point, status: 'pending', sentAt: null } : point
+      )))
+    })
+  }, [activeWaypointId, navStatus, robotPose, routeSending, waypoints])
+
   const handleCanvasClick = event => {
-    if (!preview) return
-    const rect = event.currentTarget.getBoundingClientRect()
-    const px = ((event.clientX - rect.left) / rect.width) * preview.previewWidth
-    const py = ((event.clientY - rect.top) / rect.height) * preview.previewHeight
+    const canvas = event.currentTarget
+    if (!preview || !canvas) return
+    const canvasPoint = getCanvasPoint(event, canvas)
+    const previewPoint = canvasToPreviewPoint(preview, mapView, canvasPoint.x, canvasPoint.y, canvasPoint.width, canvasPoint.height)
+    if (!previewPoint) return
+    const { px, py } = previewPoint
+    if (px < 0 || py < 0 || px > preview.previewWidth || py > preview.previewHeight) return
     const point = previewToMap(preview, px, py)
     setTarget(point)
   }
+
+  const handleCanvasMouseDown = event => {
+    if (!preview || event.button !== 0) return
+    event.preventDefault()
+    const canvas = event.currentTarget
+    const point = getCanvasPoint(event, canvas)
+    dragRef.current = {
+      mode: event.ctrlKey ? 'rotate' : 'pan',
+      startX: point.x,
+      startY: point.y,
+      width: point.width,
+      height: point.height,
+      startView: mapView,
+      startPointerAngle: Math.atan2(point.y - point.height / 2, point.x - point.width / 2),
+      moved: false,
+    }
+    canvas.setPointerCapture?.(event.pointerId)
+  }
+
+  const handleCanvasMouseMove = event => {
+    const drag = dragRef.current
+    if (!drag) return
+    event.preventDefault()
+    const point = getCanvasPoint(event, event.currentTarget)
+    const dx = point.x - drag.startX
+    const dy = point.y - drag.startY
+    if (!drag.moved && Math.hypot(dx, dy) >= MAP_DRAG_THRESHOLD) drag.moved = true
+    if (!drag.moved) return
+
+    if (drag.mode === 'rotate') {
+      const pointerAngle = Math.atan2(point.y - point.height / 2, point.x - point.width / 2)
+      setMapView(current => ({
+        ...current,
+        rotation: drag.startView.rotation + pointerAngle - drag.startPointerAngle,
+      }))
+      return
+    }
+
+    setMapView(current => ({
+      ...current,
+      offsetX: drag.startView.offsetX + dx,
+      offsetY: drag.startView.offsetY + dy,
+    }))
+  }
+
+  const finishCanvasDrag = event => {
+    const drag = dragRef.current
+    if (!drag) return
+    dragRef.current = null
+    event.currentTarget.releasePointerCapture?.(event.pointerId)
+    if (!drag.moved && drag.mode === 'pan') handleCanvasClick(event)
+  }
+
+  const cancelCanvasDrag = event => {
+    if (!dragRef.current) return
+    dragRef.current = null
+    event.currentTarget.releasePointerCapture?.(event.pointerId)
+  }
+
+  const handleCanvasWheel = useCallback(event => {
+    if (!preview) return
+    event.preventDefault()
+    const canvas = event.currentTarget
+    const point = getCanvasPoint(event, canvas)
+    setMapView(current => {
+      const nextScale = clamp(current.scale * Math.exp(-event.deltaY * MAP_ZOOM_STEP), MAP_MIN_SCALE, MAP_MAX_SCALE)
+      if (nextScale === current.scale) return current
+      const previewPoint = canvasToPreviewPoint(preview, current, point.x, point.y, point.width, point.height)
+      if (!previewPoint) return current
+      const baseScale = getMapBaseScale(preview, point.width, point.height)
+      const relX = previewPoint.px - preview.previewWidth / 2
+      const relY = previewPoint.py - preview.previewHeight / 2
+      const rotated = rotatePoint(relX * baseScale * nextScale, relY * baseScale * nextScale, current.rotation)
+      return {
+        ...current,
+        scale: nextScale,
+        offsetX: point.x - point.width / 2 - rotated.x,
+        offsetY: point.y - point.height / 2 - rotated.y,
+      }
+    })
+  }, [preview])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !preview) return undefined
+    canvas.addEventListener('wheel', handleCanvasWheel, { passive: false })
+    return () => canvas.removeEventListener('wheel', handleCanvasWheel)
+  }, [handleCanvasWheel, preview])
 
   return (
     <div className="patrol-page patrol-navigation-page">
@@ -314,14 +766,6 @@ export default function PatrolNavigation() {
               </div>
             </div>
 
-            {preview && (
-              <div className="patrol-nav-panel">
-                <div className="patrol-nav-row"><span>分辨率</span><strong>{preview.resolution} m/px</strong></div>
-                <div className="patrol-nav-row"><span>尺寸</span><strong>{preview.width} x {preview.height}</strong></div>
-                <div className="patrol-nav-row"><span>原点</span><strong>{preview.origin?.slice(0, 2).map(formatNumber).join(', ')}</strong></div>
-              </div>
-            )}
-
             <div className="patrol-nav-panel">
               <label className="patrol-nav-label">当前车位</label>
               <div className="patrol-nav-coordinate">
@@ -332,7 +776,7 @@ export default function PatrolNavigation() {
             </div>
 
             <div className="patrol-nav-panel patrol-nav-target-panel">
-              <label className="patrol-nav-label">目标点</label>
+              <label className="patrol-nav-label">待添加巡航点</label>
               <div className="patrol-nav-coordinate">
                 <span>X {formatNumber(target?.x)}</span>
                 <span>Y {formatNumber(target?.y)}</span>
@@ -356,15 +800,38 @@ export default function PatrolNavigation() {
               </div>
             </div>
 
-            <div className="patrol-nav-actions">
+            <div className="patrol-nav-panel patrol-waypoint-panel">
+              <label className="patrol-nav-label">巡航点</label>
+              {waypoints.length ? (
+                <div className="patrol-waypoint-list">
+                  {waypoints.map((point, index) => (
+                    <div key={point.id} className={`patrol-waypoint-item ${point.status}`}>
+                      <span className="patrol-waypoint-marker">{point.status === 'reached' ? '✓' : index + 1}</span>
+                      <span className="patrol-waypoint-text">
+                        X {formatNumber(point.x)} · Y {formatNumber(point.y)} · {Math.round(point.yaw * 180 / Math.PI)}°
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="patrol-waypoint-empty">暂无巡航点</div>
+              )}
+            </div>
+
+            <div className="patrol-nav-actions patrol-nav-actions-primary">
               <button className="patrol-btn patrol-btn-primary" onClick={startNavigation} disabled={!selectedMap || busyAction === 'start'}>
                 {busyAction === 'start' ? '启动中...' : '启动导航'}
               </button>
-              <button className="patrol-btn patrol-btn-success" onClick={sendGoal} disabled={!target || busyAction === 'goal'}>
-                {busyAction === 'goal' ? '发送中...' : '发送目标点'}
-              </button>
               <button className="patrol-btn patrol-btn-warning" onClick={stopNavigation} disabled={busyAction === 'stop'}>
                 停止导航
+              </button>
+            </div>
+            <div className="patrol-nav-actions patrol-nav-actions-route">
+              <button className="patrol-btn patrol-btn-success" onClick={addWaypoint} disabled={!target || routeSending}>
+                添加巡航点
+              </button>
+              <button className="patrol-btn patrol-btn-primary" onClick={sendRoute} disabled={!pendingWaypointCount || routeSending || busyAction === 'goal'}>
+                {routeSending || busyAction === 'goal' ? '发送中...' : '发送巡航线路'}
               </button>
             </div>
 
@@ -377,7 +844,14 @@ export default function PatrolNavigation() {
             {loadingPreview ? (
               <div className="patrol-loading"><div className="patrol-spinner" /><span>加载地图...</span></div>
             ) : preview ? (
-              <canvas ref={canvasRef} className="patrol-nav-map-canvas" onClick={handleCanvasClick} />
+              <canvas
+                ref={canvasRef}
+                className="patrol-nav-map-canvas"
+                onPointerDown={handleCanvasMouseDown}
+                onPointerMove={handleCanvasMouseMove}
+                onPointerUp={finishCanvasDrag}
+                onPointerCancel={cancelCanvasDrag}
+              />
             ) : (
               <div className="patrol-empty">
                 <p>{selectedDeviceId ? '暂无可用地图' : '请选择设备'}</p>
@@ -389,30 +863,32 @@ export default function PatrolNavigation() {
                 <strong>SLAM 地图</strong>
                 <span>分辨率：{preview.resolution} m/px</span>
                 <span>尺寸：{preview.width} x {preview.height}</span>
-                <span>原点：{preview.origin?.slice(0, 2).map(formatNumber).join(', ')}</span>
+                <span>地图原点：{preview.origin?.slice(0, 2).map(formatNumber).join(', ')}</span>
               </div>
             )}
 
             {target && (
               <div className="patrol-map-badge patrol-nav-target-badge">
-                <strong>目标点</strong>
+                <strong>待添加巡航点</strong>
                 <span>X：{formatNumber(target.x)} m</span>
                 <span>Y：{formatNumber(target.y)} m</span>
                 <span>Yaw：{yawDeg}°</span>
               </div>
             )}
             <div className="patrol-legend patrol-nav-legend">
+              <div className="patrol-legend-item"><div className="patrol-legend-dot" style={{ background: '#3b82f6' }} />原点</div>
+              <div className="patrol-legend-item"><div className="patrol-legend-line" style={{ background: '#22d3ee' }} />轨迹</div>
               <div className="patrol-legend-item"><div className="patrol-legend-dot" style={{ background: '#22c55e' }} />当前车位</div>
-              <div className="patrol-legend-item"><div className="patrol-legend-dot" style={{ background: '#ff4f64' }} />目标点</div>
+              <div className="patrol-legend-item"><div className="patrol-legend-dot" style={{ background: '#ff4f64' }} />巡航点</div>
             </div>
           </div>
         </section>
 
         <aside className="patrol-nav-sensors">
-          <CockpitPanel title="彩色帧" code="COLOR" meta="01">
-            <CameraFeed device={selectedDevice} label="彩色帧" view="color" />
+          <CockpitPanel title="摄像头画面" code="CAMERA" meta="01">
+            <CameraFeed device={selectedDevice} label="可见光摄像头" view="color" />
           </CockpitPanel>
-          <CockpitPanel title="深度图" code="DEPTH" meta="02">
+          <CockpitPanel title="双目深度图" code="DEPTH" meta="02">
             <CameraFeed device={selectedDevice} label="双目深度图" view="depth" />
           </CockpitPanel>
           <CockpitPanel title="激光雷达" code="LIDAR" meta="03">

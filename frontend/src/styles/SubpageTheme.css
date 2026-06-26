@@ -741,7 +741,9 @@
 .patrol-nav-row, .patrol-nav-label { color: var(--sub-text-secondary); }
 .patrol-nav-row strong, .patrol-nav-coordinate span { color: var(--sub-text); }
 .patrol-nav-coordinate span { border-color: var(--sub-border-soft); background: rgba(3, 24, 49, .82); }
-.patrol-nav-map-container { background: #031025; }
+.patrol-waypoint-item { color: var(--sub-text-secondary); border-color: var(--sub-border-soft); background: rgba(3, 24, 49, .82); }
+.patrol-waypoint-empty { color: var(--sub-muted); border-color: var(--sub-border-soft); background: rgba(3, 24, 49, .62); }
+.patrol-nav-map-section, .patrol-nav-map-container, .patrol-nav-map-canvas { background: #031025; }
 .patrol-nav-map-canvas { border-color: rgba(43, 177, 228, .34); box-shadow: 0 18px 50px rgba(0,0,0,.42); }
 .patrol-map-hint { color: var(--sub-text-secondary); border: 1px solid rgba(43, 183, 235, .4); border-radius: 4px; background: rgba(4, 24, 51, .9); box-shadow: 0 12px 35px rgba(0,0,0,.38); }
 .patrol-map-badge { color: var(--sub-text-secondary); border: 1px solid rgba(43, 177, 228, .38); border-radius: 3px; background: rgba(3, 24, 49, .9); box-shadow: 0 8px 22px rgba(0,0,0,.32); }
