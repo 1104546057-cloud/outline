@@ -10,6 +10,7 @@ import DeviceCockpit from './pages/DeviceCockpit'
 import ClusterManagement from './pages/ClusterManagement'
 import ClusterControl from './pages/ClusterControl'
 import LiveVideo from './pages/LiveVideo'
+import VideoAnalysis from './pages/VideoAnalysis'
 import PlaceholderPage from './pages/PlaceholderPage'
 import PatrolAreas from './pages/PatrolAreas'
 import PatrolPoints from './pages/PatrolPoints'
@@ -38,7 +39,7 @@ import './styles/SubpageTheme.css'
 const ProtectedRoute = ({ children }) => {
   const userStr = localStorage.getItem('user')
   let isAuthenticated = false
-  
+
   if (userStr) {
     try {
       const user = JSON.parse(userStr)
@@ -81,7 +82,7 @@ function App() {
           <Route path="patrol/tasks" element={<PatrolTasks />} />
           <Route path="patrol/navigation" element={<PatrolNavigation />} />
           <Route path="patrol/results" element={<PatrolResults />} />
-          <Route path="video-analysis" element={<PlaceholderPage title="视频识别分析" description="视频智能识别与事件分析模块正在建设中" icon="◈" />} />
+          <Route path="video-analysis" element={<VideoAnalysis />} />
           <Route path="warning-response" element={<PlaceholderPage title="安全预警处置" description="校园安全事件协同处置模块正在建设中" icon="△" />} />
           <Route path="statistics-analysis" element={<PlaceholderPage title="数据统计研判" description="综合数据统计与趋势研判模块正在建设中" icon="◇" />} />
         </Route>

@@ -275,7 +275,7 @@ export default function DeviceCockpit() {
     if (!device || mainCameraStatus !== 'streaming') return
     try {
       const response = await authFetch(`/api/devices/${device.id}/camera/snapshot`)
-      if (!response.ok) throw new Error('截图接口返回失败')
+      if (!response.ok) throw new Error('截图服务返回失败')
       const url = URL.createObjectURL(await response.blob())
       const anchor = document.createElement('a')
       anchor.href = url
