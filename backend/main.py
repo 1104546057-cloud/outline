@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from routers import agent_ws, login, users, devices, robot_control, telemetry, clusters, camera, patrol, patrol_results, navigation, captcha
+from routers import agent_ws, login, users, devices, robot_control, telemetry, clusters, camera, patrol, patrol_results, navigation, captcha, remote_access
 
 # 创建 FastAPI 应用实例
 app = FastAPI(
@@ -54,6 +54,7 @@ app.include_router(patrol_results.router)
 app.include_router(navigation.router)
 app.include_router(captcha.router)
 app.include_router(agent_ws.router)
+app.include_router(remote_access.router)
 
 
 # ===== 前端静态文件 =====

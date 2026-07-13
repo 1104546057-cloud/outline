@@ -18,6 +18,7 @@ import PatrolRoutes from './pages/PatrolRoutes'
 import PatrolTasks from './pages/PatrolTasks'
 import PatrolResults from './pages/PatrolResults'
 import PatrolNavigation from './pages/PatrolNavigation'
+import RemoteAccess from './pages/RemoteAccess'
 import './styles/SubpageTheme.css'
 
 /**
@@ -72,6 +73,7 @@ function App() {
           <Route path="users" element={<UserManagement />} />
           <Route path="devices" element={<DeviceManagement />} />
           <Route path="device-control" element={<DeviceControl />} />
+          <Route path="remote-access" element={<RemoteAccess />} />
           <Route path="device-cockpit/:deviceId" element={<DeviceCockpit />} />
           <Route path="cluster" element={<ClusterManagement />} />
           <Route path="cluster-control" element={<ClusterControl />} />

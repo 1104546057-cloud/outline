@@ -10,6 +10,7 @@ from fastapi.concurrency import run_in_threadpool
 from agent_gateway import agent_gateway
 from database import SessionLocal
 from models import Device, DeviceToken
+from remote_gateway import remote_access_gateway
 
 
 router = APIRouter(prefix="/api/agent/ws", tags=["车端 Agent"])
@@ -92,3 +93,36 @@ async def agent_media_socket(websocket: WebSocket) -> None:
         pass
     finally:
         await agent_gateway.unregister_media(device_id, websocket)
+
+
+@router.websocket("/remote-access")
+async def agent_remote_access_socket(websocket: WebSocket) -> None:
+    """接收车端主动建立的 SSH / 文件 / VNC 复用通道。"""
+    device_id = await _resolve_device_id(websocket)
+    if device_id is None:
+        await websocket.close(code=4401, reason="invalid device token")
+        return
+    await websocket.accept()
+    await remote_access_gateway.register(device_id, websocket)
+    try:
+        while True:
+            message = await websocket.receive()
+            if message["type"] == "websocket.disconnect":
+                break
+            data = message.get("bytes")
+            if data is not None:
+                await remote_access_gateway.handle_binary(device_id, data)
+                continue
+            text = message.get("text")
+            if text is None:
+                continue
+            try:
+                payload = json.loads(text)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict):
+                await remote_access_gateway.handle_json(device_id, payload)
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+    finally:
+        await remote_access_gateway.unregister(device_id, websocket)

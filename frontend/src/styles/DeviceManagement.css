@@ -56,6 +56,28 @@
   transform: translateY(-1px);
 }
 
+.dm-btn-remote {
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  transition: all 0.2s;
+  box-shadow: 0 4px 6px -1px rgba(109, 40, 217, 0.24);
+}
+
+.dm-btn-remote:hover {
+  color: white;
+  background: linear-gradient(135deg, #7c3aed, #5b21b6);
+  transform: translateY(-1px);
+}
+
 .dm-device-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
@@ -947,7 +969,7 @@
     grid-template-columns: 1fr;
   }
   
-  .dm-btn-scan, .dm-btn-add {
+  .dm-btn-scan, .dm-btn-add, .dm-btn-remote {
     flex: 1;
     justify-content: center;
   }

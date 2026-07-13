@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import ThemedSelect from '../components/ThemedSelect'
 import { authFetch } from '../utils/authFetch'
 import '../styles/DeviceManagement.css'
@@ -704,6 +705,9 @@ export default function DeviceManagement() {
           <button className="dm-btn-scan" onClick={handleOpenScanModal}>
             <span>📡</span> 扫描局域网
           </button>
+          <Link className="dm-btn-remote" to="/remote-access">
+            <span>🖥️</span> SSH / VNC
+          </Link>
         </div>
       </div>
 
