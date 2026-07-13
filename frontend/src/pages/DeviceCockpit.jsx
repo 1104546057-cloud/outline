@@ -28,7 +28,7 @@ export default function DeviceCockpit() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [controlConfig, setControlConfig] = useState({ maxLinear: .4, maxAngular: 1.2 })
-  const [speedRatio, setSpeedRatio] = useState(0.5)
+  const [speedRatio, setSpeedRatio] = useState(0.1)
   const [connectionStatus, setConnectionStatus] = useState('未检测')
   const [controlMessage, setControlMessage] = useState('等待连接设备控制服务')
   const [activeDirection, setActiveDirection] = useState(null)
@@ -384,7 +384,7 @@ export default function DeviceCockpit() {
                 </div>
                 <label className="cockpit-speed-slider">
                   <span>速度倍率 <b>{Math.round(speedRatio * 100)}%</b></span>
-                  <input type="range" min="0.1" max="1" step="0.05" value={speedRatio} onChange={event => setSpeedRatio(Number(event.target.value))} />
+                  <input type="range" min="0.01" max="1" step="0.01" value={speedRatio} onChange={event => setSpeedRatio(Number(event.target.value))} />
                 </label>
                 <div className="cockpit-speed-values">
                   <span>线速度<b>{(controlConfig.maxLinear * speedRatio).toFixed(2)} m/s</b></span>

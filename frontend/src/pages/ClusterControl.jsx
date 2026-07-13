@@ -22,7 +22,7 @@ export default function ClusterControl() {
   const [selectedClusterId, setSelectedClusterId] = useState('')
   const [logs, setLogs] = useState([])
   const [controlConfig, setControlConfig] = useState({ maxLinear: 0.4, maxAngular: 1.2 })
-  const [speedRatio, setSpeedRatio] = useState(0.5)
+  const [speedRatio, setSpeedRatio] = useState(0.1)
   const [activeDirection, setActiveDirection] = useState(null)
   const [customCommand, setCustomCommand] = useState('{"type":"ping"}')
   const [showCameras, setShowCameras] = useState(true)
@@ -558,7 +558,7 @@ export default function ClusterControl() {
             <label>统一速度倍率: <strong>{(speedRatio * 100).toFixed(0)}%</strong></label>
             <input
               type="range"
-              min="0.05" max="1" step="0.05"
+              min="0.01" max="1" step="0.01"
               value={speedRatio}
               onChange={e => setSpeedRatio(parseFloat(e.target.value))}
               className="cc-speed-slider"
