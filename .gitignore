@@ -84,3 +84,5 @@ ai_analysis/
 
 .codex_tmp/
 AGENTS.md
+
+exp/
