@@ -11,7 +11,7 @@ from passlib.hash import bcrypt
 
 from database import engine, SessionLocal, Base
 from models import User, Device, Cluster, DeviceTelemetry, DeviceToken, \
-    PatrolArea, PatrolPoint, PatrolRoute, PatrolRoutePoint, PatrolTask
+    PatrolArea, PatrolPoint, PatrolRoute, PatrolRoutePoint, PatrolTask, SecurityAlert
 
 
 def init_database():

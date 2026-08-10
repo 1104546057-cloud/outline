@@ -5,7 +5,7 @@ Pydantic 数据模型（请求/响应 Schema）
 """
 
 from pydantic import BaseModel
-from typing import Optional
+from typing import Literal, Optional
 from datetime import datetime
 
 
@@ -273,3 +273,23 @@ class PatrolTaskCreate(BaseModel):
 class PatrolTrackAppend(BaseModel):
     """追加GPS轨迹点请求体"""
     points: list[dict]  # [{lng, lat, ts}]
+
+
+class SecurityAlertCreate(BaseModel):
+    alert_type: str
+    severity: Literal["low", "medium", "high", "critical"] = "medium"
+    title: str
+    description: Optional[str] = None
+    device_id: Optional[int] = None
+    source_type: str = "manual"
+    source_id: Optional[str] = None
+    media_path: Optional[str] = None
+    occurred_at: Optional[datetime] = None
+
+
+class SecurityAlertAssign(BaseModel):
+    assignee: str
+
+
+class SecurityAlertClose(BaseModel):
+    handling_note: Optional[str] = None

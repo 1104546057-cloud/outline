@@ -222,3 +222,31 @@ class PatrolTask(Base):
 
     def __repr__(self):
         return f"<PatrolTask(id={self.id}, name='{self.name}', status='{self.status}')>"
+
+
+class SecurityAlert(Base):
+    """安全预警处置记录。"""
+    __tablename__ = "security_alerts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="告警ID")
+    alert_type = Column(String(64), nullable=False, comment="告警类型")
+    severity = Column(String(16), nullable=False, default="medium", index=True, comment="告警等级")
+    title = Column(String(200), nullable=False, comment="告警标题")
+    description = Column(Text, nullable=True, comment="告警描述")
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="SET NULL"), nullable=True, index=True, comment="来源设备ID")
+    source_type = Column(String(64), nullable=False, default="manual", comment="来源类型")
+    source_id = Column(String(128), nullable=True, comment="来源记录标识")
+    media_path = Column(String(1024), nullable=True, comment="截图或媒体路径")
+    occurred_at = Column(DateTime, nullable=False, default=datetime.now, index=True, comment="发生时间")
+    status = Column(String(16), nullable=False, default="pending", index=True, comment="处置状态")
+    assignee = Column(String(100), nullable=True, comment="处理人")
+    handling_note = Column(Text, nullable=True, comment="处理备注")
+    acknowledged_at = Column(DateTime, nullable=True, comment="确认时间")
+    closed_at = Column(DateTime, nullable=True, comment="关闭时间")
+    created_at = Column(DateTime, default=datetime.now, nullable=False, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False, comment="更新时间")
+
+    device = relationship("Device")
+
+    def __repr__(self):
+        return f"<SecurityAlert(id={self.id}, severity='{self.severity}', status='{self.status}')>"

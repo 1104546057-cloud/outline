@@ -12,6 +12,7 @@ import ClusterControl from './pages/ClusterControl'
 import LiveVideo from './pages/LiveVideo'
 import VideoAnalysis from './pages/VideoAnalysis'
 import PlaceholderPage from './pages/PlaceholderPage'
+import WarningResponse from './pages/WarningResponse'
 import PatrolAreas from './pages/PatrolAreas'
 import PatrolPoints from './pages/PatrolPoints'
 import PatrolRoutes from './pages/PatrolRoutes'
@@ -85,7 +86,7 @@ function App() {
           <Route path="patrol/navigation" element={<PatrolNavigation />} />
           <Route path="patrol/results" element={<PatrolResults />} />
           <Route path="video-analysis" element={<VideoAnalysis />} />
-          <Route path="warning-response" element={<PlaceholderPage title="安全预警处置" description="校园安全事件协同处置模块正在建设中" icon="△" />} />
+          <Route path="warning-response" element={<WarningResponse />} />
           <Route path="statistics-analysis" element={<PlaceholderPage title="数据统计研判" description="综合数据统计与趋势研判模块正在建设中" icon="◇" />} />
         </Route>
 
