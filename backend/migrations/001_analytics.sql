@@ -98,11 +98,11 @@ ON DUPLICATE KEY UPDATE updated_at = NOW();
 -- ===== 4. 示例研判规则（5 条） =====
 INSERT INTO analytics_rule
   (name, indicator_id, rule_type, `condition`, severity, alert_type, description, is_active, created_at, updated_at)
-SELECT r.name, i.id, r.rule_type, r.cond, r.severity, r.alert_type, r.desc, true, NOW(), NOW()
+SELECT r.name, i.id, r.rule_type, r.cond, r.severity, r.alert_type, r.descr, true, NOW(), NOW()
 FROM (
   SELECT '低电量预警' AS name, 'device_low_battery_count' AS code, 'threshold' AS rule_type,
          '{"op":">","value":0,"window_days":1}' AS cond, 'medium' AS severity, 'low_battery' AS alert_type,
-         '存在低电量设备时触发' AS desc
+         '存在低电量设备时触发' AS descr
   UNION ALL SELECT '在线率突降', 'device_online_rate', 'zscore',
          '{"z_threshold":-2,"window_days":7}', 'high', 'online_drop',
          '在线率 7 日 Z-Score 小于 -2'

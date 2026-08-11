@@ -87,3 +87,12 @@ ai_analysis/
 AGENTS.md
 
 exp/
+
+# WorkBuddy 工作区数据
+.workbuddy/
+
+# 部署脚本临时目录
+.deploy_tmp/
+
+# Vite 临时文件
+vite.config.js.timestamp-*.mjs
