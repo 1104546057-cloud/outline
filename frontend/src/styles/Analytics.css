@@ -1,0 +1,305 @@
+/* 数据统计研判模块样式 */
+
+/* 把研判页面加入 SubpageTheme 共享变量作用域 */
+:is(
+  .analytics-dashboard-page,
+  .analytics-indicator-detail-page,
+  .analytics-rules-page,
+  .analytics-reports-page
+) {
+  --sub-bg: #020817;
+  --sub-panel: rgba(5, 23, 50, .92);
+  --sub-panel-strong: rgba(7, 31, 65, .97);
+  --sub-panel-soft: rgba(9, 44, 78, .64);
+  --sub-border: rgba(45, 169, 229, .38);
+  --sub-border-soft: rgba(45, 146, 199, .2);
+  --sub-cyan: #2bd2ff;
+  --sub-blue: #2385ff;
+  --sub-text: #d8f0fb;
+  --sub-text-secondary: #8db4c8;
+  --sub-muted: #527890;
+  --sub-success: #31e3a1;
+  --sub-warning: #ffb64a;
+  --sub-danger: #ff5b72;
+  position: relative;
+  width: 100%;
+  min-width: 1080px;
+  min-height: 0;
+  margin: 0;
+  color: var(--sub-text-secondary);
+  background:
+    radial-gradient(circle at 50% 18%, rgba(10, 91, 157, .22), transparent 36%),
+    linear-gradient(145deg, #020817, #031228 52%, #020817);
+  overflow: auto;
+  isolation: isolate;
+  color-scheme: dark;
+}
+
+/* 页头 */
+.analytics-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 28px;
+  border-bottom: 1px solid var(--sub-border-soft);
+}
+.analytics-page-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--sub-text);
+  letter-spacing: 1px;
+}
+.analytics-page-header .tabs {
+  display: flex;
+  gap: 6px;
+}
+.analytics-page-header .tab {
+  padding: 6px 16px;
+  border: 1px solid var(--sub-border-soft);
+  border-radius: 18px;
+  background: transparent;
+  color: var(--sub-text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  text-decoration: none;
+  transition: all .2s;
+}
+.analytics-page-header .tab:hover {
+  border-color: var(--sub-cyan);
+  color: var(--sub-cyan);
+}
+.analytics-page-header .tab.active {
+  background: rgba(43, 210, 255, .14);
+  border-color: var(--sub-cyan);
+  color: var(--sub-cyan);
+}
+
+/* 主体区 */
+.analytics-body {
+  padding: 22px 28px 40px;
+}
+
+/* 指标卡片网格 */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+  margin-bottom: 26px;
+}
+.metric-card {
+  position: relative;
+  padding: 18px 20px;
+  background: var(--sub-panel);
+  border: 1px solid var(--sub-border-soft);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform .2s, border-color .2s, box-shadow .2s;
+  overflow: hidden;
+}
+.metric-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--sub-cyan), transparent);
+}
+.metric-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--sub-cyan);
+  box-shadow: 0 8px 24px rgba(43, 210, 255, .15);
+}
+.metric-card .mc-name {
+  font-size: 13px;
+  color: var(--sub-text-secondary);
+  margin-bottom: 8px;
+}
+.metric-card .mc-value {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--sub-text);
+  font-variant-numeric: tabular-nums;
+}
+.metric-card .mc-unit {
+  font-size: 14px;
+  margin-left: 4px;
+  color: var(--sub-muted);
+}
+.metric-card .mc-meta {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--sub-muted);
+  display: flex;
+  justify-content: space-between;
+}
+.metric-card .mc-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  background: rgba(43, 210, 255, .12);
+  color: var(--sub-cyan);
+}
+
+/* 面板 */
+.analytics-panel {
+  background: var(--sub-panel);
+  border: 1px solid var(--sub-border-soft);
+  border-radius: 10px;
+  padding: 20px 22px;
+  margin-bottom: 20px;
+}
+.analytics-panel h3 {
+  margin: 0 0 14px;
+  font-size: 15px;
+  color: var(--sub-text);
+  font-weight: 500;
+}
+.analytics-panel .panel-tools {
+  float: right;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* 图表容器 */
+.chart-box {
+  width: 100%;
+  height: 360px;
+}
+.chart-box.small {
+  height: 180px;
+}
+
+/* 表单元素 */
+.a-input, .a-select, .a-textarea {
+  width: 100%;
+  padding: 8px 12px;
+  background: rgba(7, 31, 65, .6);
+  border: 1px solid var(--sub-border-soft);
+  border-radius: 6px;
+  color: var(--sub-text);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color .15s;
+}
+.a-input:focus, .a-select:focus, .a-textarea:focus {
+  border-color: var(--sub-cyan);
+}
+.a-textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+.a-btn {
+  padding: 7px 18px;
+  background: rgba(43, 210, 255, .14);
+  border: 1px solid var(--sub-cyan);
+  border-radius: 6px;
+  color: var(--sub-cyan);
+  cursor: pointer;
+  font-size: 13px;
+  transition: background .2s;
+}
+.a-btn:hover {
+  background: rgba(43, 210, 255, .26);
+}
+.a-btn.danger {
+  border-color: var(--sub-danger);
+  color: var(--sub-danger);
+  background: rgba(255, 91, 114, .12);
+}
+.a-btn.danger:hover {
+  background: rgba(255, 91, 114, .24);
+}
+.a-btn.ghost {
+  border-color: var(--sub-border-soft);
+  color: var(--sub-text-secondary);
+  background: transparent;
+}
+.a-btn.ghost:hover {
+  border-color: var(--sub-cyan);
+  color: var(--sub-cyan);
+}
+
+/* 表格 */
+.a-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.a-table th, .a-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--sub-border-soft);
+}
+.a-table th {
+  color: var(--sub-text);
+  font-weight: 500;
+  background: rgba(7, 31, 65, .5);
+}
+.a-table tr:hover td {
+  background: rgba(43, 210, 255, .05);
+}
+
+/* 状态徽章 */
+.sev-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.sev-low { background: rgba(49, 227, 161, .14); color: var(--sub-success); }
+.sev-medium { background: rgba(255, 182, 74, .14); color: var(--sub-warning); }
+.sev-high { background: rgba(255, 91, 114, .14); color: var(--sub-danger); }
+.sev-critical { background: rgba(255, 91, 114, .3); color: var(--sub-danger); }
+
+/* 模态对话框 */
+.a-modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 8, 23, .65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.a-modal {
+  width: 540px;
+  max-width: 92vw;
+  max-height: 86vh;
+  overflow: auto;
+  background: var(--sub-panel-strong);
+  border: 1px solid var(--sub-border);
+  border-radius: 10px;
+  padding: 22px 24px;
+}
+.a-modal h3 {
+  margin: 0 0 16px;
+  color: var(--sub-text);
+  font-size: 16px;
+}
+.a-form-row {
+  margin-bottom: 14px;
+}
+.a-form-row label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--sub-text-secondary);
+  font-size: 12px;
+}
+.a-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+/* 空状态 */
+.a-empty {
+  text-align: center;
+  padding: 60px 0;
+  color: var(--sub-muted);
+  font-size: 14px;
+}

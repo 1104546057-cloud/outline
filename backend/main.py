@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from routers import agent_ws, login, users, devices, robot_control, telemetry, clusters, camera, patrol, patrol_results, navigation, captcha, remote_access, security_alerts
+from routers import agent_ws, login, users, devices, robot_control, telemetry, clusters, camera, patrol, patrol_results, navigation, captcha, remote_access, security_alerts, analytics, analytics_admin
 
 # 创建 FastAPI 应用实例
 app = FastAPI(
@@ -56,6 +56,60 @@ app.include_router(captcha.router)
 app.include_router(agent_ws.router)
 app.include_router(remote_access.router)
 app.include_router(security_alerts.router)
+app.include_router(analytics.router)
+app.include_router(analytics_admin.router)
+
+
+# ===== 研判模块后台调度（启动时挂载，关闭时清理） =====
+
+def _start_analytics_scheduler():
+    """启动 APScheduler：每日凌晨日聚合 + 每 5 分钟近实时规则评估。
+
+    若 APScheduler 未安装则静默跳过，不影响主服务启动；
+    调度也可通过 /api/analytics/admin/run-daily 与 run-rules 手动触发。
+    """
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from apscheduler.triggers.cron import CronTrigger
+        from apscheduler.triggers.interval import IntervalTrigger
+        from analytics.scheduler import run_daily, run_near_realtime
+        from config import ANALYTICS_DAILY_RUN_HOUR, ANALYTICS_NEAR_REALTIME_INTERVAL
+
+        scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
+        scheduler.add_job(
+            run_daily,
+            CronTrigger(hour=ANALYTICS_DAILY_RUN_HOUR, minute=0),
+            id="analytics_daily",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            run_near_realtime,
+            IntervalTrigger(seconds=ANALYTICS_NEAR_REALTIME_INTERVAL),
+            id="analytics_near_realtime",
+            replace_existing=True,
+        )
+        scheduler.start()
+        print(f"[analytics] 调度器已启动：日聚合 {ANALYTICS_DAILY_RUN_HOUR:02d}:00，近实时间隔 {ANALYTICS_NEAR_REALTIME_INTERVAL}s")
+        return scheduler
+    except ImportError:
+        print("[analytics] APScheduler 未安装，跳过自动调度（可通过 admin 接口手动触发）")
+        return None
+    except Exception as e:
+        print(f"[analytics] 调度器启动失败: {e}")
+        return None
+
+
+@app.on_event("startup")
+async def _on_startup():
+    app.state.analytics_scheduler = _start_analytics_scheduler()
+
+
+@app.on_event("shutdown")
+async def _on_shutdown():
+    scheduler = getattr(app.state, "analytics_scheduler", None)
+    if scheduler:
+        scheduler.shutdown(wait=False)
+        print("[analytics] 调度器已关闭")
 
 
 # ===== 前端静态文件 =====

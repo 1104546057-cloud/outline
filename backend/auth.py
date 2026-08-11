@@ -50,3 +50,33 @@ def get_current_user(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="用户不存在")
 
     return user
+
+
+def get_user_role(user: User, db: Session) -> str:
+    """返回用户角色字符串，无角色记录返回 'viewer'。"""
+    from models import UserRole
+    role_row = db.query(UserRole).filter(UserRole.user_id == user.id).first()
+    return role_row.role if role_row else "viewer"
+
+
+def require_role(*allowed_roles: str):
+    """FastAPI 依赖：仅允许指定角色访问。
+
+    用法：
+        @router.post("...", dependencies=[Depends(require_role("analyst", "admin"))])
+    或
+        def handler(user: User = Depends(require_role("admin"))):
+    """
+    from functools import wraps
+    from fastapi import Depends
+
+    def _dep(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+        role = get_user_role(user, db)
+        if role not in allowed_roles:
+            raise HTTPException(
+                status_code=403,
+                detail=f"无权限：需要 {'/'.join(allowed_roles)} 角色，当前角色 {role}",
+            )
+        return user
+
+    return _dep

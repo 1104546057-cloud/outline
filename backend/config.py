@@ -33,3 +33,23 @@ CAMERA_RECORD_FINALIZE_TIMEOUT_SECONDS = int(os.getenv("CAMERA_RECORD_FINALIZE_T
 # 使用该位置附近的历史坐标作为初始位置。
 PLATFORM_DEFAULT_GPS_LNG = float(os.getenv("PLATFORM_DEFAULT_GPS_LNG", "113.5790599"))
 PLATFORM_DEFAULT_GPS_LAT = float(os.getenv("PLATFORM_DEFAULT_GPS_LAT", "22.3523145"))
+
+# ===== 数据统计研判模块配置 =====
+
+# Redis 缓存（可选，未配置则使用进程内字典缓存）
+REDIS_URL = os.getenv("REDIS_URL", "")
+ANALYTICS_CACHE_TTL_SECONDS = int(os.getenv("ANALYTICS_CACHE_TTL_SECONDS", "300"))
+
+# 近实时刷新间隔（秒）
+ANALYTICS_NEAR_REALTIME_INTERVAL = int(os.getenv("ANALYTICS_NEAR_REALTIME_INTERVAL", "300"))
+
+# 日聚合执行时刻（24 小时制小时数）
+ANALYTICS_DAILY_RUN_HOUR = int(os.getenv("ANALYTICS_DAILY_RUN_HOUR", "2"))
+
+# 邮件通道（默认关闭，仅在 .env 设置 EMAIL_ENABLED=true 时启用）
+EMAIL_ENABLED = os.getenv("EMAIL_ENABLED", "false").lower() == "true"
+SMTP_HOST = os.getenv("SMTP_HOST", "localhost")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "25"))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER)

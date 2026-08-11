@@ -20,6 +20,10 @@ import PatrolTasks from './pages/PatrolTasks'
 import PatrolResults from './pages/PatrolResults'
 import PatrolNavigation from './pages/PatrolNavigation'
 import RemoteAccess from './pages/RemoteAccess'
+import AnalyticsDashboard from './pages/AnalyticsDashboard'
+import AnalyticsIndicatorDetail from './pages/AnalyticsIndicatorDetail'
+import AnalyticsRules from './pages/AnalyticsRules'
+import AnalyticsReports from './pages/AnalyticsReports'
 import './styles/SubpageTheme.css'
 
 /**
@@ -87,7 +91,10 @@ function App() {
           <Route path="patrol/results" element={<PatrolResults />} />
           <Route path="video-analysis" element={<VideoAnalysis />} />
           <Route path="warning-response" element={<WarningResponse />} />
-          <Route path="statistics-analysis" element={<PlaceholderPage title="数据统计研判" description="综合数据统计与趋势研判模块正在建设中" icon="◇" />} />
+          <Route path="statistics-analysis" element={<AnalyticsDashboard />} />
+          <Route path="statistics-analysis/indicator/:code" element={<AnalyticsIndicatorDetail />} />
+          <Route path="statistics-analysis/rules" element={<AnalyticsRules />} />
+          <Route path="statistics-analysis/reports" element={<AnalyticsReports />} />
         </Route>
 
         {/* 其他路径重定向到登录 */}

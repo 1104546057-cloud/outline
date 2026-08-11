@@ -4,19 +4,73 @@
 提供用户登录接口。
 """
 
+import re
 from datetime import timedelta
 from fastapi import APIRouter, HTTPException, Depends, Response
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from passlib.hash import bcrypt
 
 from database import get_db
 from models import User
-from schemas import LoginRequest, LoginResponse
+from schemas import LoginRequest, LoginResponse, RegisterRequest, RegisterResponse
 from auth import create_access_token
 from config import ACCESS_TOKEN_EXPIRE_MINUTES
 from captcha_store import verify_captcha
 
 router = APIRouter(prefix="/api/auth", tags=["认证"])
+
+
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{3,32}$")
+MAX_NICKNAME_LENGTH = 100
+
+
+@router.post("/register", response_model=RegisterResponse, status_code=201)
+async def register(request: RegisterRequest, db: Session = Depends(get_db)):
+    """公开注册接口，创建默认启用的账号但不自动登录。"""
+    if not verify_captcha(request.captcha_id, request.captcha_code):
+        raise HTTPException(status_code=422, detail="验证码错误或已过期")
+
+    username = request.username.strip()
+    password = request.password
+    nickname = request.nickname.strip() if request.nickname else None
+
+    if not USERNAME_PATTERN.fullmatch(username):
+        raise HTTPException(status_code=422, detail="用户名需为 3-32 位字母、数字或下划线")
+    if not password.strip():
+        raise HTTPException(status_code=422, detail="密码不能全为空白")
+    if len(password) < 6:
+        raise HTTPException(status_code=422, detail="密码至少需要 6 个字符")
+    if len(password.encode("utf-8")) > 72:
+        raise HTTPException(status_code=422, detail="密码不能超过 72 字节")
+    if nickname and len(nickname) > MAX_NICKNAME_LENGTH:
+        raise HTTPException(status_code=422, detail="昵称不能超过 100 个字符")
+
+    if db.query(User).filter(User.username == username).first() is not None:
+        raise HTTPException(status_code=409, detail="用户名已存在")
+
+    try:
+        user = User(
+            username=username,
+            password_hash=bcrypt.hash(password),
+            nickname=nickname,
+            is_active=True,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="用户名已存在")
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="注册失败，请稍后重试")
+
+    return RegisterResponse(
+        message="注册成功，请使用新账号登录",
+        username=user.username,
+        nickname=user.nickname,
+    )
 
 
 @router.post("/login")

@@ -7,8 +7,7 @@ const primaryNav = [
   { label: '校园巡逻管控', path: '/dashboard', match: ['/dashboard', '/patrol', '/device-cockpit'] },
   { label: '视频识别分析', path: '/video-analysis', match: ['/video-analysis'] },
   { label: '安全预警处置', path: '/warning-response', match: ['/warning-response'] },
-  { label: '数据统计研判', path: '/statistics-analysis', match: ['/statistics-analysis'] },
-]
+  { label: '数据统计研判', path: '/statistics-analysis', match: ['/statistics-analysis'] },]
 
 const settingsGroups = [
   {
@@ -36,6 +35,14 @@ const settingsGroups = [
       { label: '巡检任务', path: '/patrol/tasks', icon: 'task' },
       { label: '巡检导航', path: '/patrol/navigation', icon: 'navigation' },
       { label: '巡航成果', path: '/patrol/results', icon: 'gallery' },
+    ],
+  },
+  {
+    title: '研判管理',
+    items: [
+      { label: '研判仪表盘', path: '/statistics-analysis', icon: 'home' },
+      { label: '研判规则', path: '/statistics-analysis/rules', icon: 'task' },
+      { label: '报告中心', path: '/statistics-analysis/reports', icon: 'gallery' },
     ],
   },
 ]

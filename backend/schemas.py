@@ -19,11 +19,27 @@ class LoginRequest(BaseModel):
     captcha_code: str
 
 
+class RegisterRequest(BaseModel):
+    """公开注册请求体"""
+    username: str
+    password: str
+    nickname: Optional[str] = None
+    captcha_id: str
+    captcha_code: str
+
+
 class LoginResponse(BaseModel):
     """登录响应体"""
     message: str
     username: str
     token: str
+    nickname: Optional[str] = None
+
+
+class RegisterResponse(BaseModel):
+    """公开注册响应体"""
+    message: str
+    username: str
     nickname: Optional[str] = None
 
 
@@ -293,3 +309,81 @@ class SecurityAlertAssign(BaseModel):
 
 class SecurityAlertClose(BaseModel):
     handling_note: Optional[str] = None
+
+
+# ===== 数据统计研判模块 =====
+
+class AnalyticsEventIngest(BaseModel):
+    """外部 Agent / 系统接入事件。"""
+    event_type: str
+    source: Literal["agent", "api", "manual", "import"] = "api"
+    device_id: Optional[int] = None
+    occurred_at: Optional[datetime] = None
+    payload: Optional[dict] = None
+
+
+class AnalyticsEventManual(BaseModel):
+    """前端手动录入事件。"""
+    event_type: str
+    device_id: Optional[int] = None
+    occurred_at: Optional[datetime] = None
+    payload: Optional[dict] = None
+
+
+class AnalyticsIndicatorCreate(BaseModel):
+    code: str
+    name: str
+    category: str = "device"
+    data_source: str = "telemetry"
+    expression: Optional[dict] = None
+    unit: Optional[str] = None
+    granularity: str = "day"
+    baseline: Optional[dict] = None
+    description: Optional[str] = None
+    is_active: bool = True
+
+
+class AnalyticsIndicatorUpdate(BaseModel):
+    name: Optional[str] = None
+    expression: Optional[dict] = None
+    unit: Optional[str] = None
+    baseline: Optional[dict] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class AnalyticsRuleCreate(BaseModel):
+    name: str
+    indicator_id: int
+    rule_type: Literal["threshold", "zscore", "consecutive", "ratio"] = "threshold"
+    condition: Optional[dict] = None
+    severity: Literal["low", "medium", "high", "critical"] = "medium"
+    alert_type: str = "analytics_rule"
+    description: Optional[str] = None
+    is_active: bool = True
+
+
+class AnalyticsRuleUpdate(BaseModel):
+    name: Optional[str] = None
+    condition: Optional[dict] = None
+    severity: Optional[Literal["low", "medium", "high", "critical"]] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class AnalyticsReportTemplateCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    config: dict
+    format: Literal["pdf", "excel"] = "pdf"
+    is_active: bool = True
+
+
+class AnalyticsReportRunCreate(BaseModel):
+    template_id: int
+    period_start: Optional[datetime] = None
+    period_end: Optional[datetime] = None
+
+
+class UserRoleUpdate(BaseModel):
+    role: Literal["viewer", "analyst", "admin"]

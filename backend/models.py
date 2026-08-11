@@ -250,3 +250,169 @@ class SecurityAlert(Base):
 
     def __repr__(self):
         return f"<SecurityAlert(id={self.id}, severity='{self.severity}', status='{self.status}')>"
+
+
+# ===== 用户角色扩展（RBAC） =====
+
+class UserRole(Base):
+    """用户角色表：为现有 User 增加 viewer / analyst / admin 角色字段。
+
+    不直接修改老 User 表，避免影响老接口；通过 user_id 关联。
+    """
+    __tablename__ = "user_roles"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="主键ID")
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True, comment="用户ID")
+    role = Column(String(32), nullable=False, default="viewer", comment="角色(viewer/analyst/admin)")
+    created_at = Column(DateTime, default=datetime.now, nullable=False, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False, comment="更新时间")
+
+    user = relationship("User", backref="role_ref")
+
+    def __repr__(self):
+        return f"<UserRole(user_id={self.user_id}, role='{self.role}')>"
+
+
+# ===== 数据统计研判模块 =====
+
+class AnalyticsIndicator(Base):
+    """指标字典：定义统计指标的计算口径与归属维度。"""
+    __tablename__ = "analytics_indicator"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="指标ID")
+    code = Column(String(64), unique=True, nullable=False, index=True, comment="指标编码")
+    name = Column(String(128), nullable=False, comment="指标名称")
+    category = Column(String(64), nullable=False, default="device", comment="分类(device/patrol/alert/energy/external/manual)")
+    data_source = Column(String(64), nullable=False, default="telemetry", comment="数据源(telemetry/patrol/alert/external/manual)")
+    expression = Column(JSON, nullable=True, comment="计算表达式 DSL")
+    unit = Column(String(32), nullable=True, comment="单位")
+    granularity = Column(String(16), nullable=False, default="day", comment="粒度(5min/hour/day/week/month)")
+    baseline = Column(JSON, nullable=True, comment="基线参数(均值/标准差/阈值)")
+    description = Column(Text, nullable=True, comment="指标说明")
+    is_active = Column(Boolean, default=True, nullable=False, comment="是否启用")
+    created_at = Column(DateTime, default=datetime.now, nullable=False, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False, comment="更新时间")
+
+    metric_daily_records = relationship("AnalyticsMetricDaily", back_populates="indicator", cascade="all, delete-orphan")
+    rules = relationship("AnalyticsRule", back_populates="indicator")
+
+    def __repr__(self):
+        return f"<AnalyticsIndicator(code='{self.code}', name='{self.name}')>"
+
+
+class AnalyticsEvent(Base):
+    """明细事件池：外部 Agent、外部 API、手动录入、文件导入统一写入此表。"""
+    __tablename__ = "analytics_event"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="事件ID")
+    event_type = Column(String(64), nullable=False, index=True, comment="事件类型")
+    source = Column(String(32), nullable=False, default="manual", index=True, comment="来源(agent/api/manual/import)")
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="SET NULL"), nullable=True, index=True, comment="可选关联设备ID")
+    occurred_at = Column(DateTime, nullable=False, default=datetime.now, index=True, comment="事件发生时间")
+    payload = Column(JSON, nullable=True, comment="事件载荷(自由结构)")
+    created_at = Column(DateTime, default=datetime.now, nullable=False, comment="入库时间")
+
+    device = relationship("Device")
+
+    def __repr__(self):
+        return f"<AnalyticsEvent(id={self.id}, type='{self.event_type}', source='{self.source}')>"
+
+
+class AnalyticsMetricDaily(Base):
+    """日聚合表：存储按 (指标, 维度, 日期) 的预计算结果。"""
+    __tablename__ = "analytics_metric_daily"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="聚合ID")
+    indicator_id = Column(Integer, ForeignKey("analytics_indicator.id", ondelete="CASCADE"), nullable=False, index=True, comment="指标ID")
+    dimension_key = Column(String(128), nullable=False, default="all", index=True, comment="维度组合(device_id=3 / cluster_id=1 / all)")
+    date = Column(DateTime, nullable=False, index=True, comment="统计日期")
+    value = Column(Numeric(18, 4), nullable=True, comment="指标值")
+    sample_count = Column(Integer, nullable=True, default=0, comment="样本数")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False, comment="更新时间")
+
+    indicator = relationship("AnalyticsIndicator", back_populates="metric_daily_records")
+
+    def __repr__(self):
+        return f"<AnalyticsMetricDaily(indicator_id={self.indicator_id}, dim='{self.dimension_key}', date={self.date})>"
+
+
+class AnalyticsRule(Base):
+    """研判规则：定义指标的异常识别条件与命中后生成的告警等级。"""
+    __tablename__ = "analytics_rule"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="规则ID")
+    name = Column(String(128), nullable=False, comment="规则名称")
+    indicator_id = Column(Integer, ForeignKey("analytics_indicator.id", ondelete="CASCADE"), nullable=False, index=True, comment="关联指标ID")
+    rule_type = Column(String(32), nullable=False, default="threshold", comment="规则类型(threshold/zscore/consecutive/ratio)")
+    condition = Column(JSON, nullable=True, comment="触发条件 JSON")
+    severity = Column(String(16), nullable=False, default="medium", comment="触发后告警等级(low/medium/high/critical)")
+    alert_type = Column(String(64), nullable=False, default="analytics_rule", comment="写入 SecurityAlert.alert_type")
+    description = Column(Text, nullable=True, comment="规则说明")
+    is_active = Column(Boolean, default=True, nullable=False, comment="是否启用")
+    created_at = Column(DateTime, default=datetime.now, nullable=False, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False, comment="更新时间")
+
+    indicator = relationship("AnalyticsIndicator", back_populates="rules")
+
+    def __repr__(self):
+        return f"<AnalyticsRule(id={self.id}, name='{self.name}', type='{self.rule_type}')>"
+
+
+class AnalyticsReportTemplate(Base):
+    """报告模板：定义报告包含的指标、时间范围、图表布局。"""
+    __tablename__ = "analytics_report_template"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="模板ID")
+    name = Column(String(128), nullable=False, comment="模板名称")
+    description = Column(Text, nullable=True, comment="模板说明")
+    config = Column(JSON, nullable=False, comment="模板配置(指标列表/时间范围/布局)")
+    format = Column(String(16), nullable=False, default="pdf", comment="输出格式(pdf/excel)")
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, comment="创建人")
+    is_active = Column(Boolean, default=True, nullable=False, comment="是否启用")
+    created_at = Column(DateTime, default=datetime.now, nullable=False, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False, comment="更新时间")
+
+    runs = relationship("AnalyticsReportRun", back_populates="template", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<AnalyticsReportTemplate(id={self.id}, name='{self.name}')>"
+
+
+class AnalyticsReportRun(Base):
+    """报告生成记录：每次生成一份报告都写入此表，关联导出文件。"""
+    __tablename__ = "analytics_report_run"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="运行ID")
+    template_id = Column(Integer, ForeignKey("analytics_report_template.id", ondelete="CASCADE"), nullable=False, index=True, comment="模板ID")
+    triggered_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, comment="触发用户ID")
+    status = Column(String(16), nullable=False, default="pending", comment="状态(pending/running/completed/failed)")
+    period_start = Column(DateTime, nullable=True, comment="报告周期开始")
+    period_end = Column(DateTime, nullable=True, comment="报告周期结束")
+    file_path = Column(String(1024), nullable=True, comment="导出文件相对路径")
+    error_message = Column(Text, nullable=True, comment="失败原因")
+    started_at = Column(DateTime, nullable=True, comment="开始执行时间")
+    finished_at = Column(DateTime, nullable=True, comment="完成时间")
+    created_at = Column(DateTime, default=datetime.now, nullable=False, comment="创建时间")
+
+    template = relationship("AnalyticsReportTemplate", back_populates="runs")
+
+    def __repr__(self):
+        return f"<AnalyticsReportRun(id={self.id}, template={self.template_id}, status='{self.status}')>"
+
+
+class AnalyticsNotification(Base):
+    """站内消息：研判模块向用户推送的通知。"""
+    __tablename__ = "analytics_notification"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="通知ID")
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True, comment="接收用户ID")
+    title = Column(String(200), nullable=False, comment="标题")
+    content = Column(Text, nullable=True, comment="内容")
+    category = Column(String(32), nullable=False, default="alert", comment="类别(alert/report/system)")
+    ref_type = Column(String(32), nullable=True, comment="关联类型(alert/rule/report)")
+    ref_id = Column(Integer, nullable=True, comment="关联记录ID")
+    is_read = Column(Boolean, default=False, nullable=False, comment="是否已读")
+    created_at = Column(DateTime, default=datetime.now, nullable=False, comment="创建时间")
+
+    def __repr__(self):
+        return f"<AnalyticsNotification(id={self.id}, user_id={self.user_id}, title='{self.title}')>"

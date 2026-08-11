@@ -64,6 +64,10 @@
 .login-spinner { width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.28); border-top-color: #fff; border-radius: 50%; animation: login-spin .65s linear infinite; }@keyframes login-spin { to { transform: rotate(360deg); } }
 .secure-tip { margin-top: 18px; display: flex; align-items: center; justify-content: center; gap: 6px; color: #416f88; font: 8px/1 'Courier New', monospace; letter-spacing: .3px; }.secure-tip b { color: #397b9c; font-weight: 400; }.secure-dot { width: 5px; height: 5px; border-radius: 50%; background: #31e4a3; box-shadow: 0 0 6px #31e4a3; }
 .login-error { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 7px 10px; margin: -15px 0 13px; color: #ff9ba8; border: 1px solid rgba(255, 82, 106, .34); background: rgba(132, 20, 43, .17); font-size: 11px; animation: login-shake .35s ease; }@keyframes login-shake { 25%{transform:translateX(-5px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)} }
+.login-success { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 7px 10px; margin: -15px 0 13px; color: #8ff5c8; border: 1px solid rgba(49, 228, 163, .38); background: rgba(17, 112, 78, .18); font-size: 11px; }
+.register-form .captcha-row { margin-bottom: 16px; }
+.register-hint { color: #4f8da9; font-size: 10px; }
+.register-entry { width: 100%; margin-top: 12px; padding: 8px; color: #77cbed; border: 1px solid rgba(62, 171, 224, .35); background: rgba(8, 54, 96, .32); font-size: 11px; letter-spacing: 1px; transition: border-color .2s, background .2s; }.register-entry:hover:not(:disabled) { border-color: var(--login-cyan); background: rgba(10, 93, 148, .38); }.register-entry:disabled { cursor: wait; opacity: .6; }
 
 /* ===== 验证码 ===== */
 .captcha-row { display: flex; align-items: stretch; gap: 10px; margin-bottom: 20px; }

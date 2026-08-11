@@ -6,12 +6,17 @@
 """
 
 import os
+from pathlib import Path
 from sqlalchemy import inspect, text
 from passlib.hash import bcrypt
 
 from database import engine, SessionLocal, Base
-from models import User, Device, Cluster, DeviceTelemetry, DeviceToken, \
-    PatrolArea, PatrolPoint, PatrolRoute, PatrolRoutePoint, PatrolTask, SecurityAlert
+from models import (
+    User, Device, Cluster, DeviceTelemetry, DeviceToken,
+    PatrolArea, PatrolPoint, PatrolRoute, PatrolRoutePoint, PatrolTask, SecurityAlert,
+    UserRole, AnalyticsIndicator, AnalyticsEvent, AnalyticsMetricDaily,
+    AnalyticsRule, AnalyticsReportTemplate, AnalyticsReportRun, AnalyticsNotification,
+)
 
 
 def init_database():
@@ -74,6 +79,24 @@ def init_database():
         raise
     finally:
         db.close()
+
+    # 4. 数据统计研判模块迁移（默认角色 + 指标字典 + 示例规则）
+    #    通过执行 migrations/001_analytics.sql 完成种子数据填充，幂等可重复执行。
+    migration_file = Path(__file__).parent / "migrations" / "001_analytics.sql"
+    if migration_file.is_file():
+        print(f"正在执行研判模块迁移脚本: {migration_file.name}")
+        with engine.begin() as conn:
+            sql_text = migration_file.read_text(encoding="utf-8")
+            # 按 ";" 分句执行（MySQL driver 不支持多语句时退化为单条）
+            statements = [s.strip() for s in sql_text.split(";") if s.strip() and not s.strip().startswith("--")]
+            for stmt in statements:
+                try:
+                    conn.execute(text(stmt))
+                except Exception as stmt_err:
+                    print(f"  跳过语句（可能已存在）: {str(stmt_err).splitlines()[0]}")
+        print("研判模块迁移完成")
+    else:
+        print(f"未找到迁移脚本: {migration_file}")
 
     print("数据库初始化完成！")
 

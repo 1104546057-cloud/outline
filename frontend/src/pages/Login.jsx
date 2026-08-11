@@ -18,12 +18,16 @@ function LoginIcon({ name, size = 19 }) {
 }
 
 function Login() {
+  const [mode, setMode] = useState('login')
   const [username, setUsername] = useState('')
+  const [nickname, setNickname] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [modalType, setModalType] = useState(null)
 
   const [captchaId, setCaptchaId] = useState('')
@@ -66,6 +70,7 @@ function Login() {
   const handleLogin = async event => {
     event.preventDefault()
     setError('')
+    setSuccess('')
     if (!username.trim()) { setError('请输入用户名'); return }
     if (!password.trim()) { setError('请输入密码'); return }
     if (!captchaCode.trim()) { setError('请输入验证码'); return }
@@ -94,6 +99,66 @@ function Login() {
       if (rememberMe) localStorage.setItem('dwc_remember', JSON.stringify({ username: username.trim(), password }))
       else localStorage.removeItem('dwc_remember')
       navigate('/dashboard')
+    } catch {
+      setError('无法连接到服务器，请检查后端服务是否启动')
+      fetchCaptcha()
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const switchMode = nextMode => {
+    setMode(nextMode)
+    setError('')
+    setSuccess('')
+    setPassword('')
+    setConfirmPassword('')
+    setCaptchaCode('')
+  }
+
+  const handleRegister = async event => {
+    event.preventDefault()
+    setError('')
+    setSuccess('')
+
+    const normalizedUsername = username.trim()
+    const normalizedNickname = nickname.trim()
+
+    if (!/^[A-Za-z0-9_]{3,32}$/.test(normalizedUsername)) { setError('用户名需为 3-32 位字母、数字或下划线'); return }
+    if (password.trim().length === 0) { setError('密码不能全为空白'); return }
+    if (password.length < 6) { setError('密码至少需要 6 个字符'); return }
+    if (password !== confirmPassword) { setError('两次输入的密码不一致'); return }
+    if (new TextEncoder().encode(password).length > 72) { setError('密码不能超过 72 字节'); return }
+    if (!captchaCode.trim()) { setError('请输入验证码'); return }
+    setIsLoading(true)
+
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: normalizedUsername,
+          password,
+          nickname: normalizedNickname || null,
+          captcha_id: captchaId,
+          captcha_code: captchaCode.trim(),
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        setError(data.detail || '注册失败，请稍后重试')
+        fetchCaptcha()
+        return
+      }
+
+      setMode('login')
+      setUsername(data.username)
+      setNickname('')
+      setPassword('')
+      setConfirmPassword('')
+      setCaptchaCode('')
+      setSuccess(data.message || '注册成功，请使用新账号登录')
+      fetchCaptcha()
     } catch {
       setError('无法连接到服务器，请检查后端服务是否启动')
       fetchCaptcha()
@@ -132,13 +197,14 @@ function Login() {
             <span className="head-wing left" />
             <div className="console-title">
               <LoginIcon name="shield" size={21} />
-              <div><h2>用户登录</h2><small>USER AUTHENTICATION</small></div>
+              <div><h2>{mode === 'login' ? '用户登录' : '账号注册'}</h2><small>{mode === 'login' ? 'USER AUTHENTICATION' : 'ACCOUNT REGISTRATION'}</small></div>
             </div>
             <span className="head-wing right" />
           </div>
 
-          <form className="tech-login-form" onSubmit={handleLogin} id="login-form">
+          <form className={`tech-login-form ${mode === 'register' ? 'register-form' : ''}`} onSubmit={mode === 'login' ? handleLogin : handleRegister} id="login-form">
             {error && <div className="login-error" id="error-message"><LoginIcon name="alert" size={17} /><span>{error}</span></div>}
+            {success && <div className="login-success" role="status"><LoginIcon name="shield" size={17} /><span>{success}</span></div>}
 
             <label className="tech-field" htmlFor="username">
               <span className="field-icon"><LoginIcon name="user" /></span>
@@ -156,6 +222,24 @@ function Login() {
               </button>
               <i className="field-focus-line" />
             </label>
+
+            {mode === 'register' && (
+              <>
+                <label className="tech-field" htmlFor="nickname">
+                  <span className="field-icon"><LoginIcon name="user" /></span>
+                  <span className="field-divider" />
+                  <input id="nickname" type="text" placeholder="请输入昵称（可选）" value={nickname} onChange={event => setNickname(event.target.value)} autoComplete="nickname" maxLength={100} disabled={isLoading} />
+                  <i className="field-focus-line" />
+                </label>
+
+                <label className="tech-field" htmlFor="confirm-password">
+                  <span className="field-icon"><LoginIcon name="lock" /></span>
+                  <span className="field-divider" />
+                  <input id="confirm-password" type={showPassword ? 'text' : 'password'} placeholder="请再次输入密码" value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} autoComplete="new-password" disabled={isLoading} />
+                  <i className="field-focus-line" />
+                </label>
+              </>
+            )}
 
             {/* 验证码行 */}
             <div className="captcha-row">
@@ -194,18 +278,22 @@ function Login() {
             </div>
 
             <div className="login-options">
-              <label className="tech-checkbox">
-                <input type="checkbox" checked={rememberMe} onChange={event => setRememberMe(event.target.checked)} />
-                <span className="checkbox-ui"><i /></span>
-                <span>记住登录信息</span>
-              </label>
-              <button type="button" onClick={() => setModalType('forgot')}>忘记密码？</button>
+              {mode === 'login' ? (
+                <label className="tech-checkbox">
+                  <input type="checkbox" checked={rememberMe} onChange={event => setRememberMe(event.target.checked)} />
+                  <span className="checkbox-ui"><i /></span>
+                  <span>记住登录信息</span>
+                </label>
+              ) : <span className="register-hint">注册成功后需手动登录</span>}
+              <button type="button" onClick={() => mode === 'login' ? setModalType('forgot') : switchMode('login')}>{mode === 'login' ? '忘记密码？' : '返回登录'}</button>
             </div>
 
             <button type="submit" className="tech-login-button" id="login-button" disabled={isLoading}>
               <span className="button-scan" />
-              {isLoading ? <><i className="login-spinner" />身份验证中...</> : '登 录'}
+              {isLoading ? <><i className="login-spinner" />{mode === 'login' ? '身份验证中...' : '注册处理中...'}</> : mode === 'login' ? '登 录' : '注 册'}
             </button>
+
+            {mode === 'login' && <button type="button" className="register-entry" onClick={() => switchMode('register')} disabled={isLoading}>账号申请</button>}
 
             <div className="secure-tip"><span className="secure-dot" />安全接入通道已启用 <b>SECURE CHANNEL</b></div>
           </form>
@@ -223,8 +311,8 @@ function Login() {
           <div className="login-modal" onMouseDown={event => event.stopPropagation()}>
             <span className="modal-alert-icon"><LoginIcon name="alert" size={27} /></span>
             <small>SYSTEM MESSAGE</small>
-            <h3>{modalType === 'forgot' ? '忘记密码' : '账号申请'}</h3>
-            <p>{modalType === 'forgot' ? '请联系系统管理员重置您的登录密码。' : '系统暂未开放自主注册，请联系管理员分配账号。'}</p>
+            <h3>忘记密码</h3>
+            <p>请联系系统管理员重置您的登录密码。</p>
             <button onClick={() => setModalType(null)}>我知道了</button>
           </div>
         </div>
