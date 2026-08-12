@@ -2,6 +2,8 @@
 
 本项目是智慧校园巡逻管理系统，包含本地 Web 管理平台、FastAPI 后端、React 前端，以及部署在无人车上的 Agent。无人车采用主动连接模式：平台先创建设备并生成 Token，车端 Agent 再使用同一个 Token 上报遥测、接收控制指令并上传媒体流。
 
+> 部署方式：远端通过 `git push prod main` 触发裸仓库的 post-receive hook，自动 checkout 到部署目录并重启 `devicewebcontrol.service`。`.env`、`.venv`、`node_modules`、`frontend/dist` 等运行时文件不在版本控制内，由部署侧维护。
+
 ## 目录结构
 
 ```text
