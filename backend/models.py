@@ -6,7 +6,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Table, Text, Numeric, JSON, Float
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Table, Text, Numeric, JSON, Float, UniqueConstraint
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -253,6 +253,271 @@ class SecurityAlert(Base):
 
 
 # ===== 用户角色扩展（RBAC） =====
+
+# ===== 校园室外自主巡检模型（阶段 B/C） =====
+#
+# 设计原则（参见 docs/requirements/campus-outdoor-autonomous-patrol.md §5.1）：
+#   1. 室内 SLAM 巡检表（PatrolArea/Point/Route/Task）与本组表严格分离，
+#      不复用、不共享外键，避免坐标类型混用污染室内流程。
+#   2. 所有地理坐标必须同时保留坐标类型（coordinate_type）与坐标参考版本
+#      （calibration_id），禁止只存两个无单位数值。
+#   3. 路线版本一旦冻结（status='frozen'）即不可修改，编辑生成新版本。
+#   4. 任务创建时快照路线与标定版本，运行期不受后续编辑影响。
+
+
+class OutdoorCalibration(Base):
+    """校园坐标标定（FR-02）
+
+    每条记录定义一个 ENU 原点（WGS84 经纬度 + 航向），作为路线与任务的
+    坐标参考基准。版本号必须唯一；启用新版本前需通过现场对点验证。
+    """
+    __tablename__ = "outdoor_calibrations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="标定ID")
+    name = Column(String(100), nullable=False, comment="标定名称")
+    version = Column(String(64), nullable=False, unique=True,
+                    comment="唯一版本号，如 campus-main-v1")
+    description = Column(Text, nullable=True, comment="描述")
+
+    # 原点（WGS84）
+    origin_lng = Column(Numeric(10, 7), nullable=False, comment="原点经度 (WGS84)")
+    origin_lat = Column(Numeric(10, 7), nullable=False, comment="原点纬度 (WGS84)")
+    origin_alt = Column(Numeric(10, 3), nullable=True, comment="原点椭球高 (m)")
+    origin_yaw = Column(Numeric(8, 5), nullable=False, default=0,
+                       comment="ENU 旋转到 ROS map 的偏航角 (rad)")
+
+    # 对点验证记录（启用前的闸门证据）
+    verification_geojson = Column(JSON, nullable=True,
+                                 comment="对点验证结果 [{known_lng, known_lat, enu_x, enu_y, error_m}], ...]")
+    verified_by = Column(String(100), nullable=True, comment="验证人")
+    verified_at = Column(DateTime, nullable=True, comment="验证通过时间")
+
+    # 状态：draft → verified → active → deprecated
+    status = Column(String(16), nullable=False, default="draft", index=True,
+                   comment="状态(draft/verified/active/deprecated)")
+
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+    # 关联
+    routes = relationship("OutdoorRoute", back_populates="calibration")
+
+    def __repr__(self):
+        return f"<OutdoorCalibration(id={self.id}, version='{self.version}', status='{self.status}')>"
+
+
+class OutdoorRoute(Base):
+    """室外巡检路线（FR-03）
+
+    绑定到一个校准版本；围栏与速度限制随路线版本冻结。
+    """
+    __tablename__ = "outdoor_routes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False, comment="路线名称")
+    description = Column(Text, nullable=True)
+
+    calibration_id = Column(Integer,
+                           ForeignKey("outdoor_calibrations.id", ondelete="RESTRICT"),
+                           nullable=False, index=True,
+                           comment="绑定的坐标标定版本ID")
+
+    version = Column(Integer, nullable=False, default=1, comment="路线版本号")
+    parent_id = Column(Integer, ForeignKey("outdoor_routes.id", ondelete="SET NULL"),
+                      nullable=True, comment="前一版本路线ID（版本链）")
+
+    # 电子围栏（多边形顶点，ENU 坐标或 WGS84；以 coordinate_type 标识）
+    fence_type = Column(String(16), nullable=False, default="polygon",
+                       comment="围栏类型(polygon/corridor)")
+    fence_geojson = Column(JSON, nullable=True,
+                          comment="围栏几何，GeoJSON Feature 或简化坐标数组")
+    fence_buffer_m = Column(Numeric(6, 2), nullable=True, default=0.3,
+                           comment="围栏边界缓冲距离 (m)")
+
+    # 速度限制与设备类型
+    max_speed_ms = Column(Numeric(4, 2), nullable=True, default=0.8,
+                          comment="最大允许速度 (m/s)")
+    applicable_device_types = Column(JSON, nullable=True,
+                                    comment="适用设备类型数组，如 ['无人车']")
+
+    # 状态：draft → published → frozen → deprecated
+    status = Column(String(16), nullable=False, default="draft", index=True,
+                   comment="路线状态")
+
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+    calibration = relationship("OutdoorCalibration", back_populates="routes")
+    waypoints = relationship("OutdoorWaypoint", back_populates="route",
+                            cascade="all, delete-orphan",
+                            order_by="OutdoorWaypoint.seq_order")
+    tasks = relationship("OutdoorPatrolTask", back_populates="route")
+    parent = relationship("OutdoorRoute", remote_side=[id], backref="child_versions")
+
+    def __repr__(self):
+        return f"<OutdoorRoute(id={self.id}, name='{self.name}', v{self.version}, status='{self.status}')>"
+
+
+class OutdoorWaypoint(Base):
+    """室外巡检航点（FR-03.2）
+
+    每个航点同时保存 WGS84 与 ENU 两组坐标，互为冗余；
+    实际下发给车端时根据接口契约选择使用哪种坐标。
+    """
+    __tablename__ = "outdoor_waypoints"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    route_id = Column(Integer, ForeignKey("outdoor_routes.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+    seq_order = Column(Integer, nullable=False, default=1, comment="执行顺序 (从1开始)")
+    name = Column(String(100), nullable=False, comment="航点名称")
+
+    # WGS84 坐标（必填，存储与前端展示基准）
+    geo_lng = Column(Numeric(10, 7), nullable=False, comment="经度 (WGS84)")
+    geo_lat = Column(Numeric(10, 7), nullable=False, comment="纬度 (WGS84)")
+
+    # ENU 坐标（由后端按 calibration_id 转换后冗余存储）
+    enu_x = Column(Numeric(10, 3), nullable=True, comment="ENU 东向 (m)")
+    enu_y = Column(Numeric(10, 3), nullable=True, comment="ENU 北向 (m)")
+    yaw = Column(Numeric(8, 5), nullable=True, comment="期望朝向 (rad)")
+
+    # 到点判定参数
+    arrival_radius_m = Column(Numeric(5, 2), nullable=False, default=0.5,
+                             comment="到达半径 (m)")
+    dwell_seconds = Column(Integer, nullable=False, default=0,
+                          comment="到达后停留时长 (s)")
+
+    # 巡检动作（可扩展：take_photo / record_video / pause 等）
+    action = Column(String(64), nullable=True, comment="到达后动作")
+    action_params = Column(JSON, nullable=True, comment="动作参数")
+
+    # 超时与启用状态
+    timeout_seconds = Column(Integer, nullable=False, default=120,
+                            comment="最大执行时长 (s)")
+    is_enabled = Column(Boolean, nullable=False, default=True,
+                       comment="是否启用")
+
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+    route = relationship("OutdoorRoute", back_populates="waypoints")
+    waypoint_results = relationship("OutdoorPatrolEvent", back_populates="waypoint")
+
+    def __repr__(self):
+        return f"<OutdoorWaypoint(route_id={self.route_id}, seq={self.seq_order}, name='{self.name}')>"
+
+
+class OutdoorPatrolTask(Base):
+    """室外巡检任务（FR-04）
+
+    任务创建时冻结路线版本与标定版本快照，运行期不受编辑影响。
+    所有状态变迁记录在 OutdoorPatrolEvent。
+    """
+    __tablename__ = "outdoor_patrol_tasks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False, comment="任务名称")
+    description = Column(Text, nullable=True)
+
+    # 关联
+    route_id = Column(Integer, ForeignKey("outdoor_routes.id", ondelete="RESTRICT"),
+                     nullable=False, index=True, comment="路线ID")
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="SET NULL"),
+                      nullable=True, index=True, comment="执行设备ID")
+
+    # 启动快照（FR-04.5 / 需求 §6.2）
+    route_snapshot = Column(JSON, nullable=False,
+                           comment="启动时路线冻结副本，含航点序列")
+    calibration_snapshot = Column(JSON, nullable=False,
+                                 comment="启动时标定版本冻结副本")
+    thresholds_snapshot = Column(JSON, nullable=True,
+                                comment="启动时安全阈值冻结副本")
+
+    # 计划类型
+    schedule_type = Column(String(16), nullable=False, default="immediate",
+                         comment="计划类型(immediate/scheduled)")
+    scheduled_at = Column(DateTime, nullable=True, comment="计划执行时间")
+
+    # 状态机（FR-04.3）
+    # pending → running → completed
+    #         → failed / paused / cancelled / safety_stopped
+    status = Column(String(20), nullable=False, default="pending", index=True,
+                   comment="任务状态")
+
+    # 进度跟踪
+    current_waypoint_seq = Column(Integer, nullable=True, comment="当前航点序号")
+    precheck_result = Column(JSON, nullable=True,
+                            comment="最近一次预检结果（含各项明细）")
+
+    # 时间
+    started_at = Column(DateTime, nullable=True)
+    ended_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+    # 创建者与操作审计
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"),
+                       nullable=True, comment="创建用户ID")
+
+    route = relationship("OutdoorRoute", back_populates="tasks")
+    device = relationship("Device")
+    events = relationship("OutdoorPatrolEvent", back_populates="task",
+                         cascade="all, delete-orphan",
+                         order_by="OutdoorPatrolEvent.occurred_at")
+
+    def __repr__(self):
+        return f"<OutdoorPatrolTask(id={self.id}, name='{self.name}', status='{self.status}')>"
+
+
+class OutdoorPatrolEvent(Base):
+    """室外巡检事件审计（FR-06.2 / FR-07.4）
+
+    记录任务生命周期中的所有事件：状态变迁、航点结果、安全触发、人工操作等。
+    每条事件携带发生时间、位置快照与原因，作为可审计、可回放的核心数据。
+    """
+    __tablename__ = "outdoor_patrol_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(Integer, ForeignKey("outdoor_patrol_tasks.id", ondelete="CASCADE"),
+                    nullable=False, index=True)
+    waypoint_id = Column(Integer, ForeignKey("outdoor_waypoints.id", ondelete="SET NULL"),
+                        nullable=True, index=True, comment="关联航点（如适用）")
+
+    # 事件类型（参见 EVENT_TYPES 注释）
+    event_type = Column(String(32), nullable=False, index=True,
+                       comment="事件类型")
+    # task_status_change / waypoint_reached / waypoint_failed / waypoint_skipped
+    # precheck_passed / precheck_failed
+    # localization_lost / fence_breach / obstacle_blocked / nav_abnormal
+    # battery_low / control_lost / sensor_failure
+    # user_pause / user_resume / user_cancel / user_estop
+    # safety_stop / recovery_attempt / recovery_passed
+
+    severity = Column(String(16), nullable=False, default="info",
+                     comment="严重等级(info/warn/error/critical)")
+    reason = Column(String(255), nullable=True, comment="事件原因（人类可读）")
+    detail = Column(JSON, nullable=True, comment="扩展详情")
+
+    # 位置快照（事件发生时的定位）
+    loc_lng = Column(Numeric(10, 7), nullable=True, comment="事件位置经度 (WGS84)")
+    loc_lat = Column(Numeric(10, 7), nullable=True, comment="事件位置纬度 (WGS84)")
+    loc_enu_x = Column(Numeric(10, 3), nullable=True, comment="ENU 东向 (m)")
+    loc_enu_y = Column(Numeric(10, 3), nullable=True, comment="ENU 北向 (m)")
+    loc_gnss_fix = Column(String(16), nullable=True, comment="GNSS fix 状态")
+    loc_health = Column(Boolean, nullable=True, comment="定位健康度")
+
+    # 操作审计
+    operator_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"),
+                        nullable=True, comment="操作用户ID（人工操作时）")
+    occurred_at = Column(DateTime, nullable=False, default=datetime.now, index=True,
+                        comment="事件发生时间")
+
+    task = relationship("OutdoorPatrolTask", back_populates="events")
+    waypoint = relationship("OutdoorWaypoint", back_populates="waypoint_results")
+
+    def __repr__(self):
+        return f"<OutdoorPatrolEvent(id={self.id}, task_id={self.task_id}, type='{self.event_type}')>"
+
 
 class UserRole(Base):
     """用户角色表：为现有 User 增加 viewer / analyst / admin 角色字段。

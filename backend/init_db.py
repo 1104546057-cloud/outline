@@ -16,6 +16,9 @@ from models import (
     PatrolArea, PatrolPoint, PatrolRoute, PatrolRoutePoint, PatrolTask, SecurityAlert,
     UserRole, AnalyticsIndicator, AnalyticsEvent, AnalyticsMetricDaily,
     AnalyticsRule, AnalyticsReportTemplate, AnalyticsReportRun, AnalyticsNotification,
+    # 校园室外巡检（阶段 B/C）
+    OutdoorCalibration, OutdoorRoute, OutdoorWaypoint,
+    OutdoorPatrolTask, OutdoorPatrolEvent,
 )
 
 
@@ -97,6 +100,22 @@ def init_database():
         print("研判模块迁移完成")
     else:
         print(f"未找到迁移脚本: {migration_file}")
+
+    # 5. 校园室外巡检模块迁移（幂等）
+    outdoor_migration = Path(__file__).parent / "migrations" / "002_outdoor_patrol.sql"
+    if outdoor_migration.is_file():
+        print(f"正在执行室外巡检迁移脚本: {outdoor_migration.name}")
+        with engine.begin() as conn:
+            sql_text = outdoor_migration.read_text(encoding="utf-8")
+            statements = [s.strip() for s in sql_text.split(";") if s.strip() and not s.strip().startswith("--")]
+            for stmt in statements:
+                try:
+                    conn.execute(text(stmt))
+                except Exception as stmt_err:
+                    print(f"  跳过语句（可能已存在）: {str(stmt_err).splitlines()[0]}")
+        print("室外巡检迁移完成")
+    else:
+        print(f"未找到迁移脚本: {outdoor_migration}")
 
     print("数据库初始化完成！")
 

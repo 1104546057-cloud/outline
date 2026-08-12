@@ -1,0 +1,112 @@
+<!--
+  outdoor_localization.launch
+  =====================================================================
+  校园室外巡检 · 阶段 A-4：基于 robot_localization 的 EKF 融合定位
+
+  目标：
+    - 输入：/odom（轮速里程计）+ /imu（IMU 姿态）+ /gps/fix（GNSS RTK）
+    - 输出：/odometry/filtered（融合位姿，map 系）
+           /odometry/filtered/enu（ENU 平面坐标，辅助上报）
+    - TF：发布 map → odom → base_link 链
+
+  前置依赖（车端需已安装）：
+    sudo apt install ros-noetic-robot-localization
+    车端需启动底盘驱动 + GNSS 驱动：
+      roslaunch turn_on_wheeltec_robot turn_on_wheeltec_robot.launch
+      roslaunch wheeltec_gps_driver wheeltec_nmea_driver.launch
+
+  启动方式：
+    roslaunch --pkg devices-web-control outdoor_localization.launch
+    或直接：
+      roslaunch ./outdoor_localization.launch \
+        base_link_frame:=base_link \
+        use_gps:=true
+
+  参数说明见同目录 outdoor_ekf.yaml 注释。
+  =====================================================================
+-->
+<launch>
+
+  <!-- ====== TF 参数 ====== -->
+  <arg name="base_link_frame"   default="base_link"/>
+  <arg name="odom_frame"        default="odom"/>
+  <arg name="map_frame"         default="map"/>
+  <arg name="world_frame"       default="map"/>
+
+  <!-- ====== 数据源开关 ====== -->
+  <arg name="use_odom"          default="true"/>
+  <arg name="use_imu"           default="true"/>
+  <arg name="use_gps"           default="true"/>
+
+  <!-- ====== 配置文件路径 ====== -->
+  <arg name="ekf_config_file"
+       default="$(find devices_web_control)/config/outdoor_ekf.yaml"/>
+
+  <!--
+    robot_localization 的 navsat_transform_node：
+      把 /gps/fix (WGS84 经纬度) 转换到 map 系下，输出 /odometry/gps
+    必须与校园标定原点 (OutdoorCalibration.origin_lng/lat) 一致；
+    本节点的 magnetic_declination_radians、imu_yaw_offset 等参数需要现场标定。
+  -->
+  <node if="$(arg use_gps)"
+        pkg="robot_localization" type="navsat_transform_node"
+        name="navsat_transform" respawn="true" output="screen">
+
+    <param name="magnetic_declination_radians" value="0.0"/>
+    <param name="yaw_offset"                   value="0.0"/>
+    <param name="zero_altitude"                value="true"/>
+    <param name="publish_filtered_gps"         value="false"/>
+    <param name="use_odometry_yaw"             value="false"/>
+    <param name="use_magnetic_field"           value="false"/>
+
+    <param name="frequency"          value="30"/>
+    <param name="delay"              value="3.0"/>
+    <param name="imu_remove_gravitational_acceleration" value="true"/>
+
+    <!-- 输入输出话题（默认与 robot_localization 推荐一致）-->
+    <remap from="imu/data"    to="/imu"/>
+    <remap from="odometry/filtered" to="odometry/filtered"/>
+    <remap from="gps/fix"     to="/gps/fix"/>
+
+    <!-- 输出：/odometry/gps，供 EKF 节点融合 -->
+  </node>
+
+  <!--
+    robot_localization 的 ekf_localization_node：
+      主融合节点，订阅 /odom + /imu + /odometry/gps
+      发布 /odometry/filtered 与 TF: map → odom → base_link
+  -->
+  <node pkg="robot_localization" type="ekf_localization_node"
+        name="ekf_localization_outdoor" respawn="true" output="screen">
+
+    <rosparam command="load" file="$(arg ekf_config_file)"/>
+
+    <!-- 强制坐标系命名（覆盖 yaml 中可能的旧值） -->
+    <param name="map_frame"      value="$(arg map_frame)"/>
+    <param name="odom_frame"     value="$(arg odom_frame)"/>
+    <param name="base_link_frame" value="$(arg base_link_frame)"/>
+    <param name="world_frame"    value="$(arg world_frame)"/>
+
+    <!-- 数据源选择：odom0=/odom, imu0=/imu, odom1=/odometry/gps -->
+    <param name="odom0"  value="$(eval 'odom' if use_odom else '')"/>
+    <param name="imu0"   value="$(eval '/imu' if use_imu else '')"/>
+    <param name="odom1"  value="$(eval '/odometry/gps' if use_gps else '')"/>
+
+    <remap from="odometry/filtered" to="odometry/filtered"/>
+  </node>
+
+  <!--
+    健康度评估节点（由 localization_health.py 实现，FR-01）
+    订阅 /odometry/filtered + /gps/fix，输出：
+      /localization/health  (std_msgs/Bool)
+      /localization/diagnostics  (diagnostic_msgs/DiagnosticArray)
+  -->
+  <node pkg="devices_web_control" type="localization_health.py"
+        name="localization_health_node" respawn="true" output="screen">
+    <param name="max_gnss_age_seconds"        value="1.0"/>
+    <param name="min_acceptable_gnss_status"  value="RTK_FLOAT"/>
+    <param name="max_covariance_trace"        value="0.5"/>
+    <param name="min_filtered_rate_hz"        value="5.0"/>
+  </node>
+
+</launch>

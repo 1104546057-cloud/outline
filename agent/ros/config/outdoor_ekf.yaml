@@ -1,0 +1,132 @@
+# outdoor_ekf.yaml
+# =====================================================================
+# robot_localization EKF 配置 · 校园室外巡检
+#
+# 三路输入：
+#   odom0 = /odom          （轮速里程计）
+#   imu0  = /imu           （IMU 姿态与角速度）
+#   odom1 = /odometry/gps  （navsat_transform_node 输出，来自 /gps/fix）
+#
+# 重要约定：
+#   - 输出坐标系为 map（校园标定版本绑定）
+#   - 坐标系绑定到 OutdoorCalibration.version，标定版本变化需重新启动本节点
+#   - 所有协方差单位为 m^2 与 rad^2
+#   - 任何「连续」输入都要勾选 differential=true 与 relative=false 的取舍见注释
+# =====================================================================
+
+frequency: 30              # 主融合节点输出频率（Hz）
+two_d_mode: true           # 校园地面巡检默认 2D；若启用坡道再改为 false
+
+# ---- 坐标系（被 launch 覆盖，这里保留备份） ----
+map_frame: map
+odom_frame: odom
+base_link_frame: base_link
+world_frame: map           # 当 odom 与 map 重合时即绝对定位模式
+
+# =====================================================================
+# odom0 : /odom（底盘轮速里程计）
+# =====================================================================
+odom0: odom
+odom0_config: [
+  true,  true,  false,     # x,  y,  z      （2D 模式忽略 z）
+  false, false, true,      # roll, pitch, yaw
+  true,  false, false,     # vx, vy, vz
+  false, false, true,      # vroll, vpitch, vyaw
+  false, false, false      # ax, ay, az
+]
+odom0_differential: false  # 绝对位姿输入，作为 odom 基准
+odom0_relative: false
+odom0_queue_size: 10
+
+# =====================================================================
+# imu0 : /imu（IMU 姿态 + 角速度）
+# =====================================================================
+imu0: /imu
+imu0_config: [
+  false, false, false,     # x, y, z       （IMU 不输出位移）
+  true,  true,  true,      # roll, pitch, yaw
+  false, false, false,     # vx, vy, vz
+  true,  true,  true,      # vroll, vpitch, vyaw
+  true,  true,  true       # ax, ay, az    （已扣重力）
+]
+imu0_differential: false
+imu0_relative: false
+imu0_remove_gravitational_acceleration: true
+imu0_queue_size: 10
+
+# =====================================================================
+# odom1 : /odometry/gps（navsat_transform 输出）
+# =====================================================================
+odom1: /odometry/gps
+odom1_config: [
+  true,  true,  false,     # x, y, z
+  false, false, false,     # roll, pitch, yaw （GPS 无姿态）
+  false, false, false,     # vx, vy, vz       （由 /odom 提供速度）
+  false, false, false,
+  false, false, false
+]
+odom1_differential: false  # 全局位姿输入
+odom1_relative: false
+odom1_queue_size: 10
+
+# =====================================================================
+# 过程噪声协方差（Q 矩阵）·阶段 A 默认值，阶段 B 现场调优
+# 顺序：x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az
+# 数值含义：方差越大表示模型越不信任预测
+# =====================================================================
+process_noise_covariance: [
+  0.05, 0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+  0,    0.05, 0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+  0,    0,    0.06, 0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+  0,    0,    0,    0.03, 0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+  0,    0,    0,    0,    0.03, 0,    0,     0,     0,    0,    0,    0,    0,    0,    0,
+  0,    0,    0,    0,    0,    0.06, 0,     0,     0,    0,    0,    0,    0,    0,    0,
+  0,    0,    0,    0,    0,    0,    0.025, 0,     0,    0,    0,    0,    0,    0,    0,
+  0,    0,    0,    0,    0,    0,    0,     0.025, 0,    0,    0,    0,    0,    0,    0,
+  0,    0,    0,    0,    0,    0,    0,     0,     0.04, 0,    0,    0,    0,    0,    0,
+  0,    0,    0,    0,    0,    0,    0,     0,     0,    0.01, 0,    0,    0,    0,    0,
+  0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0.01, 0,    0,    0,    0,
+  0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0.02, 0,    0,    0,
+  0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0.01, 0,    0,
+  0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0.01, 0,
+  0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0.015
+]
+
+# =====================================================================
+# 初始估计协方差（P 矩阵）·启动时对自身位置的不确定度
+# =====================================================================
+initial_estimate_covariance: [
+  1e-3, 0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,
+  0,    1e-3, 0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,
+  0,    0,    1e-3, 0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,
+  0,    0,    0,    1e-2, 0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,
+  0,    0,    0,    0,    1e-2, 0,    0,    0,    0,    0,    0,    0,    0,    0,    0,
+  0,    0,    0,    0,    0,    1e-2, 0,    0,    0,    0,    0,    0,    0,    0,    0,
+  0,    0,    0,    0,    0,    0,    1e-1, 0,    0,    0,    0,    0,    0,    0,    0,
+  0,    0,    0,    0,    0,    0,    0,    1e-1, 0,    0,    0,    0,    0,    0,    0,
+  0,    0,    0,    0,    0,    0,    0,    0,    1e-1, 0,    0,    0,    0,    0,    0,
+  0,    0,    0,    0,    0,    0,    0,    0,    0,    1e-2, 0,    0,    0,    0,    0,
+  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    1e-2, 0,    0,    0,    0,
+  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    1e-2, 0,    0,    0,
+  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    1e-1, 0,    0,
+  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    1e-1, 0,
+  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    1e-1
+]
+
+# =====================================================================
+# 其它通用参数
+# =====================================================================
+publish_tf: true           # 发布 map→odom→base_link 链
+publish_acceleration: true # 输出加速度，供健康度节点参考
+
+# 每个 sensor 的协方差缩放因子（<1 表示更信任该源）
+# 阶段 A 保持 1.0；阶段 B 现场根据数据可信度调整
+odom0_pose_rejection_threshold: 5.0
+odom0_twist_rejection_threshold: 5.0
+imu0_pose_rejection_threshold:   0.5
+imu0_twist_rejection_threshold:   0.5
+imu0_acceleration_rejection_threshold: 10.0
+odom1_pose_rejection_threshold: 5.0   # GPS 偶发跳变容忍
+
+# sensor 历史回溯缓冲（便于时间对齐）
+history_length: 10
