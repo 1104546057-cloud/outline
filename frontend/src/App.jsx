@@ -19,6 +19,8 @@ import PatrolRoutes from './pages/PatrolRoutes'
 import PatrolTasks from './pages/PatrolTasks'
 import PatrolResults from './pages/PatrolResults'
 import PatrolNavigation from './pages/PatrolNavigation'
+import OutdoorRouteAdmin from './pages/OutdoorRouteAdmin'
+import OutdoorCalibrationAdmin from './pages/OutdoorCalibrationAdmin'
 import RemoteAccess from './pages/RemoteAccess'
 import AnalyticsDashboard from './pages/AnalyticsDashboard'
 import AnalyticsIndicatorDetail from './pages/AnalyticsIndicatorDetail'
@@ -91,6 +93,8 @@ function App() {
           <Route path="patrol/tasks" element={<PatrolTasks />} />
           <Route path="patrol/navigation" element={<PatrolNavigation />} />
           <Route path="patrol/results" element={<PatrolResults />} />
+          <Route path="outdoor-patrol/routes" element={<OutdoorRouteAdmin />} />
+          <Route path="outdoor-patrol/calibrations" element={<OutdoorCalibrationAdmin />} />
           <Route path="video-analysis" element={<VideoAnalysis />} />
           <Route path="warning-response" element={<WarningResponse />} />
           <Route path="statistics-analysis" element={<AnalyticsDashboard />} />

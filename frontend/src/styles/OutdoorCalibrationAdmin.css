@@ -1,0 +1,213 @@
+/* OutdoorCalibrationAdmin.css — 标定管理页面样式 */
+
+.outdoor-cal-admin {
+  padding: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.outdoor-cal-admin__msg {
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  background: var(--c-bg-info, #e8f1ff);
+  border-left: 3px solid var(--c-primary, #1677ff);
+  border-radius: 0 4px 4px 0;
+  font-size: 13px;
+  color: var(--c-text-secondary, #555);
+}
+
+.outdoor-cal-admin__toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+/* 表格 */
+.outdoor-cal-admin__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.outdoor-cal-admin__table th,
+.outdoor-cal-admin__table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--c-border, #eee);
+  vertical-align: top;
+}
+
+.outdoor-cal-admin__table th {
+  background: var(--c-bg-subtle, #f5f7fa);
+  font-weight: 600;
+  color: var(--c-text-secondary, #555);
+  font-size: 12px;
+  text-transform: none;
+}
+
+.outdoor-cal-admin__table tbody tr:hover {
+  background: var(--c-bg-hover, #fafbfc);
+}
+
+.outdoor-cal-admin__name {
+  font-weight: 600;
+  color: var(--c-text, #1f1f1f);
+}
+
+.outdoor-cal-admin__desc {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--c-text-tertiary, #888);
+}
+
+.outdoor-cal-admin__verified {
+  color: var(--c-success, #52c41a);
+  font-size: 12px;
+}
+
+.outdoor-cal-admin__unverified {
+  color: var(--c-text-tertiary, #888);
+  font-size: 12px;
+}
+
+.outdoor-cal-admin__actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.outdoor-cal-admin__deprecated-tag {
+  color: var(--c-text-tertiary, #888);
+  font-size: 12px;
+}
+
+/* 弹窗 */
+.outdoor-cal-admin__modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.outdoor-cal-admin__modal {
+  background: var(--c-bg, #fff);
+  border-radius: 8px;
+  width: 100%;
+  max-width: 640px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+
+.outdoor-cal-admin__modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--c-border, #eee);
+}
+
+.outdoor-cal-admin__modal-header h2 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--c-text, #1f1f1f);
+}
+
+.outdoor-cal-admin__modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--c-text-tertiary, #888);
+  line-height: 1;
+  padding: 0;
+}
+
+.outdoor-cal-admin__modal-close:hover {
+  color: var(--c-text, #1f1f1f);
+}
+
+.outdoor-cal-admin__modal-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.outdoor-cal-admin__modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--c-border, #eee);
+}
+
+/* 表单 */
+.outdoor-cal-admin__form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.outdoor-cal-admin__form-full {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.outdoor-cal-admin__form-row label,
+.outdoor-cal-admin__form-full label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--c-text-secondary, #555);
+}
+
+.outdoor-cal-admin__form-row input,
+.outdoor-cal-admin__form-full input {
+  padding: 6px 10px;
+  border: 1px solid var(--c-border, #d0d0d0);
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--c-text, #1f1f1f);
+  background: var(--c-bg, #fff);
+}
+
+.outdoor-cal-admin__form-row input:focus-visible,
+.outdoor-cal-admin__form-full input:focus-visible {
+  outline: 2px solid var(--c-primary, #1677ff);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+.outdoor-cal-admin__required {
+  color: var(--c-error, #ff4d4f);
+  margin-left: 2px;
+}
+
+.outdoor-cal-admin__form-error {
+  padding: 8px 10px;
+  margin-bottom: 12px;
+  background: var(--c-bg-error, #fff1f0);
+  border: 1px solid var(--c-error, #ff4d4f);
+  border-radius: 4px;
+  color: var(--c-error, #cf1322);
+  font-size: 13px;
+}
+
+.outdoor-cal-admin__hint {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: var(--c-bg-warning, #fff7e6);
+  border-left: 3px solid var(--c-warning, #faad14);
+  border-radius: 0 4px 4px 0;
+  font-size: 12px;
+  color: var(--c-text-secondary, #555);
+  line-height: 1.5;
+}

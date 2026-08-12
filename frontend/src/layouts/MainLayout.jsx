@@ -4,7 +4,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import '../styles/MainLayout.css'
 
 const primaryNav = [
-  { label: '校园巡逻管控', path: '/dashboard', match: ['/dashboard', '/patrol', '/device-cockpit'] },
+  { label: '校园巡逻管控', path: '/dashboard', match: ['/dashboard', '/patrol', '/outdoor-patrol', '/device-cockpit'] },
   { label: '视频识别分析', path: '/video-analysis', match: ['/video-analysis'] },
   { label: '安全预警处置', path: '/warning-response', match: ['/warning-response'] },
   { label: '数据统计研判', path: '/statistics-analysis', match: ['/statistics-analysis'] },]
@@ -35,6 +35,8 @@ const settingsGroups = [
       { label: '巡检任务', path: '/patrol/tasks', icon: 'task' },
       { label: '巡检导航', path: '/patrol/navigation', icon: 'navigation' },
       { label: '巡航成果', path: '/patrol/results', icon: 'gallery' },
+      { label: '室外路线管理', path: '/outdoor-patrol/routes', icon: 'route' },
+      { label: '室外标定管理', path: '/outdoor-patrol/calibrations', icon: 'pin' },
     ],
   },
   {
