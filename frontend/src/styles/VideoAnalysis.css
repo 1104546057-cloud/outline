@@ -348,6 +348,13 @@
   overflow: auto;
 }
 
+.va-target-empty {
+  padding: 32px 12px;
+  text-align: center;
+  color: var(--va-muted);
+  font-size: 12px;
+}
+
 .va-target-item {
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr) 44px;
@@ -494,11 +501,19 @@
   min-width: 28px;
   min-height: 48px;
   padding: 0;
+  cursor: pointer;
   color: #bff3ff;
   border: 2px solid rgba(43, 210, 255, .82);
   border-radius: 2px;
   background: rgba(43, 210, 255, .08);
   box-shadow: 0 0 10px rgba(43, 210, 255, .32);
+  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+
+.va-detect-box:hover {
+  border-color: #7ce7ff;
+  background: rgba(43, 210, 255, .18);
+  box-shadow: 0 0 16px rgba(43, 210, 255, .5);
 }
 
 .va-detect-box.active {

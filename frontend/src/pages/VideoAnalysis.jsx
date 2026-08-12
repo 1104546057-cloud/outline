@@ -225,6 +225,11 @@ function MetricCard({ icon, label, value, unit, tone }) {
 }
 
 function TargetList({ activeId, onSelect }) {
+  const [filter, setFilter] = useState('all')
+  const filteredTargets = filter === 'all'
+    ? trackedTargets
+    : trackedTargets.filter(t => filter === 'high' ? t.risk.includes('高') : t.risk.includes('中') || t.risk.includes('低'))
+
   return (
     <aside className="va-target-panel">
       <div className="va-panel-head">
@@ -232,15 +237,15 @@ function TargetList({ activeId, onSelect }) {
           <span>TRACK TARGETS</span>
           <h2>目标列表</h2>
         </div>
-        <StatusPill tone="success">{trackedTargets.length} 个</StatusPill>
+        <StatusPill tone="success">{filteredTargets.length} 个</StatusPill>
       </div>
       <div className="va-target-tools">
-        <button type="button" className="active">全部</button>
-        <button type="button">关注</button>
-        <button type="button">告警</button>
+        <button type="button" className={filter === 'all' ? 'active' : ''} onClick={() => setFilter('all')}>全部</button>
+        <button type="button" className={filter === 'medium' ? 'active' : ''} onClick={() => setFilter('medium')}>关注</button>
+        <button type="button" className={filter === 'high' ? 'active' : ''} onClick={() => setFilter('high')}>告警</button>
       </div>
       <div className="va-target-list">
-        {trackedTargets.map(target => (
+        {filteredTargets.map(target => (
           <button
             type="button"
             key={target.id}
@@ -258,12 +263,18 @@ function TargetList({ activeId, onSelect }) {
             <span className="va-target-score">{target.confidence}%</span>
           </button>
         ))}
+        {!filteredTargets.length && (
+          <div className="va-target-empty">当前筛选条件下暂无目标</div>
+        )}
       </div>
     </aside>
   )
 }
 
 function TrackingStage({ activePerson, onSelect }) {
+  const [cameraId, setCameraId] = useState('无人车-01')
+  const cameras = ['无人车-01', '无人车-02', '无人车-03']
+
   return (
     <section className="va-monitor-panel">
       <div className="va-panel-head">
@@ -272,15 +283,22 @@ function TrackingStage({ activePerson, onSelect }) {
           <h2>视频目标追踪</h2>
         </div>
         <div className="va-camera-tabs">
-          <button type="button" className="active">无人车-01</button>
-          <button type="button">无人车-02</button>
-          <button type="button">无人车-03</button>
+          {cameras.map(cam => (
+            <button
+              type="button"
+              key={cam}
+              className={cameraId === cam ? 'active' : ''}
+              onClick={() => setCameraId(cam)}
+            >
+              {cam}
+            </button>
+          ))}
         </div>
       </div>
       <div className="va-video-stage">
         <img src={`${IMAGE_BASE}/person-tracking.jpg`} alt="人员轨迹跟踪示例" />
         <div className="va-video-topbar">
-          <span>固定机位 无人车-01</span>
+          <span>固定机位 {cameraId}</span>
           <strong>15:10:57</strong>
         </div>
         {trackedTargets.map(target => (
