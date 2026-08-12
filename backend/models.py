@@ -426,10 +426,11 @@ class OutdoorPatrolTask(Base):
                       nullable=True, index=True, comment="执行设备ID")
 
     # 启动快照（FR-04.5 / 需求 §6.2）
-    route_snapshot = Column(JSON, nullable=False,
-                           comment="启动时路线冻结副本，含航点序列")
-    calibration_snapshot = Column(JSON, nullable=False,
-                                 comment="启动时标定版本冻结副本")
+    # 注：任务创建时为空，启动预检通过后才填充快照
+    route_snapshot = Column(JSON, nullable=True,
+                           comment="启动时路线冻结副本，含航点序列（启动预检通过后填充）")
+    calibration_snapshot = Column(JSON, nullable=True,
+                                 comment="启动时标定版本冻结副本（启动预检通过后填充）")
     thresholds_snapshot = Column(JSON, nullable=True,
                                 comment="启动时安全阈值冻结副本")
 
