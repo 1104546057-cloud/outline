@@ -1374,3 +1374,34 @@
     padding: 0.75rem;
   }
 }
+
+/* ---- 交互状态增强 ---- */
+.patrol-page button:focus-visible,
+.patrol-page select:focus-visible,
+.patrol-page input:focus-visible,
+.patrol-page textarea:focus-visible,
+.patrol-page [role="button"]:focus-visible,
+.patrol-page [tabindex]:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+}
+
+.patrol-page .patrol-card:focus-visible,
+.patrol-page .patrol-point-item:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+}
+
+.patrol-page .patrol-empty,
+.patrol-page .patrol-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 40px var(--sp-4);
+  text-align: center;
+  color: var(--c-text-muted);
+  border: 1px dashed var(--c-border-soft);
+  border-radius: var(--r-md);
+}

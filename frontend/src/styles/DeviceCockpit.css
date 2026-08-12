@@ -109,3 +109,38 @@
   .cockpit-console { padding: 5px; }
   .cockpit-direction-grid { height: 176px; }
 }
+
+/* ---- 交互状态增强 ---- */
+.device-cockpit-page button:focus-visible,
+.device-cockpit-page select:focus-visible,
+.device-cockpit-page input:focus-visible,
+.device-cockpit-page [role="button"]:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+}
+
+.device-cockpit-page .cockpit-direction-btn:focus-visible,
+.device-cockpit-page .cockpit-direction-btn.stop:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+}
+
+.device-cockpit-page .cockpit-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 40px var(--sp-4);
+  color: var(--c-text-muted);
+}
+
+.device-cockpit-page .cockpit-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 40px var(--sp-4);
+  text-align: center;
+  color: var(--c-danger);
+}

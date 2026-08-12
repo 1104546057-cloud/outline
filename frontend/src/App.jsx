@@ -24,6 +24,8 @@ import AnalyticsDashboard from './pages/AnalyticsDashboard'
 import AnalyticsIndicatorDetail from './pages/AnalyticsIndicatorDetail'
 import AnalyticsRules from './pages/AnalyticsRules'
 import AnalyticsReports from './pages/AnalyticsReports'
+import './styles/tokens.css'
+import './styles/states.css'
 import './styles/SubpageTheme.css'
 
 /**

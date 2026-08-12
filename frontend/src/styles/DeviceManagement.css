@@ -978,3 +978,43 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- 交互状态增强 ---- */
+.device-management button:focus-visible,
+.device-management a:focus-visible,
+.device-management input:focus-visible,
+.device-management select:focus-visible,
+.device-management [role="button"]:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+}
+
+.device-management .dm-device-card:focus-within {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+}
+
+.device-management .dm-empty,
+.device-management .dm-inline-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 40px var(--sp-4);
+  text-align: center;
+  color: var(--c-text-muted);
+  border: 1px dashed var(--c-border-soft);
+  border-radius: var(--r-md);
+  background: rgba(3, 24, 49, .4);
+}
+
+.device-management .dm-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 40px var(--sp-4);
+  color: var(--c-text-muted);
+  font-size: var(--fs-body-sm);
+}

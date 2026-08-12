@@ -755,3 +755,28 @@
     gap: 0.5rem;
   }
 }
+
+/* ---- 交互状态增强 ---- */
+.device-control-page button:focus-visible,
+.device-control-page select:focus-visible,
+.device-control-page input:focus-visible,
+.device-control-page [role="button"]:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+}
+
+.device-control-page .dc-num-btn:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+}
+
+.device-control-page .dc-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 40px var(--sp-4);
+  text-align: center;
+  color: var(--c-text-muted);
+}

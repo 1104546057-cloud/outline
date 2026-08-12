@@ -141,10 +141,26 @@ function MainLayout() {
 
         <div className="header-navigation">
           <div className="header-tools">
-            <button className="header-tool" onClick={() => navigate('/dashboard')} title="首页"><AppIcon name="home" /></button>
-            <button className={`header-tool ${showSettings ? 'active' : ''}`} onClick={() => { setShowSettings(v => !v); setShowAccount(false) }} title="设置"><AppIcon name="settings" /></button>
-            <button className="header-tool" onClick={toggleFullscreen} title={isFullscreen ? '退出全屏' : '进入全屏'}><AppIcon name={isFullscreen ? 'collapse' : 'fullscreen'} /></button>
-            <button className={`header-tool avatar-tool ${showAccount ? 'active' : ''}`} onClick={() => { setShowAccount(v => !v); setShowSettings(false) }} title="管理员账户">
+            <button className="header-tool" onClick={() => navigate('/dashboard')} title="首页" aria-label="首页"><AppIcon name="home" /></button>
+            <button
+              className={`header-tool ${showSettings ? 'active' : ''}`}
+              onClick={() => { setShowSettings(v => !v); setShowAccount(false) }}
+              title="设置"
+              aria-label="设置"
+              aria-expanded={showSettings}
+              aria-haspopup="dialog"
+            >
+              <AppIcon name="settings" />
+            </button>
+            <button className="header-tool" onClick={toggleFullscreen} title={isFullscreen ? '退出全屏' : '进入全屏'} aria-label={isFullscreen ? '退出全屏' : '进入全屏'}><AppIcon name={isFullscreen ? 'collapse' : 'fullscreen'} /></button>
+            <button
+              className={`header-tool avatar-tool ${showAccount ? 'active' : ''}`}
+              onClick={() => { setShowAccount(v => !v); setShowSettings(false) }}
+              title="管理员账户"
+              aria-label="账户"
+              aria-expanded={showAccount}
+              aria-haspopup="dialog"
+            >
               <AppIcon name="user" />
               <span className="avatar-online" />
             </button>
@@ -153,7 +169,16 @@ function MainLayout() {
           <nav className="primary-nav" aria-label="一级导航">
             {primaryNav.map(item => {
               const active = item.match.some(prefix => location.pathname.startsWith(prefix))
-              return <NavLink key={item.path} to={item.path} className={`primary-nav-item ${active ? 'active' : ''}`}>{item.label}</NavLink>
+              return (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  className={`primary-nav-item ${active ? 'active' : ''}`}
+                  aria-current={active ? 'page' : undefined}
+                >
+                  {item.label}
+                </NavLink>
+              )
             })}
           </nav>
         </div>
@@ -162,7 +187,7 @@ function MainLayout() {
           <div className="settings-popover">
             <div className="popover-heading">
               <div><span>系统设置</span><small>快速访问管理功能</small></div>
-              <button onClick={() => setShowSettings(false)}>×</button>
+              <button onClick={() => setShowSettings(false)} aria-label="关闭设置面板">×</button>
             </div>
             <div className="settings-groups">
               {settingsGroups.map(group => (

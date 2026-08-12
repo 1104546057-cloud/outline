@@ -1,12 +1,12 @@
 .command-dashboard {
-  --dash-bg: #020817;
+  --dash-bg: var(--c-bg-base);
   --panel-bg: rgba(4, 19, 43, .88);
   --panel-border: rgba(41, 167, 230, .46);
-  --cyan: #2bd2ff;
-  --blue: #257bff;
-  --green: #31e3a1;
-  --orange: #ffb33f;
-  --red: #ff536b;
+  --cyan: var(--c-primary);
+  --blue: var(--c-blue);
+  --green: var(--c-success);
+  --orange: var(--c-warning);
+  --red: var(--c-danger);
   position: relative;
   height: 100%;
   min-height: 720px;
@@ -15,8 +15,8 @@
   color: #cce9f8;
   background:
     radial-gradient(circle at 50% 35%, rgba(8, 71, 136, .24), transparent 38%),
-    linear-gradient(135deg, #020817, #031127 48%, #020817);
-  font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+    linear-gradient(135deg, var(--c-bg-base), #031127 48%, var(--c-bg-base));
+  font-family: var(--font-sans);
 }
 
 .command-dashboard *, .command-dashboard *::before, .command-dashboard *::after { box-sizing: border-box; }
@@ -184,3 +184,27 @@
   .situation-content { grid-template-columns: 82px 1fr; padding-left: 5px; padding-right: 5px; }
   .risk-ring { width: 72px; height: 72px; }.risk-ring::before { width: 57px; height: 57px; }
 }
+
+/* ---- 交互状态增强 ---- */
+.command-dashboard button:focus-visible,
+.overview-device:focus-visible,
+.overview-task:focus-visible,
+.overview-video-card:focus-within {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+}
+
+.command-dashboard button:disabled {
+  cursor: not-allowed;
+  opacity: .72;
+}
+
+.overview-empty:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+}
+
+.overview-modal-backdrop { animation: dash-modal-in .18s ease; }
+@keyframes dash-modal-in { from { opacity: 0; } }
+.overview-confirm { animation: dash-modal-pop .22s ease; }
+@keyframes dash-modal-pop { from { opacity: 0; transform: scale(.95); } }

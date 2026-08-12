@@ -94,5 +94,8 @@ exp/
 # 部署脚本临时目录
 .deploy_tmp/
 
+# 临时侦察与调试脚本
+tmp/
+
 # Vite 临时文件
 vite.config.js.timestamp-*.mjs

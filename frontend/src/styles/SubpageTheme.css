@@ -1135,3 +1135,80 @@
   .patrol-body { margin: 0 12px 12px; }
   .patrol-task-grid { padding: 0 12px 12px; }
 }
+
+/* ---- 全局焦点样式增强（覆盖所有子页面） ---- */
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page,
+  .patrol-results-page,
+  .placeholder-page
+) button:focus-visible,
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page,
+  .patrol-results-page,
+  .placeholder-page
+) a:focus-visible,
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page,
+  .patrol-results-page,
+  .placeholder-page
+) [role="button"]:focus-visible,
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page,
+  .patrol-results-page,
+  .placeholder-page
+) [tabindex]:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+}
+
+/* ---- 全局 disabled 状态 ---- */
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page,
+  .patrol-results-page
+) button:disabled {
+  cursor: not-allowed;
+}
+
+/* ---- 页面内容区滚动行为统一 ---- */
+:is(
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page
+) {
+  max-width: var(--content-max-width);
+  padding: var(--content-padding-y) var(--content-padding-x);
+}
+
+/* ---- 移除已无用的 SYSTEM MODULE 静态文字（保留 SubpageTheme 自身的） ---- */

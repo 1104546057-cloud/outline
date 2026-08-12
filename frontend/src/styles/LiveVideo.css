@@ -743,3 +743,43 @@
     display: none;
   }
 }
+
+/* ---- 交互状态增强 ---- */
+.live-video-page button:focus-visible,
+.live-video-page select:focus-visible,
+.live-video-page input:focus-visible,
+.live-video-page [role="button"]:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+}
+
+.live-video-page .lv-layout-btn:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+}
+
+.live-video-page .lv-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 40px var(--sp-4);
+  text-align: center;
+  color: var(--c-text-muted);
+}
+
+.live-video-page .lv-loading-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.live-video-page .lv-error-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  text-align: center;
+}

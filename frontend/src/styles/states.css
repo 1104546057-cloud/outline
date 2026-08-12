@@ -1,0 +1,177 @@
+/* ============================================================
+   全局交互状态 — loading / empty / error / disabled / focus
+   ============================================================ */
+
+/* ---- 键盘焦点统一 ---- */
+:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+}
+
+/* ---- 禁用状态统一 ---- */
+button:disabled,
+input:disabled,
+textarea:disabled,
+select:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: .72;
+  pointer-events: none;
+}
+
+/* ---- 加载状态 ---- */
+.state-loading,
+.ui-state-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding: 48px var(--sp-4);
+  text-align: center;
+  color: var(--c-text-muted);
+}
+
+.state-loading-spinner,
+.ui-spinner {
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(43, 210, 255, .2);
+  border-top-color: var(--c-primary);
+  border-radius: 50%;
+  animation: ui-spin .6s linear infinite;
+}
+
+.state-loading-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--c-text-muted);
+  font-size: var(--fs-body-sm);
+}
+
+.state-loading-inline .ui-spinner {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
+@keyframes ui-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- 空状态 ---- */
+.state-empty,
+.ui-state-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 40px var(--sp-4);
+  text-align: center;
+  color: var(--c-text-muted);
+}
+
+.state-empty-icon,
+.ui-state-empty-icon {
+  font-size: 28px;
+  color: var(--c-text-placeholder);
+  opacity: .8;
+  line-height: 1;
+}
+
+/* ---- 错误状态 ---- */
+.state-error,
+.ui-state-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 40px var(--sp-4);
+  text-align: center;
+}
+
+.state-error-icon,
+.ui-state-error-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  color: var(--c-danger);
+  border: 1px solid var(--c-danger-border);
+  border-radius: 50%;
+  background: var(--c-danger-bg);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.state-error-message,
+.ui-state-error-message {
+  margin: 0;
+  color: var(--c-danger);
+  font-size: var(--fs-body-sm);
+  font-weight: 500;
+}
+
+/* ---- 异步按钮进行中标识 ---- */
+button[aria-busy="true"] {
+  position: relative;
+  pointer-events: none;
+}
+
+button[aria-busy="true"]::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, .3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: ui-spin .6s linear infinite;
+}
+
+/* ---- 离线标记 ---- */
+.offline-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  color: var(--c-neutral);
+  border: 1px solid var(--c-neutral-border);
+  border-radius: var(--r-sm);
+  background: var(--c-neutral-bg);
+  font-size: var(--fs-caption);
+}
+
+.offline-indicator::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-neutral);
+}
+
+/* ---- reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
