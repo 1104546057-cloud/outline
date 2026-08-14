@@ -7,8 +7,6 @@ from __future__ import annotations
 
 from collections import deque
 
-import numpy as np
-
 from inference.analyzers.base import BaseBehaviorAnalyzer
 from inference.base import BehaviorEvent, Frame, Track
 from inference.registry import analyzer_registry
@@ -46,9 +44,9 @@ class FallAnalyzer(BaseBehaviorAnalyzer):
             hist = self._history.setdefault(t.track_id, deque(maxlen=self.duration_frames))
             hist.append(ratio)
 
-            if len(hist) >= self.duration_frames and np.mean(hist) > self.aspect_ratio_threshold:
-                if self._can_emit(("fall", t.track_id)):
-                    mean_ratio = float(np.mean(hist))
+            if len(hist) >= self.duration_frames:
+                mean_ratio = sum(hist) / len(hist)  # 纯 Python 均值，避免依赖 numpy
+                if mean_ratio > self.aspect_ratio_threshold and self._can_emit(("fall", t.track_id)):
                     events.append(
                         BehaviorEvent(
                             event_type="fall",

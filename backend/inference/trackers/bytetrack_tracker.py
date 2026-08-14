@@ -15,14 +15,26 @@ from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
-
 from inference.base import BaseTracker, Detection, Frame, Track
 from inference.registry import tracker_registry
 
+# numpy 惰性加载：未安装时本模块仍可导入（dummy 管线不受影响），
+# 仅在实际调用追踪时抛出明确错误。
+_np = None
 
-def iou_batch(boxes1: Any, boxes2: Any) -> np.ndarray:
+
+def _numpy():
+    global _np
+    if _np is None:
+        import numpy as np
+
+        _np = np
+    return _np
+
+
+def iou_batch(boxes1: Any, boxes2: Any) -> Any:
     """计算两组 xyxy 框的 IoU 矩阵 (N, M)。"""
+    np = _numpy()
     boxes1 = np.asarray(boxes1, dtype=np.float64)
     boxes2 = np.asarray(boxes2, dtype=np.float64)
     if boxes1.size == 0 or boxes2.size == 0:
@@ -41,7 +53,7 @@ def iou_batch(boxes1: Any, boxes2: Any) -> np.ndarray:
     return inter / np.maximum(union, 1e-9)
 
 
-def greedy_match(iou_matrix: np.ndarray, threshold: float) -> list[tuple[int, int]]:
+def greedy_match(iou_matrix: Any, threshold: float) -> list[tuple[int, int]]:
     """按最大 IoU 贪心匹配，返回 (det_idx, track_idx) 匹配对。"""
     iou = iou_matrix.copy()
     matches: list[tuple[int, int]] = []
@@ -177,6 +189,7 @@ class ByteTrackTracker(BaseTracker):
         if not dets or not track_indices:
             return [], list(track_indices), list(range(len(dets)))
 
+        np = _numpy()
         det_boxes = np.array([d.bbox for d in dets], dtype=np.float64)
         track_boxes = np.array([self._tracks[i].predicted_bbox for i in track_indices], dtype=np.float64)
         iou_matrix = iou_batch(det_boxes, track_boxes)
