@@ -111,7 +111,9 @@ def init_database():
             statements = _migration_statements(sql_text)
             for stmt in statements:
                 try:
-                    conn.execute(text(stmt))
+                    # exec_driver_sql 直传原始 SQL，避免 text() 把 JSON 字符串
+                    # 字面量中的冒号误解析为绑定参数
+                    conn.exec_driver_sql(stmt)
                 except Exception as stmt_err:
                     print(f"  跳过语句（可能已存在）: {str(stmt_err).splitlines()[0]}")
         print("研判模块迁移完成")
@@ -127,7 +129,9 @@ def init_database():
             statements = _migration_statements(sql_text)
             for stmt in statements:
                 try:
-                    conn.execute(text(stmt))
+                    # exec_driver_sql 直传原始 SQL，避免 text() 把 JSON 字符串
+                    # 字面量中的冒号误解析为绑定参数
+                    conn.exec_driver_sql(stmt)
                 except Exception as stmt_err:
                     print(f"  跳过语句（可能已存在）: {str(stmt_err).splitlines()[0]}")
         print("视频识别分析迁移完成")
@@ -143,7 +147,9 @@ def init_database():
             statements = _migration_statements(sql_text)
             for stmt in statements:
                 try:
-                    conn.execute(text(stmt))
+                    # exec_driver_sql 直传原始 SQL，避免 text() 把 JSON 字符串
+                    # 字面量中的冒号误解析为绑定参数
+                    conn.exec_driver_sql(stmt)
                 except Exception as stmt_err:
                     print(f"  跳过语句（可能已存在）: {str(stmt_err).splitlines()[0]}")
         print("室外巡检迁移完成")
