@@ -24,6 +24,21 @@ from models import (
 )
 
 
+def _migration_statements(sql_text: str) -> list[str]:
+    """按 ';' 分句并剔除注释行，返回可执行语句列表。
+
+    修复：原实现用整段 startswith('--') 过滤，导致"注释 + 语句"在同一
+    段落时（语句紧跟注释行）被整段跳过，迁移脚本前几条语句从未执行。
+    """
+    statements: list[str] = []
+    for segment in sql_text.split(";"):
+        lines = [line for line in segment.splitlines() if not line.strip().startswith("--")]
+        statement = "\n".join(lines).strip()
+        if statement:
+            statements.append(statement)
+    return statements
+
+
 def init_database():
     """初始化数据库：创建表结构 + 插入默认数据 + 迁移已有表"""
 
@@ -93,7 +108,7 @@ def init_database():
         with engine.begin() as conn:
             sql_text = migration_file.read_text(encoding="utf-8")
             # 按 ";" 分句执行（MySQL driver 不支持多语句时退化为单条）
-            statements = [s.strip() for s in sql_text.split(";") if s.strip() and not s.strip().startswith("--")]
+            statements = _migration_statements(sql_text)
             for stmt in statements:
                 try:
                     conn.execute(text(stmt))
@@ -109,7 +124,7 @@ def init_database():
         print(f"正在执行视频识别分析迁移脚本: {inference_migration.name}")
         with engine.begin() as conn:
             sql_text = inference_migration.read_text(encoding="utf-8")
-            statements = [s.strip() for s in sql_text.split(";") if s.strip() and not s.strip().startswith("--")]
+            statements = _migration_statements(sql_text)
             for stmt in statements:
                 try:
                     conn.execute(text(stmt))
@@ -125,7 +140,7 @@ def init_database():
         print(f"正在执行室外巡检迁移脚本: {outdoor_migration.name}")
         with engine.begin() as conn:
             sql_text = outdoor_migration.read_text(encoding="utf-8")
-            statements = [s.strip() for s in sql_text.split(";") if s.strip() and not s.strip().startswith("--")]
+            statements = _migration_statements(sql_text)
             for stmt in statements:
                 try:
                     conn.execute(text(stmt))
