@@ -6,7 +6,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Table, Text, Numeric, JSON, Float, UniqueConstraint
+from sqlalchemy import Column, BigInteger, Integer, String, DateTime, Boolean, ForeignKey, Table, Text, Numeric, JSON, Float, UniqueConstraint
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -682,3 +682,45 @@ class AnalyticsNotification(Base):
 
     def __repr__(self):
         return f"<AnalyticsNotification(id={self.id}, user_id={self.user_id}, title='{self.title}')>"
+
+
+# ===== 视频识别分析模块（M3/M5） =====
+
+class VideoTrackHistory(Base):
+    """视频追踪轨迹元数据（规划 §3.3.3）
+
+    每次追踪会话（device_id + track_id 在一次管线运行内）一行，
+    记录最后位置与累计帧数；每帧轨迹明细不落库（规划建议走 Redis TTL）。
+    global_track_id 为跨摄像头统一 ID 预留，当前暂用 track_id。
+    """
+    __tablename__ = "video_track_history"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment="记录ID")
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False, index=True, comment="设备ID")
+    track_id = Column(Integer, nullable=False, comment="管线内轨迹ID")
+    global_track_id = Column(String(64), nullable=True, comment="跨摄像头统一ID（预留）")
+    class_name = Column(String(32), nullable=True, comment="目标类别")
+    bbox = Column(JSON, nullable=True, comment="最后一帧位置 [x1,y1,x2,y2]")
+    first_seen = Column(DateTime, nullable=False, default=datetime.now, comment="首次出现时间")
+    last_seen = Column(DateTime, nullable=False, default=datetime.now, index=True, comment="最后出现时间")
+    frame_count = Column(Integer, nullable=False, default=0, comment="累计被追踪帧数")
+
+    def __repr__(self):
+        return f"<VideoTrackHistory(device_id={self.device_id}, track_id={self.track_id})>"
+
+
+class InferenceRunLog(Base):
+    """推理管线运行日志（规划 §3.5.4）
+
+    记录管线启停、异常与性能指标，用于审计与排障。
+    """
+    __tablename__ = "inference_run_log"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment="日志ID")
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False, index=True, comment="设备ID")
+    action = Column(String(32), nullable=False, comment="动作(start/stop/error/stats)")
+    detail = Column(JSON, nullable=True, comment="详情({fps, latency_ms, error_msg})")
+    occurred_at = Column(DateTime, nullable=False, default=datetime.now, index=True, comment="发生时间")
+
+    def __repr__(self):
+        return f"<InferenceRunLog(device_id={self.device_id}, action='{self.action}')>"

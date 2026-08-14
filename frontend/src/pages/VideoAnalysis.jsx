@@ -1,8 +1,11 @@
-import { useMemo, useState } from 'react'
+/* eslint-disable react/prop-types */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ThemedSelect from '../components/ThemedSelect'
+import { authFetch } from '../utils/authFetch'
 import '../styles/VideoAnalysis.css'
 
 const IMAGE_BASE = '/video-analysis'
+const POLL_INTERVAL = 10000
 
 const tabs = [
   { key: 'overview', label: '实时识别看板' },
@@ -10,6 +13,51 @@ const tabs = [
   { key: 'faces', label: '人员库' },
   { key: 'plates', label: '车牌库' },
 ]
+
+const severityLabels = {
+  low: '低',
+  medium: '中',
+  high: '高',
+  critical: '紧急',
+}
+
+const statusLabels = {
+  pending: '待处置',
+  acknowledged: '处理中',
+  closed: '已关闭',
+}
+
+const severityTone = {
+  low: 'success',
+  medium: 'warning',
+  high: 'danger',
+  critical: 'danger',
+}
+
+const statusTone = {
+  pending: 'warning',
+  acknowledged: 'danger',
+  closed: 'success',
+}
+
+function isToday(iso) {
+  if (!iso) return false
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return false
+  const now = new Date()
+  return d.getFullYear() === now.getFullYear()
+    && d.getMonth() === now.getMonth()
+    && d.getDate() === now.getDate()
+}
+
+function formatTime(iso) {
+  if (!iso) return '--'
+  try {
+    return new Date(iso).toLocaleString('zh-CN', { hour12: false })
+  } catch {
+    return '--'
+  }
+}
 
 const trackedTargets = [
   {
@@ -82,96 +130,6 @@ const trackedTargets = [
   },
 ]
 
-const faceEvents = [
-  {
-    id: 'F-20260626-001',
-    category: 'face',
-    title: '目标人员检索命中',
-    subject: '董祖豪',
-    identity: '已录入人员',
-    device: '无人车-03 / 无人车-01',
-    map: '主校区北门',
-    time: '2026-06-26 15:18:21',
-    confidence: 90,
-    image: `${IMAGE_BASE}/face-record-staff.jpg`,
-    status: '已复核',
-    detail: '软件工程学院 / 人员编号 23331148',
-  },
-  {
-    id: 'F-20260626-002',
-    category: 'face',
-    title: '陌生人脸抓拍',
-    subject: '未登记人员',
-    identity: '陌生人员',
-    device: '无人车-02 / CAM-04',
-    map: '图书馆东侧',
-    time: '2026-06-26 14:52:10',
-    confidence: 82,
-    image: `${IMAGE_BASE}/face-record-stranger.jpg`,
-    status: '待复核',
-    detail: '相似人员 0 条 / 需人工确认',
-  },
-  {
-    id: 'F-20260626-003',
-    category: 'face',
-    title: '重点人员布控命中',
-    subject: '张天明',
-    identity: '重点关注',
-    device: '无人车-01 / CAM-02',
-    map: '实验楼连廊',
-    time: '2026-06-26 13:36:44',
-    confidence: 88,
-    image: `${IMAGE_BASE}/face-record-alert.jpg`,
-    status: '已推送',
-    detail: '已进入安全预警处置流转',
-  },
-]
-
-const plateEvents = [
-  {
-    id: 'L-20260626-001',
-    category: 'plate',
-    title: '车辆过卡抓拍',
-    subject: '粤C·1783H',
-    identity: '访客车辆',
-    device: '园区卡口 / 无人车-03',
-    map: '停车场出入口',
-    time: '2026-06-26 17:24:45',
-    confidence: 96,
-    image: `${IMAGE_BASE}/plate-record-visitor.jpg`,
-    status: '已入库',
-    detail: '白色 SUV / 速度 19 km/h',
-  },
-  {
-    id: 'L-20260626-002',
-    category: 'plate',
-    title: '车牌批量抓拍事件',
-    subject: '粤C·1783H',
-    identity: '校内车辆',
-    device: '停车场入口 / LPR-01',
-    map: '南门停车场',
-    time: '2026-06-26 16:58:13',
-    confidence: 94,
-    image: `${IMAGE_BASE}/plate-record-campus.jpg`,
-    status: '已复核',
-    detail: '轿车 / 黑名单未命中',
-  },
-  {
-    id: 'L-20260626-003',
-    category: 'plate',
-    title: '无牌车辆通行',
-    subject: '无车牌',
-    identity: '异常车辆',
-    device: '园区卡口 / LPR-03',
-    map: '西门入口',
-    time: '2026-06-26 15:41:09',
-    confidence: 76,
-    image: `${IMAGE_BASE}/plate-record-unmarked.jpg`,
-    status: '待处置',
-    detail: 'SUV/MPV / 需查看原始视频',
-  },
-]
-
 const faceLibrary = [
   { id: 'EMP-23331148', name: '董祖豪', type: '教职工', department: '软件工程学院', phone: '138****1128', images: 6, updatedAt: '2026-06-20', image: `${IMAGE_BASE}/face-library-xie-tao.jpg` },
   { id: 'STU-20240218', name: '杨惠兰', type: '学生', department: '人工智能学院', phone: '136****2190', images: 4, updatedAt: '2026-06-18', image: `${IMAGE_BASE}/face-library-lin-yu.jpg` },
@@ -185,6 +143,47 @@ const plateLibrary = [
   { plate: '粤A·M12R0', owner: '工程车辆', type: '施工车辆', color: '黑色', expireAt: '2026-07-15', status: '有效' },
   { plate: '粤B·F806L', owner: '访客车辆', type: '临时授权', color: '银色', expireAt: '2026-06-25', status: '过期' },
 ]
+
+// 把后端实时 track 映射为与 mock 目标一致的结构，供列表/详情复用展示逻辑
+function mapTrackToTarget(track) {
+  const confidence = Math.round((track.confidence ?? 0) * 100)
+  return {
+    id: `T-${track.track_id}`,
+    name: `${track.class_name} #${track.track_id}`,
+    type: track.class_name,
+    status: '跟踪中',
+    confidence,
+    risk: '低风险',
+    camera: '当前设备',
+    lastSeen: '实时',
+    speed: '--',
+    direction: '--',
+    age: '--',
+    gender: '--',
+    location: '--',
+    bbox: null,
+    path: [],
+  }
+}
+
+// 无实时目标时的兜底展示对象
+const EMPTY_TARGET = {
+  id: '--',
+  name: '暂无目标',
+  type: '--',
+  status: '--',
+  confidence: 0,
+  risk: '低风险',
+  camera: '--',
+  lastSeen: '--',
+  speed: '--',
+  direction: '--',
+  age: '--',
+  gender: '--',
+  location: '--',
+  bbox: null,
+  path: [],
+}
 
 function Icon({ name, size = 18 }) {
   const paths = {
@@ -211,24 +210,28 @@ function StatusPill({ children, tone = 'normal' }) {
   return <span className={`va-pill ${tone}`}>{children}</span>
 }
 
-function MetricCard({ icon, label, value, unit, tone }) {
+function MetricCard({ icon, label, value, unit, tone, loading }) {
   return (
     <article className={`va-metric ${tone || ''}`}>
       <span className="va-metric-icon"><Icon name={icon} /></span>
       <div>
         <small>{label}</small>
-        <strong>{value}</strong>
+        <strong>{loading ? '--' : value}</strong>
         <em>{unit}</em>
       </div>
     </article>
   )
 }
 
-function TargetList({ activeId, onSelect }) {
+function DemoBadge() {
+  return <span className="va-pill" style={{ background: 'rgba(255,182,74,.16)', color: '#ffe1a4', borderColor: 'rgba(255,182,74,.38)' }}>演示数据</span>
+}
+
+function TargetList({ activeId, onSelect, targets, isLive }) {
   const [filter, setFilter] = useState('all')
   const filteredTargets = filter === 'all'
-    ? trackedTargets
-    : trackedTargets.filter(t => filter === 'high' ? t.risk.includes('高') : t.risk.includes('中') || t.risk.includes('低'))
+    ? targets
+    : targets.filter(t => filter === 'high' ? t.risk.includes('高') : t.risk.includes('中') || t.risk.includes('低'))
 
   return (
     <aside className="va-target-panel">
@@ -237,7 +240,7 @@ function TargetList({ activeId, onSelect }) {
           <span>TRACK TARGETS</span>
           <h2>目标列表</h2>
         </div>
-        <StatusPill tone="success">{filteredTargets.length} 个</StatusPill>
+        {isLive ? <StatusPill tone="success">实时</StatusPill> : <DemoBadge />}
       </div>
       <div className="va-target-tools">
         <button type="button" className={filter === 'all' ? 'active' : ''} onClick={() => setFilter('all')}>全部</button>
@@ -271,9 +274,23 @@ function TargetList({ activeId, onSelect }) {
   )
 }
 
-function TrackingStage({ activePerson, onSelect }) {
-  const [cameraId, setCameraId] = useState('无人车-01')
-  const cameras = ['无人车-01', '无人车-02', '无人车-03']
+function TrackingStage({ activePerson, onSelect, devices, selectedDeviceId, onSelectDevice, targets, inferenceStatus }) {
+  const onlineDevices = devices.filter(d => d.status === 'online')
+  const currentDevice = devices.find(d => String(d.id) === String(selectedDeviceId))
+  const cameraLabel = currentDevice ? currentDevice.name : '未选择设备'
+  const isInference = Boolean(inferenceStatus?.running)
+  const useAnnotated = isInference && Boolean(inferenceStatus?.annotate)
+  const streamSrc = selectedDeviceId
+    ? (useAnnotated
+        ? `/api/inference/${selectedDeviceId}/annotated-stream`
+        : `/api/devices/${selectedDeviceId}/camera/stream`)
+    : `${IMAGE_BASE}/person-tracking.jpg`
+
+  const [now, setNow] = useState(new Date())
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(t)
+  }, [])
 
   return (
     <section className="va-monitor-panel">
@@ -283,25 +300,29 @@ function TrackingStage({ activePerson, onSelect }) {
           <h2>视频目标追踪</h2>
         </div>
         <div className="va-camera-tabs">
-          {cameras.map(cam => (
+          {onlineDevices.length === 0 && (
+            <span style={{ color: 'var(--va-muted)', fontSize: 11, padding: '0 8px' }}>暂无在线设备</span>
+          )}
+          {onlineDevices.slice(0, 4).map(device => (
             <button
               type="button"
-              key={cam}
-              className={cameraId === cam ? 'active' : ''}
-              onClick={() => setCameraId(cam)}
+              key={device.id}
+              className={String(device.id) === String(selectedDeviceId) ? 'active' : ''}
+              onClick={() => onSelectDevice(device.id)}
+              title={device.name}
             >
-              {cam}
+              {device.name}
             </button>
           ))}
         </div>
       </div>
       <div className="va-video-stage">
-        <img src={`${IMAGE_BASE}/person-tracking.jpg`} alt="人员轨迹跟踪示例" />
+        <img src={streamSrc} alt={selectedDeviceId ? `${cameraLabel} 实时画面` : '人员轨迹跟踪示例'} />
         <div className="va-video-topbar">
-          <span>固定机位 {cameraId}</span>
-          <strong>15:10:57</strong>
+          <span>{selectedDeviceId ? `${useAnnotated ? '推理标注画面' : '实时画面'} · ${cameraLabel}` : `演示模式 · ${cameraLabel}`}</span>
+          <strong>{now.toLocaleTimeString('zh-CN', { hour12: false })}</strong>
         </div>
-        {trackedTargets.map(target => (
+        {!isInference && targets.map(target => (
           <button
             type="button"
             key={target.id}
@@ -320,9 +341,9 @@ function TrackingStage({ activePerson, onSelect }) {
         ))}
         <div className="va-video-bottom">
           <span className="va-live-dot" />
-          <span>识别帧率 15 fps</span>
-          <span>跟踪目标 {trackedTargets.length}</span>
-          <span>识别状态 演示中</span>
+          <span>{selectedDeviceId ? '视频流已接入' : '识别帧率 15 fps'}</span>
+          <span>跟踪目标 {targets.length}</span>
+          <span>识别状态 {isInference ? '推理进行中' : selectedDeviceId ? '视频流已接入，推理待上线' : '演示中'}</span>
         </div>
       </div>
       <div className="va-track-strip">
@@ -382,14 +403,26 @@ function TargetDetail({ activePerson }) {
   )
 }
 
-function OverviewPane() {
-  const [activePersonId, setActivePersonId] = useState(trackedTargets[0].id)
-  const activePerson = trackedTargets.find(target => target.id === activePersonId) || trackedTargets[0]
+function OverviewPane({ devices, selectedDeviceId, onSelectDevice, tracks, inferenceStatus }) {
+  const isInference = Boolean(inferenceStatus?.running)
+  const liveTargets = useMemo(() => (tracks || []).map(mapTrackToTarget), [tracks])
+  const targets = isInference ? liveTargets : trackedTargets
+
+  const [activePersonId, setActivePersonId] = useState(null)
+  const activePerson = targets.find(target => target.id === activePersonId) || targets[0] || EMPTY_TARGET
 
   return (
     <div className="va-overview">
-      <TargetList activeId={activePerson.id} onSelect={setActivePersonId} />
-      <TrackingStage activePerson={activePerson} onSelect={setActivePersonId} />
+      <TargetList activeId={activePerson.id} onSelect={setActivePersonId} targets={targets} isLive={isInference} />
+      <TrackingStage
+        activePerson={activePerson}
+        onSelect={setActivePersonId}
+        devices={devices}
+        selectedDeviceId={selectedDeviceId}
+        onSelectDevice={onSelectDevice}
+        targets={targets}
+        inferenceStatus={inferenceStatus}
+      />
       <TargetDetail activePerson={activePerson} />
       <section className="va-flow-panel">
         {['巡航成果', '视频抽帧', '人脸检测', '车牌检测', '事件入库', '预警联动'].map((step, index) => (
@@ -403,93 +436,119 @@ function OverviewPane() {
   )
 }
 
-function RecordRow({ record, selected, onSelect }) {
-  return (
-    <button type="button" className={`va-record-row ${selected ? 'active' : ''}`} onClick={() => onSelect(record.id)}>
-      <span>
-        <img src={record.image} alt={record.title} />
-        <span>
-          <strong>{record.subject}</strong>
-          <small>{record.title}</small>
-        </span>
-      </span>
-      <em>{record.device}</em>
-      <b>{record.confidence}%</b>
-      <StatusPill tone={record.status.includes('待') ? 'warning' : record.status.includes('推送') ? 'danger' : 'success'}>{record.status}</StatusPill>
-    </button>
-  )
-}
-
-function RecordsPane() {
+function RecordsPane({ alerts, loading, error }) {
   const [recordType, setRecordType] = useState('all')
-  const [selectedId, setSelectedId] = useState(faceEvents[0].id)
-  const allRecords = useMemo(() => [...faceEvents, ...plateEvents], [])
-  const visibleRecords = recordType === 'all'
-    ? allRecords
-    : allRecords.filter(record => record.category === recordType)
-  const selectedRecord = visibleRecords.find(record => record.id === selectedId) || visibleRecords[0]
+  const [selectedId, setSelectedId] = useState(null)
+
+  const videoAlerts = useMemo(() => {
+    return alerts.filter(a => {
+      const st = a.source_type || ''
+      const at = a.alert_type || ''
+      return st.startsWith('video_') || at.startsWith('video_') || st.startsWith('analytics_')
+    })
+  }, [alerts])
+
+  const visibleRecords = useMemo(() => {
+    if (recordType === 'all') return videoAlerts
+    if (recordType === 'pending') return videoAlerts.filter(a => a.status === 'pending')
+    if (recordType === 'high') return videoAlerts.filter(a => a.severity === 'high' || a.severity === 'critical')
+    return videoAlerts
+  }, [videoAlerts, recordType])
+
+  const selectedRecord = visibleRecords.find(r => r.id === selectedId) || visibleRecords[0]
 
   return (
     <section className="va-records">
       <div className="va-filter-bar">
         <div className="va-filter-group">
           <ThemedSelect className="va-select" value={recordType} onChange={event => setRecordType(event.target.value)}>
-            <option value="all">全部类型</option>
-            <option value="face">人脸识别</option>
-            <option value="plate">车牌识别</option>
+            <option value="all">全部记录</option>
+            <option value="pending">待处置</option>
+            <option value="high">高危/紧急</option>
           </ThemedSelect>
-          <input type="text" value="2026-06-26" readOnly aria-label="查询日期" />
-          <input type="text" value="主校区 / 全部地图" readOnly aria-label="查询地图" />
-          <input type="text" value="无人车 ID / 全部" readOnly aria-label="查询无人车" />
+          <input type="text" value="来源：视频识别 / 研判规则" readOnly aria-label="数据来源" />
+          <input type="text" value="自动刷新（10 秒）" readOnly aria-label="刷新策略" />
         </div>
-        <button type="button" className="va-primary-btn"><Icon name="search" />查询</button>
+        <span className="va-pill" style={{ marginLeft: 'auto' }}>
+          {loading ? '加载中...' : `${visibleRecords.length} 条记录`}
+        </span>
       </div>
+
+      {error && (
+        <div style={{ padding: '12px 14px', color: 'var(--va-danger)', fontSize: 12, borderBottom: '1px solid var(--va-border-soft)' }}>
+          加载失败：{error}
+        </div>
+      )}
 
       <div className="va-record-grid">
         <div className="va-record-table">
           <div className="va-table-head">
-            <span>抓拍对象</span>
-            <span>设备来源</span>
-            <span>置信度</span>
+            <span>告警标题 / 类型</span>
+            <span>来源设备</span>
+            <span>等级</span>
             <span>状态</span>
           </div>
           <div className="va-record-list">
+            {visibleRecords.length === 0 && !loading && (
+              <div className="va-target-empty" style={{ padding: '40px 12px' }}>暂无视频识别记录</div>
+            )}
             {visibleRecords.map(record => (
-              <RecordRow
+              <button
+                type="button"
                 key={record.id}
-                record={record}
-                selected={record.id === selectedRecord.id}
-                onSelect={setSelectedId}
-              />
+                className={`va-record-row ${selectedRecord && record.id === selectedRecord.id ? 'active' : ''}`}
+                onClick={() => setSelectedId(record.id)}
+              >
+                <span>
+                  <span>
+                    <strong>{record.title}</strong>
+                    <small>{record.alert_type} · {formatTime(record.occurred_at)}</small>
+                  </span>
+                </span>
+                <em>{record.device_name || '--'}</em>
+                <StatusPill tone={severityTone[record.severity] || 'normal'}>
+                  {severityLabels[record.severity] || record.severity}
+                </StatusPill>
+                <StatusPill tone={statusTone[record.status] || 'normal'}>
+                  {statusLabels[record.status] || record.status}
+                </StatusPill>
+              </button>
             ))}
           </div>
         </div>
 
         <aside className="va-record-detail">
-          <div className="va-panel-head">
-            <div>
-              <span>EVENT DETAIL</span>
-              <h2>事件详情</h2>
-            </div>
-            <StatusPill tone={selectedRecord.category === 'plate' ? 'warning' : 'success'}>
-              {selectedRecord.category === 'plate' ? '车牌' : '人脸'}
-            </StatusPill>
-          </div>
-          <img src={selectedRecord.image} alt={selectedRecord.title} />
-          <h3>{selectedRecord.subject}</h3>
-          <dl>
-            <div><dt>事件编号</dt><dd>{selectedRecord.id}</dd></div>
-            <div><dt>识别类型</dt><dd>{selectedRecord.identity}</dd></div>
-            <div><dt>采集时间</dt><dd>{selectedRecord.time}</dd></div>
-            <div><dt>采集地图</dt><dd>{selectedRecord.map}</dd></div>
-            <div><dt>来源设备</dt><dd>{selectedRecord.device}</dd></div>
-            <div><dt>摘要</dt><dd>{selectedRecord.detail}</dd></div>
-          </dl>
-          <div className="va-record-actions">
-            <button type="button">详情</button>
-            <button type="button">复核</button>
-            <button type="button">导出</button>
-          </div>
+          {selectedRecord ? (
+            <>
+              <div className="va-panel-head">
+                <div>
+                  <span>EVENT DETAIL</span>
+                  <h2>事件详情</h2>
+                </div>
+                <StatusPill tone={severityTone[selectedRecord.severity] || 'normal'}>
+                  {severityLabels[selectedRecord.severity] || selectedRecord.severity}
+                </StatusPill>
+              </div>
+              <img src={selectedRecord.media_path ? `${IMAGE_BASE}/face-record-alert.jpg` : `${IMAGE_BASE}/face-record-stranger.jpg`} alt={selectedRecord.title} />
+              <h3>{selectedRecord.title}</h3>
+              <dl>
+                <div><dt>事件编号</dt><dd>#{selectedRecord.id}</dd></div>
+                <div><dt>告警类型</dt><dd>{selectedRecord.alert_type}</dd></div>
+                <div><dt>发生时间</dt><dd>{formatTime(selectedRecord.occurred_at)}</dd></div>
+                <div><dt>来源设备</dt><dd>{selectedRecord.device_name || '--'}</dd></div>
+                <div><dt>来源类型</dt><dd>{selectedRecord.source_type}</dd></div>
+                <div><dt>处置状态</dt><dd>{statusLabels[selectedRecord.status] || selectedRecord.status}</dd></div>
+                <div><dt>描述</dt><dd>{selectedRecord.description || '--'}</dd></div>
+              </dl>
+              <div className="va-record-actions">
+                <button type="button" onClick={() => window.open(`/warning-response`, '_blank')}>前往处置</button>
+                <button type="button">复核</button>
+                <button type="button">导出</button>
+              </div>
+            </>
+          ) : (
+            <div className="va-target-empty" style={{ padding: '60px 12px' }}>选择左侧记录查看详情</div>
+          )}
         </aside>
       </div>
     </section>
@@ -514,7 +573,7 @@ function FacesPane() {
             <input type="text" value="智慧校园公司" readOnly aria-label="公司" />
             <input type="text" placeholder="姓名 / 人员编号" aria-label="姓名或人员编号" />
           </div>
-          <button type="button" className="va-primary-btn"><Icon name="search" />检索</button>
+          <DemoBadge />
         </div>
         <div className="va-face-grid">
           {faceLibrary.map(person => (
@@ -547,9 +606,9 @@ function FacesPane() {
         </div>
         {mode === 'single' ? (
           <div className="va-enroll-form">
-            <label><span>姓名</span><input type="text" value="新录入人员" readOnly /></label>
-            <label><span>录入类型</span><input type="text" value="访客" readOnly /></label>
-            <label><span>联系电话</span><input type="text" value="138****0000" readOnly /></label>
+            <label><span>姓名</span><input type="text" placeholder="待接入人员库后端" /></label>
+            <label><span>录入类型</span><input type="text" placeholder="教职工 / 学生 / 访客" /></label>
+            <label><span>联系电话</span><input type="text" placeholder="选填" /></label>
             <div className="va-upload-zone"><Icon name="camera" size={28} /><strong>拍照 / 上传图片</strong><small>最多 10 张人脸样本</small></div>
           </div>
         ) : (
@@ -579,7 +638,7 @@ function PlatesPane() {
             </ThemedSelect>
             <input type="text" value="有效期 / 全部" readOnly aria-label="有效期" />
           </div>
-          <button type="button" className="va-primary-btn"><Icon name="search" />查询</button>
+          <DemoBadge />
         </div>
         <div className="va-plate-table">
           <div className="va-plate-head">
@@ -606,9 +665,9 @@ function PlatesPane() {
         </div>
         <img className="va-plate-preview" src={`${IMAGE_BASE}/plate-capture.jpg`} alt="车牌抓拍样例" />
         <div className="va-enroll-form">
-          <label><span>车牌号码</span><input type="text" value="粤C·223E2" readOnly /></label>
-          <label><span>车辆类型</span><input type="text" value="访客车辆" readOnly /></label>
-          <label><span>有效期</span><input type="text" value="2026-06-30" readOnly /></label>
+          <label><span>车牌号码</span><input type="text" placeholder="待接入车牌库后端" /></label>
+          <label><span>车辆类型</span><input type="text" placeholder="访客车辆 / 校内车辆" /></label>
+          <label><span>有效期</span><input type="text" placeholder="YYYY-MM-DD" /></label>
         </div>
         <div className="va-batch-box single">
           <div><Icon name="upload" size={28} /><strong>批量导入模板</strong><small>Excel 车牌名单</small></div>
@@ -621,6 +680,139 @@ function PlatesPane() {
 
 export default function VideoAnalysis() {
   const [activeTab, setActiveTab] = useState('overview')
+  const [devices, setDevices] = useState([])
+  const [alerts, setAlerts] = useState([])
+  const [alertsLoading, setAlertsLoading] = useState(true)
+  const [alertsError, setAlertsError] = useState('')
+  const [selectedDeviceId, setSelectedDeviceId] = useState(null)
+  const [tracks, setTracks] = useState([])
+  const [inferenceStatus, setInferenceStatus] = useState(null)
+  const pollingRef = useRef(null)
+
+  // 设备列表加载
+  const fetchDevices = useCallback(async () => {
+    try {
+      const res = await authFetch('/api/devices')
+      if (!res.ok) throw new Error('获取设备列表失败')
+      const data = await res.json()
+      setDevices(data)
+      // 默认选第一个在线设备
+      setSelectedDeviceId(prev => {
+        if (prev !== null) return prev
+        const firstOnline = data.find(d => d.status === 'online')
+        return firstOnline ? firstOnline.id : null
+      })
+    } catch (err) {
+      console.error('VideoAnalysis fetchDevices:', err)
+    }
+  }, [])
+
+  // 告警列表加载（含视频类过滤）
+  const fetchAlerts = useCallback(async () => {
+    setAlertsLoading(true)
+    setAlertsError('')
+    try {
+      const res = await authFetch('/api/security-alerts')
+      if (!res.ok) throw new Error('获取告警列表失败')
+      const data = await res.json()
+      setAlerts(data)
+    } catch (err) {
+      setAlertsError(err.message || '获取告警列表失败')
+    } finally {
+      setAlertsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchDevices()
+    fetchAlerts()
+    pollingRef.current = setInterval(() => {
+      fetchAlerts()
+    }, POLL_INTERVAL)
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current)
+    }
+  }, [fetchDevices, fetchAlerts])
+
+  // 实时告警推送：收到 video_alert 时立即刷新告警列表（WS 断开后自动重连）
+  useEffect(() => {
+    let socket = null
+    let reconnectTimer = null
+    let disposed = false
+
+    const connect = () => {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      socket = new WebSocket(`${protocol}//${window.location.host}/api/ws/alerts`)
+      socket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data)
+          if (message.type === 'video_alert') {
+            fetchAlerts()
+          }
+        } catch {
+          /* 忽略非 JSON 消息 */
+        }
+      }
+      socket.onclose = () => {
+        if (!disposed) reconnectTimer = setTimeout(connect, 5000)
+      }
+      socket.onerror = () => {
+        socket?.close()
+      }
+    }
+
+    connect()
+    return () => {
+      disposed = true
+      clearTimeout(reconnectTimer)
+      socket?.close()
+    }
+  }, [fetchAlerts])
+
+  // 推理状态与实时目标轮询（2s）
+  const fetchInference = useCallback(async () => {
+    if (selectedDeviceId == null) {
+      setTracks([])
+      setInferenceStatus(null)
+      return
+    }
+    try {
+      const statusRes = await authFetch(`/api/inference/pipelines/${selectedDeviceId}/status`)
+      if (statusRes.ok) setInferenceStatus(await statusRes.json())
+
+      const tracksRes = await authFetch(`/api/inference/${selectedDeviceId}/tracks`)
+      if (tracksRes.ok) {
+        const data = await tracksRes.json()
+        setTracks(data.tracks || [])
+      } else {
+        setTracks([])
+      }
+    } catch {
+      setTracks([])
+    }
+  }, [selectedDeviceId])
+
+  useEffect(() => {
+    fetchInference()
+    const timer = setInterval(fetchInference, 2000)
+    return () => clearInterval(timer)
+  }, [fetchInference])
+
+  // 统计聚合
+  const stats = useMemo(() => {
+    const today = alerts.filter(a => isToday(a.occurred_at))
+    const videoToday = today.filter(a => {
+      const st = a.source_type || ''
+      const at = a.alert_type || ''
+      return st.startsWith('video_') || at.startsWith('video_') || st.startsWith('analytics_')
+    })
+    return {
+      todayVideoAlerts: videoToday.length,
+      pendingVideo: videoToday.filter(a => a.status === 'pending').length,
+      highVideo: videoToday.filter(a => a.severity === 'high' || a.severity === 'critical').length,
+      totalDevices: devices.filter(d => d.status === 'online').length,
+    }
+  }, [alerts, devices])
 
   return (
     <div className="video-analysis-page">
@@ -636,10 +828,10 @@ export default function VideoAnalysis() {
       </header>
 
       <section className="va-metrics" aria-label="视频识别统计">
-        <MetricCard icon="face" label="今日人脸抓拍" value="128" unit="条" tone="face" />
-        <MetricCard icon="plate" label="今日车牌过卡" value="342" unit="次" tone="plate" />
-        <MetricCard icon="route" label="追踪目标" value="24" unit="个" tone="track" />
-        <MetricCard icon="alert" label="待复核事件" value="9" unit="条" tone="alert" />
+        <MetricCard icon="alert" label="今日视频类告警" value={stats.todayVideoAlerts} unit="条" tone="alert" loading={alertsLoading} />
+        <MetricCard icon="alert" label="待处置" value={stats.pendingVideo} unit="条" tone="track" loading={alertsLoading} />
+        <MetricCard icon="alert" label="高危/紧急" value={stats.highVideo} unit="条" tone="plate" loading={alertsLoading} />
+        <MetricCard icon="route" label="在线设备" value={stats.totalDevices} unit="台" tone="face" loading={false} />
       </section>
 
       <nav className="va-tabs" aria-label="视频识别分析子页面">
@@ -655,8 +847,18 @@ export default function VideoAnalysis() {
         ))}
       </nav>
 
-      {activeTab === 'overview' && <OverviewPane />}
-      {activeTab === 'records' && <RecordsPane />}
+      {activeTab === 'overview' && (
+        <OverviewPane
+          devices={devices}
+          selectedDeviceId={selectedDeviceId}
+          onSelectDevice={setSelectedDeviceId}
+          tracks={tracks}
+          inferenceStatus={inferenceStatus}
+        />
+      )}
+      {activeTab === 'records' && (
+        <RecordsPane alerts={alerts} loading={alertsLoading} error={alertsError} />
+      )}
       {activeTab === 'faces' && <FacesPane />}
       {activeTab === 'plates' && <PlatesPane />}
     </div>

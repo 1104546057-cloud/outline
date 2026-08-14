@@ -1,0 +1,73 @@
+# 视频识别分析 · 推理管线配置
+#
+# 通过 PUT /api/inference/config 热更新，或直接编辑本文件后
+# POST /api/inference/reload 重新加载（无需重启服务）。
+#
+# 每台设备可独立指定管线：devices.<device_id>.pipeline = <pipeline 名>。
+# 未指定的设备使用 "default" 管线。
+
+pipelines:
+  default:
+    detector: dummy
+    tracker: dummy
+    analyzers: [dummy]
+    enabled: true
+    target_fps: 5            # 推理抽帧率（每秒最多处理的帧数）
+    annotate: false          # 是否生成带标注框的画面（M2 启用）
+
+  # 高精度管线（GPU 设备，M2 后启用）
+  # high_accuracy:
+  #   detector: yolo_v8s
+  #   tracker: bytetrack
+  #   analyzers: [behavior_fall, behavior_crowd, behavior_run]
+  #   enabled: false
+  #   target_fps: 15
+  #   annotate: true
+
+  # 完整识别管线（M2/M3/M4）：ONNX YOLOv8 + ByteTrack + 行为分析 + 标注流
+  # yolo:
+  #   detector: yolo_v8n
+  #   tracker: bytetrack
+  #   tracker_params:
+  #     track_thresh: 0.5
+  #     match_thresh: 0.8
+  #     track_buffer: 30
+  #   analyzers: [behavior_fall, behavior_crowd, behavior_run]
+  #   enabled: false
+  #   target_fps: 5
+  #   annotate: true
+
+# 设备 → 管线映射（device_id 用字符串或数字均可）
+devices: {}
+
+# 模型权重与检测参数（M2 起使用）
+models:
+  # YOLOv8 ONNX 权重（onnxruntime 推理，避免引入 PyTorch）
+  yolo_v8n:
+    weights: models/yolov8n.onnx
+    classes: [person, car, truck, bus, bicycle, motorcycle]
+    conf_threshold: 0.5
+    iou_threshold: 0.45
+  yolo_v8s:
+    weights: models/yolov8s.onnx
+    classes: [person, car, truck, bus, bicycle, motorcycle]
+    conf_threshold: 0.6
+    iou_threshold: 0.45
+
+# 行为分析阈值（M4 起使用）
+# cooldown_frames 为同一目标/事件再次告警的最小间隔（帧），用于抑制重复告警。
+behaviors:
+  fall:
+    aspect_ratio_threshold: 1.2
+    duration_frames: 15
+    min_confidence: 0.6
+    cooldown_frames: 150          # 约 5s @30fps
+  crowd:
+    min_targets: 5
+    distance_threshold: 50
+    duration_frames: 30
+    cooldown_frames: 150
+  run:
+    speed_threshold: 3.0          # 单位：像素/帧（未标定），现场需按视角调参
+    duration_frames: 10
+    cooldown_frames: 150

@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from routers import agent_ws, login, users, devices, robot_control, telemetry, clusters, camera, patrol, patrol_results, navigation, captcha, remote_access, security_alerts, analytics, analytics_admin, outdoor_patrol
+from routers import agent_ws, login, users, devices, robot_control, telemetry, clusters, camera, patrol, patrol_results, navigation, captcha, remote_access, security_alerts, analytics, analytics_admin, outdoor_patrol, inference, alerts_ws
 
 # 创建 FastAPI 应用实例
 app = FastAPI(
@@ -59,6 +59,8 @@ app.include_router(security_alerts.router)
 app.include_router(analytics.router)
 app.include_router(analytics_admin.router)
 app.include_router(outdoor_patrol.router)
+app.include_router(inference.router)
+app.include_router(alerts_ws.router)
 
 
 # ===== 研判模块后台调度（启动时挂载，关闭时清理） =====
@@ -111,6 +113,10 @@ async def _on_shutdown():
     if scheduler:
         scheduler.shutdown(wait=False)
         print("[analytics] 调度器已关闭")
+    # 停止所有运行中的推理管线，释放帧订阅
+    from inference.manager import inference_manager
+    await inference_manager.stop_all()
+    print("[inference] 推理管线已全部停止")
 
 
 # ===== 前端静态文件 =====
