@@ -280,10 +280,29 @@ function TrackingStage({ activePerson, onSelect, devices, selectedDeviceId, onSe
   const cameraLabel = currentDevice ? currentDevice.name : '未选择设备'
   const isInference = Boolean(inferenceStatus?.running)
   const useAnnotated = isInference && Boolean(inferenceStatus?.annotate)
-  const streamSrc = selectedDeviceId
+
+  // 视频流自动重连：MJPEG 在服务重启/网络抖动断开后浏览器不会自动重试，
+  // 这里在 onError 后延迟 3s 换新 src（带 cache-bust 参数）重新订阅。
+  const [videoRetry, setVideoRetry] = useState(0)
+  const retryTimerRef = useRef(null)
+  const handleVideoError = useCallback(() => {
+    if (retryTimerRef.current) return
+    retryTimerRef.current = setTimeout(() => {
+      retryTimerRef.current = null
+      setVideoRetry(v => v + 1)
+    }, 3000)
+  }, [])
+  useEffect(() => () => {
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+  }, [])
+
+  const baseStreamSrc = selectedDeviceId
     ? (useAnnotated
         ? `/api/inference/${selectedDeviceId}/annotated-stream`
         : `/api/devices/${selectedDeviceId}/camera/stream`)
+    : null
+  const streamSrc = baseStreamSrc
+    ? `${baseStreamSrc}${baseStreamSrc.includes('?') ? '&' : '?'}retry=${videoRetry}`
     : `${IMAGE_BASE}/person-tracking.jpg`
 
   const [now, setNow] = useState(new Date())
@@ -317,7 +336,7 @@ function TrackingStage({ activePerson, onSelect, devices, selectedDeviceId, onSe
         </div>
       </div>
       <div className="va-video-stage">
-        <img src={streamSrc} alt={selectedDeviceId ? `${cameraLabel} 实时画面` : '人员轨迹跟踪示例'} />
+        <img src={streamSrc} alt={selectedDeviceId ? `${cameraLabel} 实时画面` : '人员轨迹跟踪示例'} onError={handleVideoError} />
         <div className="va-video-topbar">
           <span>{selectedDeviceId ? `${useAnnotated ? '推理标注画面' : '实时画面'} · ${cameraLabel}` : `演示模式 · ${cameraLabel}`}</span>
           <strong>{now.toLocaleTimeString('zh-CN', { hour12: false })}</strong>
