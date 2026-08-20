@@ -22,9 +22,10 @@ from typing import Dict, Tuple
 import rospy
 import tf2_ros
 import websockets
-from actionlib_msgs.msg import GoalStatus, GoalStatusArray
+from actionlib_msgs.msg import GoalID, GoalStatus, GoalStatusArray
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from nav_msgs.msg import OccupancyGrid
+from std_srvs.srv import Empty
 try:
     from move_base_msgs.msg import MoveBaseActionResult
 except ImportError:
@@ -50,6 +51,12 @@ NAV_PREVIEW_MAX_SIZE = int(os.environ.get("DWC_NAV_PREVIEW_MAX_SIZE", "1000"))
 MAPPING_PREVIEW_MAX_SIZE = int(os.environ.get("DWC_MAPPING_PREVIEW_MAX_SIZE", "700"))
 MAPPING_LOG_FILE = Path(os.environ.get("DWC_MAPPING_LOG_FILE", "/tmp/devices_web_control_mapping.log"))
 MAPPING_ALGORITHM = "cartographer"
+AMCL_POSE_STALE_SEC = float(os.environ.get("DWC_AMCL_POSE_STALE_SEC", "2.0"))
+AMCL_MAX_COVARIANCE_X = float(os.environ.get("DWC_AMCL_MAX_COVARIANCE_X", "0.25"))
+AMCL_MAX_COVARIANCE_Y = float(os.environ.get("DWC_AMCL_MAX_COVARIANCE_Y", "0.25"))
+AMCL_MAX_COVARIANCE_YAW = float(os.environ.get("DWC_AMCL_MAX_COVARIANCE_YAW", "0.3"))
+AMCL_SETTLE_SEC = float(os.environ.get("DWC_AMCL_SETTLE_SEC", "2.0"))
+AMCL_POSE_SAVE_INTERVAL_SEC = float(os.environ.get("DWC_AMCL_POSE_SAVE_INTERVAL_SEC", "5.0"))
 ROS_SETUP = os.environ.get("DWC_ROS_SETUP", "/opt/ros/noetic/setup.bash")
 LIDAR_SETUP = os.environ.get("DWC_LIDAR_SETUP", "/home/wheeltec/wheeltec_lidar/devel/setup.bash")
 WHEELTEC_SETUP = os.environ.get("DWC_WHEELTEC_SETUP", "/home/wheeltec/wheeltec_robot/devel/setup.bash")
@@ -68,6 +75,10 @@ current_v = 0.0
 current_w = 0.0
 cmd_vel_pub = None
 simple_goal_pub = None
+initial_pose_pub = None
+cancel_goal_pub = None
+global_localization_client = None
+nomotion_update_client = None
 tf_buffer = None
 tf_listener = None
 nav_lock = threading.Lock()
@@ -76,6 +87,15 @@ nav_map_name = None
 nav_pose_lock = threading.Lock()
 nav_pose = None
 nav_pose_time = 0.0
+nav_pose_last_saved = 0.0
+localization_lock = threading.Lock()
+localization_source = "none"
+localization_seeded_at = 0.0
+localization_pose_updates = 0
+localization_restore_state = "idle"
+localization_restore_error = ""
+global_localization_active = False
+global_localization_started_at = 0.0
 nav_goal_lock = threading.Lock()
 nav_goal_status = None
 nav_goal_status_time = 0.0
@@ -205,8 +225,10 @@ def quaternion_to_yaw(z: float, w: float) -> float:
 
 
 def on_amcl_pose(msg: PoseWithCovarianceStamped) -> None:
-    global nav_pose, nav_pose_time
+    global nav_pose, nav_pose_time, nav_pose_last_saved, localization_pose_updates
     pose = msg.pose.pose
+    covariance = list(msg.pose.covariance)
+    now = time.time()
     with nav_pose_lock:
         nav_pose = {
             "frame_id": msg.header.frame_id or "map",
@@ -214,8 +236,21 @@ def on_amcl_pose(msg: PoseWithCovarianceStamped) -> None:
             "y": pose.position.y,
             "yaw": quaternion_to_yaw(pose.orientation.z, pose.orientation.w),
             "stamp": msg.header.stamp.to_sec() if msg.header.stamp else time.time(),
+            "covarianceX": float(covariance[0]),
+            "covarianceY": float(covariance[7]),
+            "covarianceYaw": float(covariance[35]),
         }
-        nav_pose_time = time.time()
+        nav_pose_time = now
+    with localization_lock:
+        if localization_source in ("saved", "manual", "global") and now >= localization_seeded_at:
+            localization_pose_updates += 1
+    status = localization_status()
+    if status["valid"] and now - nav_pose_last_saved >= AMCL_POSE_SAVE_INTERVAL_SEC:
+        try:
+            save_localization_pose(status["pose"], "amcl")
+            nav_pose_last_saved = now
+        except Exception as exc:
+            log.warning("保存 AMCL 位姿失败: %s", exc)
 
 
 def status_stamp_to_sec(status) -> float:
@@ -258,10 +293,11 @@ def on_move_base_result(msg) -> None:
 
 
 def clear_navigation_pose() -> None:
-    global nav_pose, nav_pose_time
+    global nav_pose, nav_pose_time, nav_pose_last_saved
     with nav_pose_lock:
         nav_pose = None
         nav_pose_time = 0.0
+        nav_pose_last_saved = 0.0
 
 
 def clear_navigation_goal_status() -> None:
@@ -279,6 +315,114 @@ def current_navigation_pose() -> dict:
         pose = dict(nav_pose)
         pose["age"] = max(0.0, time.time() - nav_pose_time)
         return pose
+
+
+def localization_pose_path(map_name: str) -> Path:
+    yaml_path = resolve_map_yaml(map_name)
+    return yaml_path.with_suffix(".amcl_pose.json")
+
+
+def write_json_atomic(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(path)
+
+
+def save_localization_pose(pose: dict, source: str, map_name: str = "") -> dict:
+    selected_map = map_name
+    if not selected_map:
+        with nav_lock:
+            selected_map = nav_map_name or ""
+    if not selected_map:
+        raise RuntimeError("当前没有启用的导航地图")
+    values = [float(pose.get(key)) for key in ("x", "y", "yaw")]
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("定位位姿必须是有限数值")
+    record = {
+        "mapName": selected_map,
+        "x": values[0],
+        "y": values[1],
+        "yaw": values[2],
+        "covarianceX": float(pose.get("covarianceX", 0.25)),
+        "covarianceY": float(pose.get("covarianceY", 0.25)),
+        "covarianceYaw": float(pose.get("covarianceYaw", 0.0685)),
+        "source": source,
+        "updatedAt": time.time(),
+    }
+    write_json_atomic(localization_pose_path(selected_map), record)
+    return record
+
+
+def load_localization_pose(map_name: str) -> dict:
+    path = localization_pose_path(map_name)
+    if not path.exists():
+        return {}
+    record = json.loads(path.read_text(encoding="utf-8"))
+    if record.get("mapName") != map_name:
+        raise ValueError("保存的定位位姿与当前地图不匹配")
+    values = [float(record.get(key)) for key in ("x", "y", "yaw")]
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("保存的定位位姿包含非法数值")
+    return record
+
+
+def localization_status() -> dict:
+    pose = current_navigation_pose()
+    age = pose.get("age", -1.0)
+    covariance_valid = bool(pose) and all((
+        pose.get("covarianceX", float("inf")) <= AMCL_MAX_COVARIANCE_X,
+        pose.get("covarianceY", float("inf")) <= AMCL_MAX_COVARIANCE_Y,
+        pose.get("covarianceYaw", float("inf")) <= AMCL_MAX_COVARIANCE_YAW,
+    ))
+    valid = bool(pose) and 0.0 <= age <= AMCL_POSE_STALE_SEC and covariance_valid
+    if not pose:
+        last_error = "尚未收到 /amcl_pose"
+    elif age > AMCL_POSE_STALE_SEC:
+        last_error = "AMCL 位姿已超时"
+    elif not covariance_valid:
+        last_error = "AMCL 协方差过大，定位尚未收敛"
+    else:
+        last_error = ""
+    with localization_lock:
+        source = localization_source
+        seeded_at = localization_seeded_at
+        pose_updates = localization_pose_updates
+        restore_state = localization_restore_state
+        restore_error = localization_restore_error
+        global_active = global_localization_active
+        global_started = global_localization_started_at
+    has_reference = source in ("saved", "manual", "global")
+    settled = has_reference and time.time() - seeded_at >= AMCL_SETTLE_SEC and pose_updates >= 3
+    valid = bool(valid and has_reference and settled)
+    if not has_reference:
+        last_error = "尚未提供该地图的初始位姿"
+    elif not settled:
+        last_error = "正在等待雷达匹配稳定"
+    return {
+        "valid": valid,
+        "pose": pose,
+        "source": source,
+        "poseUpdates": pose_updates,
+        "restoreState": restore_state,
+        "restoreError": restore_error,
+        "lastError": last_error,
+        "thresholds": {
+            "poseAge": AMCL_POSE_STALE_SEC,
+            "covarianceX": AMCL_MAX_COVARIANCE_X,
+            "covarianceY": AMCL_MAX_COVARIANCE_Y,
+            "covarianceYaw": AMCL_MAX_COVARIANCE_YAW,
+            "settleSeconds": AMCL_SETTLE_SEC,
+        },
+        "globalLocalization": {
+            "active": global_active,
+            "converged": bool(global_active and valid),
+            "elapsedSeconds": max(0.0, time.time() - global_started) if global_active else None,
+        },
+    }
 
 
 def current_mapping_pose() -> dict:
@@ -672,6 +816,7 @@ def save_mapping_map(display_name: str) -> dict:
         if live_map is None:
             raise RuntimeError("尚未收到 /map 数据，不能保存")
     hard_stop()
+    mapping_pose = current_mapping_pose()
     stem = safe_map_stem(display_name)
     SLAM_MAP_DIR.mkdir(parents=True, exist_ok=True)
     prefix = (SLAM_MAP_DIR / stem).resolve()
@@ -690,6 +835,11 @@ def save_mapping_map(display_name: str) -> dict:
     if result.returncode != 0 or not yaml_path.exists() or not pgm_path.exists():
         raise RuntimeError((result.stderr or result.stdout or "map_saver 保存失败").strip())
     summary = map_summary(yaml_path)
+    if mapping_pose:
+        save_localization_pose(mapping_pose, "mapping", yaml_path.name)
+        summary["initialPoseSaved"] = True
+    else:
+        summary["initialPoseSaved"] = False
     stop_mapping_process()
     return summary
 
@@ -704,6 +854,9 @@ def delete_navigation_map(map_name: str) -> dict:
     yaml_path.unlink()
     if image_path.exists() and path_is_relative_to(image_path, SLAM_MAP_DIR):
         image_path.unlink()
+    pose_path = yaml_path.with_suffix(".amcl_pose.json")
+    if pose_path.exists():
+        pose_path.unlink()
     return {"name": map_name}
 
 
@@ -713,6 +866,7 @@ def navigation_status_response(ok: bool = True, error: str = "") -> dict:
         map_name = nav_map_name
     running = proc is not None and proc.poll() is None
     code = None if proc is None or running else proc.poll()
+    localization = localization_status()
     return {
         "type": "nav_status",
         "ok": ok,
@@ -720,7 +874,8 @@ def navigation_status_response(ok: bool = True, error: str = "") -> dict:
         "pid": proc.pid if proc is not None else None,
         "returncode": code,
         "mapName": map_name,
-        "pose": current_navigation_pose() if running else {},
+        "pose": localization["pose"] if running else {},
+        "localization": localization,
         "goalStatus": current_navigation_goal_status(),
         "logFile": str(NAV_LOG_FILE),
         "error": error,
@@ -728,14 +883,139 @@ def navigation_status_response(ok: bool = True, error: str = "") -> dict:
     }
 
 
+def cancel_navigation_goals() -> None:
+    if cancel_goal_pub is None:
+        return
+    cancel_goal_pub.publish(GoalID())
+
+
+def publish_initial_pose(x: float, y: float, yaw: float, source: str = "manual") -> dict:
+    global localization_source, localization_seeded_at, localization_pose_updates
+    global localization_restore_state, localization_restore_error
+    if initial_pose_pub is None:
+        raise RuntimeError("ROS /initialpose Publisher 尚未初始化")
+    values = [float(x), float(y), float(yaw)]
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("初始位姿必须是有限数值")
+    with nav_lock:
+        running = nav_process is not None and nav_process.poll() is None
+    if not running:
+        raise RuntimeError("请先启动导航地图，再设置 AMCL 初始位姿")
+    hard_stop()
+    cancel_navigation_goals()
+    clear_navigation_pose()
+    with localization_lock:
+        localization_source = source
+        localization_seeded_at = time.time()
+        localization_pose_updates = 0
+        localization_restore_state = "published" if source == "saved" else "manual"
+        localization_restore_error = ""
+    pose = PoseWithCovarianceStamped()
+    pose.header.frame_id = "map"
+    pose.pose.pose.position.x = values[0]
+    pose.pose.pose.position.y = values[1]
+    pose.pose.pose.orientation.z = math.sin(values[2] / 2.0)
+    pose.pose.pose.orientation.w = math.cos(values[2] / 2.0)
+    pose.pose.covariance[0] = 0.25
+    pose.pose.covariance[7] = 0.25
+    pose.pose.covariance[35] = 0.0685
+    for _ in range(3):
+        pose.header.stamp = rospy.Time.now()
+        initial_pose_pub.publish(pose)
+        time.sleep(0.08)
+    if nomotion_update_client is not None:
+        try:
+            rospy.wait_for_service("/request_nomotion_update", timeout=1.0)
+            nomotion_update_client()
+        except Exception as exc:
+            log.warning("请求 AMCL 静止更新失败: %s", exc)
+    return {
+        "accepted": True,
+        "source": source,
+        "x": values[0],
+        "y": values[1],
+        "yaw": values[2],
+        "subscribers": initial_pose_pub.get_num_connections(),
+    }
+
+
+def restore_initial_pose_when_ready(map_name: str) -> None:
+    global localization_restore_state, localization_restore_error
+    try:
+        record = load_localization_pose(map_name)
+        if not record:
+            with localization_lock:
+                localization_restore_state = "missing"
+                localization_restore_error = "没有该地图的历史可信位姿"
+            return
+        deadline = time.time() + 15.0
+        while time.time() < deadline and not rospy.is_shutdown():
+            with nav_lock:
+                current_map = nav_map_name
+                running = nav_process is not None and nav_process.poll() is None
+            if not running or current_map != map_name:
+                return
+            if initial_pose_pub is not None and initial_pose_pub.get_num_connections() > 0:
+                publish_initial_pose(record["x"], record["y"], record["yaw"], "saved")
+                log.info("已为地图 %s 自动恢复 AMCL 初始位姿", map_name)
+                return
+            time.sleep(0.25)
+        raise RuntimeError("等待 AMCL /initialpose 订阅者超时")
+    except Exception as exc:
+        with localization_lock:
+            localization_restore_state = "failed"
+            localization_restore_error = str(exc)
+        log.warning("自动恢复 AMCL 位姿失败: %s", exc)
+
+
+def start_global_localization() -> dict:
+    global global_localization_active, global_localization_started_at
+    global localization_source, localization_seeded_at, localization_pose_updates
+    with nav_lock:
+        running = nav_process is not None and nav_process.poll() is None
+    if not running:
+        raise RuntimeError("请先启动导航地图，再进行全局定位")
+    if global_localization_client is None:
+        raise RuntimeError("AMCL /global_localization 服务尚未初始化")
+    hard_stop()
+    cancel_navigation_goals()
+    clear_navigation_pose()
+    rospy.wait_for_service("/global_localization", timeout=5.0)
+    global_localization_client()
+    with localization_lock:
+        global_localization_active = True
+        global_localization_started_at = time.time()
+        localization_source = "global"
+        localization_seeded_at = global_localization_started_at
+        localization_pose_updates = 0
+    return localization_status()
+
+
+def finish_global_localization() -> dict:
+    global global_localization_active
+    hard_stop()
+    cancel_navigation_goals()
+    with localization_lock:
+        global_localization_active = False
+    return localization_status()
+
+
 def stop_navigation_process() -> None:
-    global nav_process, nav_map_name
+    global nav_process, nav_map_name, global_localization_active
+    global localization_source, localization_seeded_at, localization_pose_updates
+    hard_stop()
+    cancel_navigation_goals()
     clear_navigation_pose()
     clear_navigation_goal_status()
     with nav_lock:
         proc = nav_process
         nav_process = None
         nav_map_name = None
+    with localization_lock:
+        global_localization_active = False
+        localization_source = "none"
+        localization_seeded_at = 0.0
+        localization_pose_updates = 0
     if proc is None or proc.poll() is not None:
         return
     try:
@@ -748,7 +1028,9 @@ def stop_navigation_process() -> None:
 
 
 def start_navigation_process(map_name: str) -> dict:
-    global nav_process, nav_map_name
+    global nav_process, nav_map_name, localization_source, localization_seeded_at
+    global localization_pose_updates
+    global localization_restore_state, localization_restore_error
     if mapping_process_running():
         raise RuntimeError("建图任务仍在运行，请先保存或放弃本次建图")
     yaml_path = resolve_map_yaml(map_name)
@@ -782,9 +1064,21 @@ def start_navigation_process(map_name: str) -> dict:
     with nav_lock:
         nav_process = proc
         nav_map_name = yaml_path.name
+    with localization_lock:
+        localization_source = "none"
+        localization_seeded_at = 0.0
+        localization_pose_updates = 0
+        localization_restore_state = "pending"
+        localization_restore_error = ""
     time.sleep(0.8)
     if proc.poll() is not None:
         return navigation_status_response(False, "navigation.launch 启动后立即退出，请查看日志")
+    threading.Thread(
+        target=restore_initial_pose_when_ready,
+        args=(yaml_path.name,),
+        name="amcl-auto-restore",
+        daemon=True,
+    ).start()
     return navigation_status_response(True)
 
 
@@ -796,6 +1090,13 @@ def publish_navigation_goal(x: float, y: float, yaw: float) -> int:
     global nav_goal_status, nav_goal_status_time, nav_goal_sent_time
     if simple_goal_pub is None:
         raise RuntimeError("ROS /move_base_simple/goal Publisher 尚未初始化")
+    localization = localization_status()
+    if not localization["valid"]:
+        raise RuntimeError(
+            "AMCL 定位未就绪: " + (localization["lastError"] or "请先完成定位")
+        )
+    if localization["globalLocalization"]["active"]:
+        raise RuntimeError("AMCL 全局定位正在进行，请先确认收敛并结束定位")
     with nav_goal_lock:
         nav_goal_sent_time = time.time()
         nav_goal_status = None
@@ -904,6 +1205,30 @@ def execute_command(command: dict) -> dict:
             return navigation_status_response(False, str(exc))
     if command_type == "nav_status":
         return navigation_status_response(True)
+    if command_type == "nav_initial_pose":
+        try:
+            result = publish_initial_pose(
+                float(command.get("x")),
+                float(command.get("y")),
+                float(command.get("yaw", 0.0)),
+                "manual",
+            )
+            return {"type": "localization_status", "ok": True, "result": result,
+                    "localization": localization_status(), "ts": now}
+        except Exception as exc:
+            return {"type": "localization_status", "ok": False, "error": str(exc), "ts": now}
+    if command_type == "nav_global_localization":
+        try:
+            return {"type": "localization_status", "ok": True,
+                    "localization": start_global_localization(), "ts": now}
+        except Exception as exc:
+            return {"type": "localization_status", "ok": False, "error": str(exc), "ts": now}
+    if command_type == "nav_global_localization_stop":
+        try:
+            return {"type": "localization_status", "ok": True,
+                    "localization": finish_global_localization(), "ts": now}
+        except Exception as exc:
+            return {"type": "localization_status", "ok": False, "error": str(exc), "ts": now}
     if command_type == "nav_goal":
         try:
             x = float(command.get("x", 0.0))
@@ -1162,11 +1487,16 @@ async def media_loop(url: str, token: str) -> None:
 
 
 def init_ros() -> None:
-    global cmd_vel_pub, simple_goal_pub, tf_buffer, tf_listener
+    global cmd_vel_pub, simple_goal_pub, initial_pose_pub, cancel_goal_pub
+    global global_localization_client, nomotion_update_client, tf_buffer, tf_listener
     configure_local_ros_network()
     rospy.init_node("devices_web_control_agent", anonymous=False, disable_signals=True)
     cmd_vel_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
     simple_goal_pub = rospy.Publisher("/move_base_simple/goal", PoseStamped, queue_size=1)
+    initial_pose_pub = rospy.Publisher("/initialpose", PoseWithCovarianceStamped, queue_size=1)
+    cancel_goal_pub = rospy.Publisher("/move_base/cancel", GoalID, queue_size=1)
+    global_localization_client = rospy.ServiceProxy("/global_localization", Empty)
+    nomotion_update_client = rospy.ServiceProxy("/request_nomotion_update", Empty)
     tf_buffer = tf2_ros.Buffer(cache_time=rospy.Duration(10.0))
     tf_listener = tf2_ros.TransformListener(tf_buffer)
     rospy.Subscriber("/amcl_pose", PoseWithCovarianceStamped, on_amcl_pose, queue_size=1)

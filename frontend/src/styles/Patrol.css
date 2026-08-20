@@ -1375,6 +1375,49 @@
   }
 }
 
+.patrol-localization-state {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+}
+
+.patrol-localization-state.ready {
+  color: #16794f;
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.patrol-localization-state.waiting {
+  color: #9a6514;
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.patrol-localization-state span,
+.patrol-localization-panel p,
+.patrol-localization-hint {
+  line-height: 1.55;
+}
+
+.patrol-localization-panel p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.patrol-localization-actions {
+  margin: 0;
+}
+
+.patrol-localization-hint {
+  color: #9a6514;
+  font-size: 0.75rem;
+}
+
 /* 室内地图管理 */
 .indoor-map-page {
   min-width: 1120px;

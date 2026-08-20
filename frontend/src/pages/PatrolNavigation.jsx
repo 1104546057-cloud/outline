@@ -277,6 +277,9 @@ export default function PatrolNavigation() {
   const robotPose = navStatus?.pose && Number.isFinite(navStatus.pose.x) && Number.isFinite(navStatus.pose.y)
     ? navStatus.pose
     : null
+  const localization = navStatus?.localization || {}
+  const globalLocalization = localization.globalLocalization || {}
+  const localizationReady = Boolean(navStatus?.running && localization.valid)
 
   const drawMap = useCallback(() => {
     const canvas = canvasRef.current
@@ -374,7 +377,7 @@ export default function PatrolNavigation() {
       if (!response.ok) throw new Error(await response.text())
       const data = await response.json()
       setNavStatus(data.response)
-    } catch (error) {
+    } catch {
       setNavStatus(null)
     }
   }, [selectedDeviceId])
@@ -475,6 +478,7 @@ export default function PatrolNavigation() {
       })
       if (!response.ok) throw new Error(await response.text())
       const data = await response.json()
+      if (!data.ok) throw new Error(data.response?.error || '车端拒绝了该指令')
       if (data.response?.type === 'nav_status') setNavStatus(data.response)
       setMessage(successMessage || (action === 'goal' ? '目标点已发送' : '指令已下发'))
       await loadStatus()
@@ -508,6 +512,27 @@ export default function PatrolNavigation() {
       robotId: Number(selectedDeviceId),
     })
   }
+
+  const setInitialPose = () => {
+    if (!target) return null
+    return runAction('initial-pose', {
+      robotId: Number(selectedDeviceId),
+      x: target.x,
+      y: target.y,
+      yaw: degToRad(yawDeg),
+    }, '已发布 AMCL 初始位姿，正在等待雷达匹配收敛')
+  }
+
+  const startGlobalLocalization = () => {
+    if (!window.confirm('全局定位会取消当前导航目标并清空 AMCL 粒子分布。车辆不会自动移动；请确认周围安全后再低速旋转或短距离移动。')) return null
+    return runAction('global-localization', {
+      robotId: Number(selectedDeviceId),
+    }, 'AMCL 全局定位已启动，请在安全情况下低速旋转或短距离移动')
+  }
+
+  const stopGlobalLocalization = () => runAction('global-localization/stop', {
+    robotId: Number(selectedDeviceId),
+  }, localizationReady ? '全局定位已结束，当前定位可信' : '全局定位已结束，但当前定位仍未达到可信状态')
 
   const sendWaypointGoal = waypoint => runAction('goal', {
     robotId: Number(selectedDeviceId),
@@ -543,6 +568,10 @@ export default function PatrolNavigation() {
   }
 
   const sendRoute = async () => {
+    if (!localizationReady) {
+      setMessage(`AMCL 定位未就绪：${localization.lastError || '请等待自动恢复或完成全局定位'}`)
+      return
+    }
     const next = waypoints.find(point => point.status !== 'reached')
     if (!next) return
     setRouteSending(true)
@@ -773,6 +802,38 @@ export default function PatrolNavigation() {
                 <span>Y {formatNumber(robotPose?.y)}</span>
                 <span>Yaw {robotPose ? Math.round((robotPose.yaw || 0) * 180 / Math.PI) : '--'}°</span>
               </div>
+              <div className={`patrol-localization-state ${localizationReady ? 'ready' : 'waiting'}`}>
+                <strong>{localizationReady ? 'AMCL 定位可信' : 'AMCL 定位未就绪'}</strong>
+                <span>{localizationReady
+                  ? `来源：${localization.source || 'amcl'} · 位姿已自动保存`
+                  : localization.restoreState === 'pending'
+                    ? '正在恢复该地图上次可信位姿…'
+                    : localization.restoreError || localization.lastError || '请先启动导航'}</span>
+              </div>
+            </div>
+
+            <div className="patrol-nav-panel patrol-localization-panel">
+              <label className="patrol-nav-label">雷达定位</label>
+              <p>建图保存时会记录车辆位姿；再次启用同一地图时自动恢复。车辆被搬动后，可点击地图设置大致位置，或启动全局搜索。</p>
+              <div className="patrol-nav-actions patrol-localization-actions">
+                <button className="patrol-btn patrol-btn-success" onClick={setInitialPose} disabled={!navStatus?.running || !target || busyAction === 'initial-pose'}>
+                  设为车辆位置
+                </button>
+                {globalLocalization.active ? (
+                  <button className="patrol-btn patrol-btn-warning" onClick={stopGlobalLocalization} disabled={busyAction === 'global-localization/stop'}>
+                    结束全局定位
+                  </button>
+                ) : (
+                  <button className="patrol-btn patrol-btn-secondary" onClick={startGlobalLocalization} disabled={!navStatus?.running || busyAction === 'global-localization'}>
+                    全图雷达搜索
+                  </button>
+                )}
+              </div>
+              {globalLocalization.active && (
+                <span className="patrol-localization-hint">
+                  {localizationReady ? '粒子已收敛，可以结束全局定位。' : '正在搜索；车辆不会自动移动，请在安全情况下低速辅助。'}
+                </span>
+              )}
             </div>
 
             <div className="patrol-nav-panel patrol-nav-target-panel">
@@ -830,7 +891,7 @@ export default function PatrolNavigation() {
               <button className="patrol-btn patrol-btn-success" onClick={addWaypoint} disabled={!target || routeSending}>
                 添加巡航点
               </button>
-              <button className="patrol-btn patrol-btn-primary" onClick={sendRoute} disabled={!pendingWaypointCount || routeSending || busyAction === 'goal'}>
+              <button className="patrol-btn patrol-btn-primary" onClick={sendRoute} disabled={!pendingWaypointCount || !localizationReady || routeSending || busyAction === 'goal'}>
                 {routeSending || busyAction === 'goal' ? '发送中...' : '发送巡航线路'}
               </button>
             </div>

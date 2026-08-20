@@ -15,6 +15,8 @@ from schemas import (
     MappingActionRequest,
     MappingMapRequest,
     NavigationGoalRequest,
+    NavigationInitialPoseRequest,
+    NavigationLocalizationRequest,
     NavigationMapPreviewRequest,
     NavigationStartRequest,
     NavigationStopRequest,
@@ -137,6 +139,57 @@ async def navigation_stop(
     robot_id = require_robot_id(req.robotId)
     require_device(robot_id, db)
     response = await send_navigation_command(robot_id, {"type": "nav_stop"}, "nav_status")
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "response": response}
+
+
+@router.post("/initial-pose")
+async def navigation_initial_pose(
+    req: NavigationInitialPoseRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(req.robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id,
+        {"type": "nav_initial_pose", "x": req.x, "y": req.y, "yaw": req.yaw},
+        "localization_status",
+    )
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "response": response}
+
+
+@router.post("/global-localization")
+async def navigation_global_localization(
+    req: NavigationLocalizationRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(req.robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id,
+        {"type": "nav_global_localization"},
+        "localization_status",
+    )
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "response": response}
+
+
+@router.post("/global-localization/stop")
+async def navigation_global_localization_stop(
+    req: NavigationLocalizationRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(req.robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id,
+        {"type": "nav_global_localization_stop"},
+        "localization_status",
+    )
     touch_device_online(robot_id, db)
     return {"ok": bool(response.get("ok")), "response": response}
 

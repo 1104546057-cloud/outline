@@ -145,6 +145,19 @@ class NavigationGoalRequest(BaseModel):
     yaw: float = 0.0
 
 
+class NavigationInitialPoseRequest(BaseModel):
+    """在当前地图中设置 AMCL 初始位姿"""
+    robotId: Optional[int] = None
+    x: float
+    y: float
+    yaw: float = 0.0
+
+
+class NavigationLocalizationRequest(BaseModel):
+    """启动或结束当前车辆的 AMCL 全局定位"""
+    robotId: Optional[int] = None
+
+
 class NavigationStopRequest(BaseModel):
     """停止 Web 平台启动的导航进程"""
     robotId: Optional[int] = None
