@@ -1531,49 +1531,21 @@
 
 .indoor-map-control-panel { align-self: start; }
 
-.indoor-drive-pad {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 9px;
-  padding: 22px;
+.indoor-drive-console {
+  --cockpit-cyan: #2bd2ff;
+  padding: 18px 16px 14px;
 }
 
-.indoor-drive-pad button {
-  display: flex;
-  min-height: 72px;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 4px;
-  color: #dff5ff;
-  border: 1px solid rgba(43, 177, 228, .38);
-  border-radius: 4px;
-  background: linear-gradient(145deg, rgba(8, 58, 99, .88), rgba(4, 29, 60, .94));
-  font-size: 24px;
-  cursor: pointer;
-  user-select: none;
-  touch-action: none;
+.indoor-map-direction-grid { height: 216px; }
+
+.indoor-map-speed-slider {
+  margin-top: 18px;
+  font-size: 11px;
 }
 
-.indoor-drive-pad button:hover:not(:disabled),
-.indoor-drive-pad button:active:not(:disabled) {
-  border-color: #2bd2ff;
-  background: rgba(15, 119, 177, .72);
-  box-shadow: 0 0 15px rgba(43, 210, 255, .16);
-}
-
-.indoor-drive-pad button small { color: #78a8bd; font-size: 10px; }
-.indoor-drive-pad .forward { grid-column: 2; grid-row: 1; }
-.indoor-drive-pad .left { grid-column: 1; grid-row: 2; }
-.indoor-drive-pad .right { grid-column: 3; grid-row: 2; }
-.indoor-drive-pad .backward { grid-column: 2; grid-row: 3; }
-.indoor-drive-pad .stop {
-  grid-column: 2;
-  grid-row: 2;
-  color: #ff9eaa;
-  border-color: rgba(255, 91, 114, .42);
-  background: rgba(112, 22, 42, .35);
-}
+.indoor-map-speed-values { gap: 8px; }
+.indoor-map-speed-values span { padding: 9px; font-size: 10px; }
+.indoor-map-speed-values b { font-size: 11px; }
 
 .indoor-map-safety-note {
   margin: 0 14px 16px;

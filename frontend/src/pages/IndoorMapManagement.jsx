@@ -1,11 +1,13 @@
 /* eslint-disable react/prop-types */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import RobotDirectionPad from '../components/RobotDirectionPad'
+import { getRobotDirectionValues, ROBOT_DIRECTION_KEY_MAP } from '../components/robotDirectionPadConfig'
 import ThemedSelect from '../components/ThemedSelect'
 import { authFetch } from '../utils/authFetch'
 import '../styles/Patrol.css'
 
-const CONTROL_INTERVAL_MS = 220
+const CONTROL_INTERVAL_MS = 180
 const MAP_COLORS = {
   background: [3, 16, 37],
   unknown: [22, 58, 79],
@@ -98,8 +100,12 @@ function IndoorMapManagement() {
   const [busyAction, setBusyAction] = useState('')
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState('info')
+  const [controlConfig, setControlConfig] = useState({ maxLinear: .4, maxAngular: 1.2 })
+  const [speedRatio, setSpeedRatio] = useState(.1)
+  const [activeDirection, setActiveDirection] = useState(null)
   const controlTimerRef = useRef(null)
-  const controlActiveRef = useRef(false)
+  const activeDirectionRef = useRef(null)
+  const commandBusyRef = useRef(false)
 
   const selectedDevice = useMemo(
     () => devices.find(device => String(device.id) === selectedDeviceId),
@@ -186,6 +192,12 @@ function IndoorMapManagement() {
   }, [mappingStatus?.running, selectedDeviceId])
 
   useEffect(() => { loadDevices() }, [loadDevices])
+  useEffect(() => {
+    authFetch('/api/robot-control/config')
+      .then(response => response.ok ? response.json() : null)
+      .then(config => { if (config) setControlConfig(config) })
+      .catch(() => { })
+  }, [])
   useEffect(() => {
     setMaps([])
     setSelectedMap('')
@@ -288,24 +300,15 @@ function IndoorMapManagement() {
     }
   }
 
-  const sendVelocity = useCallback(async (linear, angular) => {
-    if (!selectedDeviceId) return
-    try {
-      await authFetch('/api/robot-control/cmd_vel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ robotId: Number(selectedDeviceId), linear, angular }),
-      })
-    } catch (error) {
-      notify(`低速控制失败：${error.message}`, 'error')
-    }
-  }, [selectedDeviceId])
-
-  const releaseControl = useCallback(async (force = false) => {
+  const stopSending = useCallback(() => {
     if (controlTimerRef.current) window.clearInterval(controlTimerRef.current)
     controlTimerRef.current = null
-    if ((!controlActiveRef.current && !force) || !selectedDeviceId) return
-    controlActiveRef.current = false
+    activeDirectionRef.current = null
+    setActiveDirection(null)
+  }, [])
+
+  const sendStop = useCallback(async () => {
+    if (!selectedDeviceId) return
     try {
       await authFetch('/api/robot-control/stop', {
         method: 'POST',
@@ -317,26 +320,84 @@ function IndoorMapManagement() {
     }
   }, [selectedDeviceId])
 
-  const holdControl = (linear, angular) => {
-    if (!canDrive) return
-    releaseControl()
-    controlActiveRef.current = true
-    sendVelocity(linear, angular)
-    controlTimerRef.current = window.setInterval(() => sendVelocity(linear, angular), CONTROL_INTERVAL_MS)
-  }
+  const getDirectionValues = useCallback(direction => (
+    getRobotDirectionValues(
+      direction,
+      controlConfig.maxLinear * speedRatio,
+      controlConfig.maxAngular * speedRatio,
+    )
+  ), [controlConfig, speedRatio])
+
+  const sendVelocity = useCallback(async (linear, angular) => {
+    if (!canDrive || commandBusyRef.current) return
+    commandBusyRef.current = true
+    try {
+      const response = await authFetch('/api/robot-control/cmd_vel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ robotId: Number(selectedDeviceId), linear, angular }),
+      })
+      if (!response.ok) throw new Error('车端拒绝运动指令')
+    } catch (error) {
+      stopSending()
+      notify(`建图控制失败：${error.message}`, 'error')
+    } finally {
+      commandBusyRef.current = false
+    }
+  }, [canDrive, selectedDeviceId, stopSending])
+
+  const startDirection = useCallback(direction => {
+    if (!canDrive || direction === 'stop' || activeDirectionRef.current === direction) return
+    stopSending()
+    activeDirectionRef.current = direction
+    setActiveDirection(direction)
+    const values = getDirectionValues(direction)
+    sendVelocity(values.linear, values.angular)
+    controlTimerRef.current = window.setInterval(() => {
+      const nextValues = getDirectionValues(direction)
+      sendVelocity(nextValues.linear, nextValues.angular)
+    }, CONTROL_INTERVAL_MS)
+  }, [canDrive, getDirectionValues, sendVelocity, stopSending])
+
+  const stopDirection = useCallback(() => {
+    if (!activeDirectionRef.current) return
+    stopSending()
+    sendStop()
+  }, [sendStop, stopSending])
+
+  const emergencyStop = useCallback(() => {
+    stopSending()
+    sendStop()
+  }, [sendStop, stopSending])
 
   useEffect(() => {
-    const stop = () => releaseControl()
-    window.addEventListener('pointerup', stop)
-    window.addEventListener('pointercancel', stop)
-    window.addEventListener('blur', stop)
-    return () => {
-      window.removeEventListener('pointerup', stop)
-      window.removeEventListener('pointercancel', stop)
-      window.removeEventListener('blur', stop)
-      if (controlTimerRef.current) window.clearInterval(controlTimerRef.current)
+    const handleKeyDown = event => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName)) return
+      const direction = ROBOT_DIRECTION_KEY_MAP[event.code]
+      if (!direction) return
+      event.preventDefault()
+      if (direction === 'stop') emergencyStop()
+      else startDirection(direction)
     }
-  }, [releaseControl])
+    const handleKeyUp = event => {
+      if (ROBOT_DIRECTION_KEY_MAP[event.code] === activeDirectionRef.current) stopDirection()
+    }
+    const handleBlur = () => stopDirection()
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    window.addEventListener('blur', handleBlur)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+      window.removeEventListener('blur', handleBlur)
+      stopSending()
+    }
+  }, [emergencyStop, startDirection, stopDirection, stopSending])
+
+  useEffect(() => {
+    if (canDrive || !activeDirectionRef.current) return
+    stopDirection()
+  }, [canDrive, stopDirection])
 
   const lidarAge = mappingStatus?.sensors?.lidar
   const odomAge = mappingStatus?.sensors?.odom
@@ -372,7 +433,7 @@ function IndoorMapManagement() {
           <div className="indoor-map-preview-wrap">
             <MapPreviewCanvas preview={livePreview} emptyText={mappingRunning ? '正在等待第一帧地图…' : '开始建图后显示实时地图'} />
             <div className="indoor-map-overlay">
-              <span>算法 {mappingStatus?.algorithm || 'karto'}</span>
+              <span>算法 {mappingStatus?.algorithm || 'cartographer'}</span>
               <span>时长 {formatDuration(mappingStatus?.elapsed)}</span>
               <span>里程计 {odomAge >= 0 ? `${odomAge.toFixed(1)}s` : '--'}</span>
               <span>雷达 {lidarAge >= 0 ? `${lidarAge.toFixed(1)}s` : '--'}</span>
@@ -390,13 +451,26 @@ function IndoorMapManagement() {
         </section>
 
         <aside className="indoor-map-panel indoor-map-control-panel">
-          <div className="indoor-map-panel-header"><div><h2>建图低速控制</h2><p>按住移动，松开立即停车</p></div></div>
-          <div className="indoor-drive-pad">
-            <button className="forward" disabled={!canDrive} onPointerDown={() => holdControl(0.10, 0)}>↑<small>前进 0.10 m/s</small></button>
-            <button className="left" disabled={!canDrive} onPointerDown={() => holdControl(0, 0.25)}>←<small>左转</small></button>
-            <button className="stop" disabled={!mappingRunning} onClick={() => releaseControl(true)}>■<small>停车</small></button>
-            <button className="right" disabled={!canDrive} onPointerDown={() => holdControl(0, -0.25)}>→<small>右转</small></button>
-            <button className="backward" disabled={!canDrive} onPointerDown={() => holdControl(-0.08, 0)}>↓<small>后退 0.08 m/s</small></button>
+          <div className="indoor-map-panel-header"><div><h2>建图行驶控制</h2><p>复用设备操作台方向键 · 按住移动，松开停车</p></div></div>
+          <div className="indoor-drive-console">
+            <RobotDirectionPad
+              activeDirection={activeDirection}
+              movementDisabled={!canDrive}
+              stopDisabled={!selectedDeviceId}
+              onStart={startDirection}
+              onStop={stopDirection}
+              onEmergencyStop={emergencyStop}
+              className="indoor-map-direction-grid"
+            />
+            <label className="cockpit-speed-slider indoor-map-speed-slider">
+              <span>速度倍率 <b>{Math.round(speedRatio * 100)}%</b></span>
+              <input type="range" min="0.01" max="1" step="0.01" value={speedRatio} onChange={event => setSpeedRatio(Number(event.target.value))} />
+            </label>
+            <div className="cockpit-speed-values indoor-map-speed-values">
+              <span>线速度<b>{(controlConfig.maxLinear * speedRatio).toFixed(2)} m/s</b></span>
+              <span>角速度<b>{(controlConfig.maxAngular * speedRatio).toFixed(2)} rad/s</b></span>
+            </div>
+            <button type="button" className="cockpit-emergency" onClick={emergencyStop} disabled={!selectedDeviceId}>急停 EMERGENCY STOP</button>
           </div>
           <div className="indoor-map-safety-note">
             <strong>建图安全约束</strong>

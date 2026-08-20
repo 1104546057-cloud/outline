@@ -1,23 +1,12 @@
-/* eslint-disable react/prop-types */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import DeviceCockpitMap from '../components/DeviceCockpitMap'
 import DeviceStatusCard from '../components/DeviceStatusCard'
 import { CameraFeed, CockpitPanel } from '../components/CockpitSensorFeed'
+import RobotDirectionPad from '../components/RobotDirectionPad'
+import { getRobotDirectionValues, ROBOT_DIRECTION_KEY_MAP } from '../components/robotDirectionPadConfig'
 import { authFetch } from '../utils/authFetch'
 import '../styles/DeviceCockpit.css'
-
-const DIRECTIONS = [
-  { key: 'forward-left', icon: '↖', label: '左前' },
-  { key: 'forward', icon: '↑', label: '前进' },
-  { key: 'forward-right', icon: '↗', label: '右前' },
-  { key: 'left', icon: '←', label: '左转' },
-  { key: 'stop', icon: '■', label: '停止' },
-  { key: 'right', icon: '→', label: '右转' },
-  { key: 'backward-left', icon: '↙', label: '左后' },
-  { key: 'backward', icon: '↓', label: '后退' },
-  { key: 'backward-right', icon: '↘', label: '右后' },
-]
 
 export default function DeviceCockpit() {
   const { deviceId } = useParams()
@@ -182,17 +171,7 @@ export default function DeviceCockpit() {
   const getDirectionValues = useCallback(direction => {
     const maxLinear = controlConfig.maxLinear * speedRatio
     const maxAngular = controlConfig.maxAngular * speedRatio
-    switch (direction) {
-      case 'forward': return { linear: maxLinear, angular: 0 }
-      case 'backward': return { linear: -maxLinear, angular: 0 }
-      case 'left': return { linear: 0, angular: maxAngular }
-      case 'right': return { linear: 0, angular: -maxAngular }
-      case 'forward-left': return { linear: maxLinear, angular: maxAngular * .5 }
-      case 'forward-right': return { linear: maxLinear, angular: -maxAngular * .5 }
-      case 'backward-left': return { linear: -maxLinear, angular: maxAngular * .5 }
-      case 'backward-right': return { linear: -maxLinear, angular: -maxAngular * .5 }
-      default: return { linear: 0, angular: 0 }
-    }
+    return getRobotDirectionValues(direction, maxLinear, maxAngular)
   }, [controlConfig, speedRatio])
 
   const sendCmdVel = useCallback(async (linear, angular) => {
@@ -243,25 +222,16 @@ export default function DeviceCockpit() {
   }, [sendStop, stopSending])
 
   useEffect(() => {
-    const keyMap = {
-      ArrowUp: 'forward', KeyW: 'forward', Numpad8: 'forward',
-      ArrowDown: 'backward', KeyS: 'backward', Numpad2: 'backward',
-      ArrowLeft: 'left', KeyA: 'left', Numpad4: 'left',
-      ArrowRight: 'right', KeyD: 'right', Numpad6: 'right',
-      Numpad7: 'forward-left', Numpad9: 'forward-right',
-      Numpad1: 'backward-left', Numpad3: 'backward-right',
-      Space: 'stop', Numpad5: 'stop',
-    }
     const handleKeyDown = event => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName)) return
-      const direction = keyMap[event.code]
+      const direction = ROBOT_DIRECTION_KEY_MAP[event.code]
       if (!direction) return
       event.preventDefault()
       if (direction === 'stop') emergencyStop()
       else startDirection(direction)
     }
     const handleKeyUp = event => {
-      if (keyMap[event.code] === activeDirectionRef.current) stopDirection()
+      if (ROBOT_DIRECTION_KEY_MAP[event.code] === activeDirectionRef.current) stopDirection()
     }
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
@@ -353,27 +323,14 @@ export default function DeviceCockpit() {
             <div className="cockpit-console">
               <div className="cockpit-drive-block">
                 <div className="cockpit-block-title"><strong>行驶控制</strong><small>WASD / 方向键 / 数字键盘</small></div>
-                <div className="cockpit-direction-grid">
-                  {DIRECTIONS.map(direction => direction.key === 'stop' ? (
-                    <button key={direction.key} type="button" className="stop" onClick={emergencyStop} disabled={!device} title={direction.label}>
-                      <span>{direction.icon}</span><small>{direction.label}</small>
-                    </button>
-                  ) : (
-                    <button
-                      key={direction.key}
-                      type="button"
-                      className={activeDirection === direction.key ? 'active' : ''}
-                      onPointerDown={() => startDirection(direction.key)}
-                      onPointerUp={stopDirection}
-                      onPointerCancel={stopDirection}
-                      onPointerLeave={stopDirection}
-                      disabled={!movementEnabled}
-                      title={direction.label}
-                    >
-                      <span>{direction.icon}</span><small>{direction.label}</small>
-                    </button>
-                  ))}
-                </div>
+                <RobotDirectionPad
+                  activeDirection={activeDirection}
+                  movementDisabled={!movementEnabled}
+                  stopDisabled={!device}
+                  onStart={startDirection}
+                  onStop={stopDirection}
+                  onEmergencyStop={emergencyStop}
+                />
               </div>
 
               <div className="cockpit-speed-block">
