@@ -13,7 +13,7 @@ from database import get_db
 from models import User
 from schemas import LoginRequest, LoginResponse
 from auth import create_access_token
-from config import ACCESS_TOKEN_EXPIRE_MINUTES
+from config import ACCESS_TOKEN_EXPIRE_MINUTES, AUTH_COOKIE_SECURE
 from captcha_store import verify_captcha
 
 router = APIRouter(prefix="/api/auth", tags=["认证"])
@@ -59,7 +59,7 @@ async def login(request: LoginRequest, response: Response, db: Session = Depends
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         expires=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         samesite="lax",
-        secure=False,  # 开发环境设为False，生产环境 HTTPS 建议设为 True
+        secure=AUTH_COOKIE_SECURE,
     )
 
     return LoginResponse(
