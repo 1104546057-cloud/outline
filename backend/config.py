@@ -14,6 +14,7 @@ load_dotenv()
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dwc-default-secret-key")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "10080"))
+AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "false").lower() == "true"
 
 # 公网原型统一入口：前端、REST 和 WebSocket 通过 path 复用同一端口
 PUBLIC_SERVER_URL = os.getenv("PUBLIC_SERVER_URL", "http://192.168.31.28:5273").rstrip("/")
