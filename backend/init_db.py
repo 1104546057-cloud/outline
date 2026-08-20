@@ -6,6 +6,7 @@
 """
 
 import os
+import re
 from pathlib import Path
 from sqlalchemy import inspect, text
 from passlib.hash import bcrypt
@@ -39,6 +40,35 @@ def _migration_statements(sql_text: str) -> list[str]:
     return statements
 
 
+_CREATE_INDEX_IF_NOT_EXISTS = re.compile(
+    r"^CREATE\s+(?:UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\s+"
+    r"`?(?P<index>[^\s`]+)`?\s+ON\s+`?(?P<table>[^\s`(]+)`?",
+    re.IGNORECASE,
+)
+
+
+def _mysql_compatible_statement(conn, statement: str) -> str | None:
+    """兼容不支持 ``CREATE INDEX IF NOT EXISTS`` 的 MySQL 版本。"""
+    match = _CREATE_INDEX_IF_NOT_EXISTS.match(statement)
+    if match is None:
+        return statement
+
+    index_name = match.group("index")
+    table_name = match.group("table")
+    existing_indexes = {item["name"] for item in inspect(conn).get_indexes(table_name)}
+    if index_name in existing_indexes:
+        print(f"  索引已存在，跳过: {index_name}")
+        return None
+
+    return re.sub(
+        r"\bIF\s+NOT\s+EXISTS\s+",
+        "",
+        statement,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+
+
 def init_database():
     """初始化数据库：创建表结构 + 插入默认数据 + 迁移已有表"""
 
@@ -52,27 +82,29 @@ def init_database():
     print(f"当前数据库中的表: {tables}")
 
     # 2. 迁移已有的 devices 表（添加 port 和 last_seen 列如果不存在）
-    db = SessionLocal()
-    try:
-        columns = [col["name"] for col in inspector.get_columns("devices")]
-        
-        if "port" not in columns:
-            print("正在为 devices 表添加 port 列...")
-            db.execute(text("ALTER TABLE devices ADD COLUMN port INT DEFAULT 9000 NOT NULL COMMENT '控制服务端口号'"))
-            db.commit()
-            print("已添加 port 列")
-        
-        if "last_seen" not in columns:
-            print("正在为 devices 表添加 last_seen 列...")
-            db.execute(text("ALTER TABLE devices ADD COLUMN last_seen DATETIME NULL COMMENT '最后遥测上报时间'"))
-            db.commit()
-            print("已添加 last_seen 列")
+    # SQLite 没有 MySQL 的 COMMENT 语法；新库 create_all 已含这些列。
+    if engine.dialect.name != "sqlite":
+        db = SessionLocal()
+        try:
+            columns = [col["name"] for col in inspector.get_columns("devices")]
 
-    except Exception as e:
-        db.rollback()
-        print(f"迁移 devices 表失败（可能列已存在）: {e}")
-    finally:
-        db.close()
+            if "port" not in columns:
+                print("正在为 devices 表添加 port 列...")
+                db.execute(text("ALTER TABLE devices ADD COLUMN port INT DEFAULT 9000 NOT NULL COMMENT '控制服务端口号'"))
+                db.commit()
+                print("已添加 port 列")
+
+            if "last_seen" not in columns:
+                print("正在为 devices 表添加 last_seen 列...")
+                db.execute(text("ALTER TABLE devices ADD COLUMN last_seen DATETIME NULL COMMENT '最后遥测上报时间'"))
+                db.commit()
+                print("已添加 last_seen 列")
+
+        except Exception as e:
+            db.rollback()
+            print(f"迁移 devices 表失败（可能列已存在）: {e}")
+        finally:
+            db.close()
 
     # 3. 插入默认管理员用户（如果不存在）
     db = SessionLocal()
@@ -100,6 +132,11 @@ def init_database():
     finally:
         db.close()
 
+    if engine.dialect.name == "sqlite":
+        print("SQLite 模式：跳过 MySQL 迁移脚本，表结构已由 create_all 创建")
+        print("数据库初始化完成！")
+        return
+
     # 4. 数据统计研判模块迁移（默认角色 + 指标字典 + 示例规则）
     #    通过执行 migrations/001_analytics.sql 完成种子数据填充，幂等可重复执行。
     migration_file = Path(__file__).parent / "migrations" / "001_analytics.sql"
@@ -111,6 +148,9 @@ def init_database():
             statements = _migration_statements(sql_text)
             for stmt in statements:
                 try:
+                    stmt = _mysql_compatible_statement(conn, stmt)
+                    if stmt is None:
+                        continue
                     # exec_driver_sql 直传原始 SQL（不解析冒号绑定参数）；
                     # pymysql 为 format 参数风格，字面 % 需转义为 %%
                     conn.exec_driver_sql(stmt.replace("%", "%%"))
@@ -129,6 +169,9 @@ def init_database():
             statements = _migration_statements(sql_text)
             for stmt in statements:
                 try:
+                    stmt = _mysql_compatible_statement(conn, stmt)
+                    if stmt is None:
+                        continue
                     # exec_driver_sql 直传原始 SQL（不解析冒号绑定参数）；
                     # pymysql 为 format 参数风格，字面 % 需转义为 %%
                     conn.exec_driver_sql(stmt.replace("%", "%%"))
@@ -147,6 +190,9 @@ def init_database():
             statements = _migration_statements(sql_text)
             for stmt in statements:
                 try:
+                    stmt = _mysql_compatible_statement(conn, stmt)
+                    if stmt is None:
+                        continue
                     # exec_driver_sql 直传原始 SQL（不解析冒号绑定参数）；
                     # pymysql 为 format 参数风格，字面 % 需转义为 %%
                     conn.exec_driver_sql(stmt.replace("%", "%%"))

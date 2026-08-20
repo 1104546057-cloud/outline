@@ -5,6 +5,7 @@
 """
 
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 from urllib.parse import quote_plus
 from sqlalchemy import create_engine
@@ -19,21 +20,35 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "dwc@123")
 DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
 DB_PORT = int(os.getenv("DB_PORT", 3306))
 DB_NAME = os.getenv("DB_NAME", "devices_web_control")
+DB_BACKEND = os.getenv("DB_BACKEND", "mysql").strip().lower()
 
-# SQLAlchemy 数据库连接 URL
-# 格式: mysql+pymysql://用户名:密码@主机:端口/数据库名
-# 注意：密码中含有特殊字符（如 @），需要使用 quote_plus 进行 URL 编码
-DATABASE_URL = f"mysql+pymysql://{DB_USER}:{quote_plus(DB_PASSWORD)}@{DB_HOST}:{DB_PORT}/{DB_NAME}?charset=utf8mb4"
-
-
-# 创建数据库引擎
-engine = create_engine(
-    DATABASE_URL,
-    echo=False,  # 关闭 SQL 日志输出
-    pool_size=5,  # 连接池大小
-    max_overflow=10,  # 超出连接池大小时最多可以额外创建的连接数
-    pool_recycle=3600,  # 连接回收时间（秒），避免 MySQL 8小时超时断开
-)
+if DB_BACKEND == "sqlite":
+    # 独立 SQLite 文件，避免和室内 MySQL（indoor_platform）抢同一个库
+    sqlite_path = os.getenv(
+        "SQLITE_PATH",
+        str(Path(__file__).resolve().parent / "outdoor.db"),
+    )
+    Path(sqlite_path).parent.mkdir(parents=True, exist_ok=True)
+    DATABASE_URL = f"sqlite:///{sqlite_path}"
+    engine = create_engine(
+        DATABASE_URL,
+        echo=False,
+        connect_args={"check_same_thread": False},
+    )
+else:
+    # 格式: mysql+pymysql://用户名:密码@主机:端口/数据库名
+    # 注意：密码中含有特殊字符（如 @），需要使用 quote_plus 进行 URL 编码
+    DATABASE_URL = (
+        f"mysql+pymysql://{DB_USER}:{quote_plus(DB_PASSWORD)}"
+        f"@{DB_HOST}:{DB_PORT}/{DB_NAME}?charset=utf8mb4"
+    )
+    engine = create_engine(
+        DATABASE_URL,
+        echo=False,
+        pool_size=5,
+        max_overflow=10,
+        pool_recycle=3600,
+    )
 
 # 创建会话工厂
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
