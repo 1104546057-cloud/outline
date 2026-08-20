@@ -19,6 +19,7 @@ const patrolModuleItems = [
 
 const indoorPatrolItems = [
   { label: '室内实时导航', path: '/patrol/indoor/navigation', icon: 'navigation' },
+  { label: '地图管理', path: '/patrol/indoor/maps', icon: 'map' },
 ]
 
 const outdoorPatrolItems = [
@@ -64,6 +65,7 @@ function AppIcon({ name, size = 18 }) {
     route: <><circle cx="5" cy="6" r="2" /><circle cx="19" cy="18" r="2" /><path d="M7 6h4a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h8" /></>,
     task: <><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4V2h6v2M9 9h6m-6 4h6m-6 4h4" /></>,
     navigation: <><path d="M12 3 20 21l-8-4-8 4 8-18Z" /><path d="M12 3v14" /></>,
+    map: <><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Z" /><path d="M9 3v15m6-12v15" /></>,
     gallery: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.5" /><path d="m4 17 4.5-4 3.5 3 2.5-2 5.5 5" /></>,
     logout: <><path d="M10 4H5v16h5M14 8l4 4-4 4m4-4H9" /></>,
     chevron: <path d="m9 18 6-6-6-6" />,

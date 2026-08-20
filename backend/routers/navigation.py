@@ -12,6 +12,8 @@ from database import get_db
 from models import User
 from robot_tcp import require_device
 from schemas import (
+    MappingActionRequest,
+    MappingMapRequest,
     NavigationGoalRequest,
     NavigationMapPreviewRequest,
     NavigationStartRequest,
@@ -135,5 +137,102 @@ async def navigation_stop(
     robot_id = require_robot_id(req.robotId)
     require_device(robot_id, db)
     response = await send_navigation_command(robot_id, {"type": "nav_stop"}, "nav_status")
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "response": response}
+
+
+@router.get("/mapping/status")
+async def mapping_status(
+    robotId: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(robot_id, {"type": "map_status"}, "map_status")
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "response": response}
+
+
+@router.post("/mapping/start")
+async def mapping_start(
+    req: MappingActionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(req.robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(robot_id, {"type": "map_start"}, "map_status", timeout=12.0)
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "response": response}
+
+
+@router.post("/mapping/pause")
+async def mapping_pause(
+    req: MappingActionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(req.robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(robot_id, {"type": "map_pause"}, "map_status")
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "response": response}
+
+
+@router.post("/mapping/discard")
+async def mapping_discard(
+    req: MappingActionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(req.robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(robot_id, {"type": "map_discard"}, "map_status")
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "response": response}
+
+
+@router.get("/mapping/live-preview")
+async def mapping_live_preview(
+    robotId: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id, {"type": "map_live_preview"}, "map_live_preview", timeout=12.0
+    )
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "preview": response}
+
+
+@router.post("/mapping/save")
+async def mapping_save(
+    req: MappingMapRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(req.robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id, {"type": "map_save", "mapName": req.mapName}, "map_saved", timeout=30.0
+    )
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "response": response}
+
+
+@router.post("/maps/delete")
+async def navigation_map_delete(
+    req: MappingMapRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(req.robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id, {"type": "map_delete", "mapName": req.mapName}, "map_deleted"
+    )
     touch_device_online(robot_id, db)
     return {"ok": bool(response.get("ok")), "response": response}

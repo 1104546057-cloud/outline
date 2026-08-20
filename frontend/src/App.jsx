@@ -18,6 +18,7 @@ import PatrolRoutes from './pages/PatrolRoutes'
 import PatrolTasks from './pages/PatrolTasks'
 import PatrolResults from './pages/PatrolResults'
 import PatrolNavigation from './pages/PatrolNavigation'
+import IndoorMapManagement from './pages/IndoorMapManagement'
 import RemoteAccess from './pages/RemoteAccess'
 import './styles/SubpageTheme.css'
 
@@ -81,6 +82,7 @@ function App() {
           <Route path="patrol" element={<Navigate to="/patrol/indoor" replace />} />
           <Route path="patrol/indoor" element={<Navigate to="/patrol/indoor/navigation" replace />} />
           <Route path="patrol/indoor/navigation" element={<PatrolNavigation />} />
+          <Route path="patrol/indoor/maps" element={<IndoorMapManagement />} />
           <Route path="patrol/outdoor" element={<Navigate to="/patrol/outdoor/areas" replace />} />
           <Route path="patrol/outdoor/areas" element={<PatrolAreas />} />
           <Route path="patrol/outdoor/points" element={<PatrolPoints />} />

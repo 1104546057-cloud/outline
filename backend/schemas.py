@@ -150,6 +150,17 @@ class NavigationStopRequest(BaseModel):
     robotId: Optional[int] = None
 
 
+class MappingActionRequest(BaseModel):
+    """开始、暂停或放弃一次室内建图会话"""
+    robotId: Optional[int] = None
+
+
+class MappingMapRequest(BaseModel):
+    """保存或删除车端地图"""
+    robotId: Optional[int] = None
+    mapName: str
+
+
 # ===== 集群管理 =====
 
 class ClusterCreate(BaseModel):

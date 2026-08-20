@@ -23,6 +23,7 @@ import rospy
 import websockets
 from actionlib_msgs.msg import GoalStatus, GoalStatusArray
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
+from nav_msgs.msg import OccupancyGrid
 try:
     from move_base_msgs.msg import MoveBaseActionResult
 except ImportError:
@@ -45,9 +46,13 @@ MEDIA_VIEW_CODES = {"color": 1, "depth": 2, "lidar": 3}
 SLAM_MAP_DIR = Path(os.environ.get("DWC_SLAM_MAP_DIR", "/home/wheeltec/Dong/DevicesWebControl/slam_map"))
 NAV_LOG_FILE = Path(os.environ.get("DWC_NAV_LOG_FILE", "/tmp/devices_web_control_navigation.log"))
 NAV_PREVIEW_MAX_SIZE = int(os.environ.get("DWC_NAV_PREVIEW_MAX_SIZE", "1000"))
+MAPPING_PREVIEW_MAX_SIZE = int(os.environ.get("DWC_MAPPING_PREVIEW_MAX_SIZE", "700"))
+MAPPING_LOG_FILE = Path(os.environ.get("DWC_MAPPING_LOG_FILE", "/tmp/devices_web_control_mapping.log"))
+MAPPING_ALGORITHM = "cartographer"
 ROS_SETUP = os.environ.get("DWC_ROS_SETUP", "/opt/ros/noetic/setup.bash")
 LIDAR_SETUP = os.environ.get("DWC_LIDAR_SETUP", "/home/wheeltec/wheeltec_lidar/devel/setup.bash")
 WHEELTEC_SETUP = os.environ.get("DWC_WHEELTEC_SETUP", "/home/wheeltec/wheeltec_robot/devel/setup.bash")
+CARTOGRAPHER_SETUP = os.environ.get("DWC_CARTOGRAPHER_SETUP", "/home/wheeltec/cartographer_ws/devel/setup.bash")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -72,6 +77,16 @@ nav_goal_lock = threading.Lock()
 nav_goal_status = None
 nav_goal_status_time = 0.0
 nav_goal_sent_time = 0.0
+mapping_lock = threading.Lock()
+mapping_process = None
+mapping_started_at = 0.0
+mapping_paused = False
+mapping_error = ""
+live_map_lock = threading.Lock()
+live_map = None
+live_map_time = 0.0
+sensor_lock = threading.Lock()
+sensor_times = {"odom": 0.0, "scan": 0.0, "scan_raw": 0.0, "point_cloud_raw": 0.0}
 
 GOAL_STATUS_LABELS = {
     GoalStatus.PENDING: "PENDING",
@@ -154,6 +169,32 @@ def hard_stop() -> None:
         current_w = 0.0
     if cmd_vel_pub is not None:
         send_cmd_to_motor(0.0, 0.0, require_subscriber=False)
+
+
+def remember_sensor(name: str):
+    def callback(_msg) -> None:
+        with sensor_lock:
+            sensor_times[name] = time.time()
+    return callback
+
+
+def on_live_map(msg: OccupancyGrid) -> None:
+    global live_map, live_map_time
+    origin = msg.info.origin
+    snapshot = {
+        "width": int(msg.info.width),
+        "height": int(msg.info.height),
+        "resolution": float(msg.info.resolution),
+        "origin": [
+            float(origin.position.x),
+            float(origin.position.y),
+            quaternion_to_yaw(origin.orientation.z, origin.orientation.w),
+        ],
+        "data": tuple(msg.data),
+    }
+    with live_map_lock:
+        live_map = snapshot
+        live_map_time = time.time()
 
 
 def quaternion_to_yaw(z: float, w: float) -> float:
@@ -399,6 +440,242 @@ def navigation_map_preview(map_name: str) -> dict:
     }
 
 
+def mapping_process_running() -> bool:
+    with mapping_lock:
+        proc = mapping_process
+    return proc is not None and proc.poll() is None
+
+
+def sensor_age(name: str) -> float:
+    with sensor_lock:
+        stamp = sensor_times.get(name, 0.0)
+    return max(0.0, time.time() - stamp) if stamp else -1.0
+
+
+def mapping_sensor_status() -> dict:
+    ages = {name: sensor_age(name) for name in sensor_times}
+    lidar_candidates = [ages[name] for name in ("scan", "scan_raw", "point_cloud_raw") if ages[name] >= 0]
+    ages["lidar"] = min(lidar_candidates) if lidar_candidates else -1.0
+    return ages
+
+
+def mapping_status_response(ok: bool = True, error: str = "") -> dict:
+    with mapping_lock:
+        proc = mapping_process
+        started_at = mapping_started_at
+        paused = mapping_paused
+        remembered_error = mapping_error
+    running = proc is not None and proc.poll() is None
+    with live_map_lock:
+        map_available = live_map is not None
+        map_age = max(0.0, time.time() - live_map_time) if live_map_time else -1.0
+    mode = "mapping_paused" if running and paused else "mapping" if running else "idle"
+    return {
+        "type": "map_status",
+        "ok": ok,
+        "mode": mode,
+        "running": running,
+        "paused": bool(running and paused),
+        "pid": proc.pid if proc is not None and running else None,
+        "elapsed": max(0, int(time.time() - started_at)) if running and started_at else 0,
+        "mapAvailable": map_available and running,
+        "mapAge": map_age if running else -1.0,
+        "algorithm": MAPPING_ALGORITHM,
+        "sensors": mapping_sensor_status(),
+        "logFile": str(MAPPING_LOG_FILE),
+        "error": error or remembered_error,
+        "ts": int(time.time()),
+    }
+
+
+def mapping_preflight() -> None:
+    if cmd_vel_pub is None or cmd_vel_pub.get_num_connections() <= 0:
+        raise RuntimeError("底盘 /cmd_vel 无订阅者，请先恢复 turn_on_wheeltec_robot.service")
+    sensors = mapping_sensor_status()
+    if sensors["odom"] < 0 or sensors["odom"] > 2.0:
+        raise RuntimeError("/odom 数据不可用或已超时，暂不能开始建图")
+    mapping_sources = [sensors[name] for name in ("scan", "point_cloud_raw") if sensors[name] >= 0]
+    if not mapping_sources or min(mapping_sources) > 2.0:
+        raise RuntimeError("建图所需的 /point_cloud_raw 或 /scan 数据不可用，暂不能开始建图")
+
+
+def stop_mapping_process() -> None:
+    global mapping_process, mapping_started_at, mapping_paused
+    hard_stop()
+    with mapping_lock:
+        proc = mapping_process
+        mapping_process = None
+        mapping_started_at = 0.0
+        mapping_paused = False
+    if proc is not None and proc.poll() is None:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGINT)
+            proc.wait(timeout=6)
+        except subprocess.TimeoutExpired:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    with live_map_lock:
+        global live_map, live_map_time
+        live_map = None
+        live_map_time = 0.0
+
+
+def start_mapping_process() -> dict:
+    global mapping_process, mapping_started_at, mapping_paused, mapping_error
+    mapping_preflight()
+    hard_stop()
+    stop_navigation_process()
+    if mapping_process_running():
+        stop_mapping_process()
+    with live_map_lock:
+        global live_map, live_map_time
+        live_map = None
+        live_map_time = 0.0
+    MAPPING_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    log_file = open(MAPPING_LOG_FILE, "ab", buffering=0)
+    command = (
+        f"source {sh_quote(ROS_SETUP)} 2>/dev/null || true; "
+        f"source {sh_quote(LIDAR_SETUP)} 2>/dev/null || true; "
+        f"source {sh_quote(WHEELTEC_SETUP)} 2>/dev/null || true; "
+        f"source {sh_quote(CARTOGRAPHER_SETUP)} 2>/dev/null || true; "
+        "export ROS_MASTER_URI=${ROS_MASTER_URI:-http://localhost:11311}; "
+        "export ROS_IP=${DWC_ROS_IP:-127.0.0.1}; unset ROS_HOSTNAME; "
+        "trap 'kill 0' INT TERM EXIT; "
+        "roslaunch pointcloud_to_laserscan pointcloud_scan.launch & "
+        "converter_pid=$!; "
+        "sleep 1; "
+        "roslaunch cartographer_ros 2d_online.launch & "
+        "mapper_pid=$!; wait $mapper_pid"
+    )
+    proc = subprocess.Popen(
+        ["/bin/bash", "-lc", command],
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
+        preexec_fn=os.setsid,
+        close_fds=True,
+    )
+    log_file.close()
+    with mapping_lock:
+        mapping_process = proc
+        mapping_started_at = time.time()
+        mapping_paused = False
+        mapping_error = ""
+    time.sleep(1.2)
+    if proc.poll() is not None:
+        with mapping_lock:
+            mapping_error = "建图进程启动后立即退出，请查看日志"
+        return mapping_status_response(False)
+    return mapping_status_response(True)
+
+
+def pause_mapping() -> dict:
+    global mapping_paused
+    if not mapping_process_running():
+        return mapping_status_response(False, "当前没有运行中的建图任务")
+    hard_stop()
+    with mapping_lock:
+        mapping_paused = True
+    return mapping_status_response(True)
+
+
+def live_mapping_preview() -> dict:
+    if not mapping_process_running():
+        raise RuntimeError("当前没有运行中的建图任务")
+    with live_map_lock:
+        snapshot = dict(live_map) if live_map is not None else None
+        age = max(0.0, time.time() - live_map_time) if live_map_time else -1.0
+    if not snapshot:
+        raise RuntimeError("尚未收到 /map 数据，请稍候")
+    width = snapshot["width"]
+    height = snapshot["height"]
+    occupancy = snapshot["data"]
+    pixels = bytearray(width * height)
+    output_index = 0
+    for y in range(height - 1, -1, -1):
+        row_offset = y * width
+        for x in range(width):
+            value = occupancy[row_offset + x]
+            pixels[output_index] = 205 if value < 0 else max(0, min(254, 254 - round(value * 2.54)))
+            output_index += 1
+    preview_width, preview_height, stride, preview_pixels = downsample_gray8(
+        width, height, bytes(pixels), MAPPING_PREVIEW_MAX_SIZE
+    )
+    return {
+        "type": "map_live_preview",
+        "ok": True,
+        "width": width,
+        "height": height,
+        "previewWidth": preview_width,
+        "previewHeight": preview_height,
+        "previewScale": stride,
+        "resolution": snapshot["resolution"],
+        "origin": snapshot["origin"],
+        "encoding": "gray8",
+        "maxValue": 255,
+        "age": age,
+        "data": base64.b64encode(preview_pixels).decode("ascii"),
+    }
+
+
+def safe_map_stem(display_name: str) -> str:
+    name = display_name.strip()
+    if name.lower().endswith(".yaml"):
+        name = name[:-5]
+    if not name or len(name) > 64 or name in (".", ".."):
+        raise ValueError("地图名称长度应为 1 到 64 个字符")
+    if any(char in name for char in "/\\\0"):
+        raise ValueError("地图名称不能包含路径分隔符")
+    if any(ord(char) < 32 for char in name):
+        raise ValueError("地图名称包含非法控制字符")
+    target = (SLAM_MAP_DIR / name).resolve()
+    if not path_is_relative_to(target, SLAM_MAP_DIR):
+        raise ValueError("地图名称非法")
+    return name
+
+
+def save_mapping_map(display_name: str) -> dict:
+    if not mapping_process_running():
+        raise RuntimeError("当前没有运行中的建图任务")
+    with live_map_lock:
+        if live_map is None:
+            raise RuntimeError("尚未收到 /map 数据，不能保存")
+    hard_stop()
+    stem = safe_map_stem(display_name)
+    SLAM_MAP_DIR.mkdir(parents=True, exist_ok=True)
+    prefix = (SLAM_MAP_DIR / stem).resolve()
+    yaml_path = prefix.with_suffix(".yaml")
+    pgm_path = prefix.with_suffix(".pgm")
+    if yaml_path.exists() or pgm_path.exists():
+        raise FileExistsError(f"地图已存在: {stem}")
+    command = (
+        f"source {sh_quote(ROS_SETUP)} 2>/dev/null || true; "
+        f"source {sh_quote(WHEELTEC_SETUP)} 2>/dev/null || true; "
+        "export ROS_MASTER_URI=${ROS_MASTER_URI:-http://localhost:11311}; "
+        "export ROS_IP=${DWC_ROS_IP:-127.0.0.1}; unset ROS_HOSTNAME; "
+        f"rosrun map_server map_saver -f {sh_quote(str(prefix))} map:=/map"
+    )
+    result = subprocess.run(["/bin/bash", "-lc", command], capture_output=True, text=True, timeout=20)
+    if result.returncode != 0 or not yaml_path.exists() or not pgm_path.exists():
+        raise RuntimeError((result.stderr or result.stdout or "map_saver 保存失败").strip())
+    summary = map_summary(yaml_path)
+    stop_mapping_process()
+    return summary
+
+
+def delete_navigation_map(map_name: str) -> dict:
+    yaml_path = resolve_map_yaml(map_name)
+    with nav_lock:
+        if nav_process is not None and nav_process.poll() is None and nav_map_name == yaml_path.name:
+            raise RuntimeError("该地图正在导航中，不能删除")
+    summary = map_summary(yaml_path)
+    image_path = Path(summary["image"])
+    yaml_path.unlink()
+    if image_path.exists() and path_is_relative_to(image_path, SLAM_MAP_DIR):
+        image_path.unlink()
+    return {"name": map_name}
+
+
 def navigation_status_response(ok: bool = True, error: str = "") -> dict:
     with nav_lock:
         proc = nav_process
@@ -441,6 +718,8 @@ def stop_navigation_process() -> None:
 
 def start_navigation_process(map_name: str) -> dict:
     global nav_process, nav_map_name
+    if mapping_process_running():
+        raise RuntimeError("建图任务仍在运行，请先保存或放弃本次建图")
     yaml_path = resolve_map_yaml(map_name)
     with nav_lock:
         current = nav_process
@@ -525,7 +804,7 @@ def watchdog_loop() -> None:
 
 
 def execute_command(command: dict) -> dict:
-    global current_v, current_w, last_cmd_time
+    global current_v, current_w, last_cmd_time, mapping_paused
     command_type = command.get("type")
     now = int(time.time())
     if command_type == "ping":
@@ -556,6 +835,9 @@ def execute_command(command: dict) -> dict:
             last_cmd_time = time.time()
             current_v = linear
             current_w = angular
+        if mapping_process_running() and (linear != 0.0 or angular != 0.0):
+            with mapping_lock:
+                mapping_paused = False
         return {
             "type": "ack",
             "ok": True,
@@ -621,6 +903,41 @@ def execute_command(command: dict) -> dict:
             "subscribers": subscriber_count,
             "ts": now,
         }
+    if command_type == "map_status":
+        return mapping_status_response(True)
+    if command_type == "map_start":
+        try:
+            return start_mapping_process()
+        except Exception as exc:
+            return mapping_status_response(False, str(exc))
+    if command_type == "map_pause":
+        try:
+            return pause_mapping()
+        except Exception as exc:
+            return mapping_status_response(False, str(exc))
+    if command_type == "map_discard":
+        try:
+            stop_mapping_process()
+            return mapping_status_response(True)
+        except Exception as exc:
+            return mapping_status_response(False, str(exc))
+    if command_type == "map_live_preview":
+        try:
+            return live_mapping_preview()
+        except Exception as exc:
+            return {"type": "map_live_preview", "ok": False, "error": str(exc), "ts": now}
+    if command_type == "map_save":
+        try:
+            saved_map = save_mapping_map(str(command.get("mapName", "")))
+            return {"type": "map_saved", "ok": True, "map": saved_map, "ts": now}
+        except Exception as exc:
+            return {"type": "map_saved", "ok": False, "error": str(exc), "ts": now}
+    if command_type == "map_delete":
+        try:
+            deleted_map = delete_navigation_map(str(command.get("mapName", "")))
+            return {"type": "map_deleted", "ok": True, "map": deleted_map, "ts": now}
+        except Exception as exc:
+            return {"type": "map_deleted", "ok": False, "error": str(exc), "ts": now}
     return {"type": "ack", "ok": False, "error": "unknown_type", "ts": now}
 
 
@@ -820,6 +1137,11 @@ def init_ros() -> None:
     cmd_vel_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
     simple_goal_pub = rospy.Publisher("/move_base_simple/goal", PoseStamped, queue_size=1)
     rospy.Subscriber("/amcl_pose", PoseWithCovarianceStamped, on_amcl_pose, queue_size=1)
+    rospy.Subscriber("/map", OccupancyGrid, on_live_map, queue_size=1)
+    rospy.Subscriber("/odom", rospy.AnyMsg, remember_sensor("odom"), queue_size=1)
+    rospy.Subscriber("/scan", rospy.AnyMsg, remember_sensor("scan"), queue_size=1)
+    rospy.Subscriber("/scan_raw", rospy.AnyMsg, remember_sensor("scan_raw"), queue_size=1)
+    rospy.Subscriber("/point_cloud_raw", rospy.AnyMsg, remember_sensor("point_cloud_raw"), queue_size=1)
     rospy.Subscriber("/move_base/status", GoalStatusArray, on_move_base_status, queue_size=1)
     if MoveBaseActionResult is not None:
         rospy.Subscriber("/move_base/result", MoveBaseActionResult, on_move_base_result, queue_size=1)
