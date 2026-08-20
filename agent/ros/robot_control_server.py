@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Dict, Tuple
 
 import rospy
+import tf2_ros
 import websockets
 from actionlib_msgs.msg import GoalStatus, GoalStatusArray
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
@@ -67,6 +68,8 @@ current_v = 0.0
 current_w = 0.0
 cmd_vel_pub = None
 simple_goal_pub = None
+tf_buffer = None
+tf_listener = None
 nav_lock = threading.Lock()
 nav_process = None
 nav_map_name = None
@@ -278,6 +281,32 @@ def current_navigation_pose() -> dict:
         return pose
 
 
+def current_mapping_pose() -> dict:
+    if tf_buffer is None:
+        return {}
+    for child_frame in ("base_footprint", "base_link"):
+        try:
+            transform = tf_buffer.lookup_transform(
+                "map", child_frame, rospy.Time(0), rospy.Duration(0.05)
+            )
+        except (
+            tf2_ros.LookupException,
+            tf2_ros.ConnectivityException,
+            tf2_ros.ExtrapolationException,
+        ):
+            continue
+        translation = transform.transform.translation
+        rotation = transform.transform.rotation
+        return {
+            "frame_id": transform.header.frame_id or "map",
+            "child_frame_id": child_frame,
+            "x": float(translation.x),
+            "y": float(translation.y),
+            "yaw": quaternion_to_yaw(rotation.z, rotation.w),
+        }
+    return {}
+
+
 def current_navigation_goal_status() -> dict:
     with nav_goal_lock:
         if nav_goal_status is None:
@@ -481,6 +510,7 @@ def mapping_status_response(ok: bool = True, error: str = "") -> dict:
         "mapAvailable": map_available and running,
         "mapAge": map_age if running else -1.0,
         "algorithm": MAPPING_ALGORITHM,
+        "pose": current_mapping_pose() if running else {},
         "sensors": mapping_sensor_status(),
         "logFile": str(MAPPING_LOG_FILE),
         "error": error or remembered_error,
@@ -614,6 +644,7 @@ def live_mapping_preview() -> dict:
         "encoding": "gray8",
         "maxValue": 255,
         "age": age,
+        "pose": current_mapping_pose(),
         "data": base64.b64encode(preview_pixels).decode("ascii"),
     }
 
@@ -1131,11 +1162,13 @@ async def media_loop(url: str, token: str) -> None:
 
 
 def init_ros() -> None:
-    global cmd_vel_pub, simple_goal_pub
+    global cmd_vel_pub, simple_goal_pub, tf_buffer, tf_listener
     configure_local_ros_network()
     rospy.init_node("devices_web_control_agent", anonymous=False, disable_signals=True)
     cmd_vel_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
     simple_goal_pub = rospy.Publisher("/move_base_simple/goal", PoseStamped, queue_size=1)
+    tf_buffer = tf2_ros.Buffer(cache_time=rospy.Duration(10.0))
+    tf_listener = tf2_ros.TransformListener(tf_buffer)
     rospy.Subscriber("/amcl_pose", PoseWithCovarianceStamped, on_amcl_pose, queue_size=1)
     rospy.Subscriber("/map", OccupancyGrid, on_live_map, queue_size=1)
     rospy.Subscriber("/odom", rospy.AnyMsg, remember_sensor("odom"), queue_size=1)

@@ -39,7 +39,62 @@ function mapPixel(gray) {
   return [Math.round(8 + ratio * 20), Math.round(28 + ratio * 95), Math.round(45 + ratio * 100)]
 }
 
-function MapPreviewCanvas({ preview, emptyText }) {
+function mapToPreview(preview, x, y) {
+  const [originX = 0, originY = 0, originYaw = 0] = preview.origin || []
+  const previewScale = Number(preview.previewScale || 1)
+  const resolution = Number(preview.resolution || 0)
+  if (!resolution) return null
+  const dx = Number(x) - originX
+  const dy = Number(y) - originY
+  const cos = Math.cos(originYaw)
+  const sin = Math.sin(originYaw)
+  const localX = dx * cos + dy * sin
+  const localY = -dx * sin + dy * cos
+  return {
+    px: localX / resolution / previewScale,
+    py: (preview.height - localY / resolution) / previewScale,
+    yaw: Number.isFinite(Number(originYaw)) ? Number(originYaw) : 0,
+  }
+}
+
+function drawRobotPose(context, preview, pose, left, top, scale) {
+  if (!Number.isFinite(pose?.x) || !Number.isFinite(pose?.y)) return
+  const point = mapToPreview(preview, pose.x, pose.y)
+  if (!point) return
+  const x = left + point.px * scale
+  const y = top + point.py * scale
+  const yaw = (Number(pose.yaw) || 0) - point.yaw
+
+  context.save()
+  context.translate(x, y)
+  context.rotate(-yaw)
+  context.shadowColor = 'rgba(34, 197, 94, .75)'
+  context.shadowBlur = 12
+  context.fillStyle = '#22c55e'
+  context.strokeStyle = '#ffffff'
+  context.lineWidth = 2
+  context.beginPath()
+  context.moveTo(18, 0)
+  context.lineTo(-10, -9)
+  context.lineTo(-6, 0)
+  context.lineTo(-10, 9)
+  context.closePath()
+  context.fill()
+  context.stroke()
+  context.restore()
+
+  context.save()
+  context.font = '600 12px sans-serif'
+  context.textAlign = 'center'
+  context.fillStyle = '#dcfce7'
+  context.strokeStyle = 'rgba(1, 8, 18, .9)'
+  context.lineWidth = 4
+  context.strokeText('车辆', x, y - 18)
+  context.fillText('车辆', x, y - 18)
+  context.restore()
+}
+
+function MapPreviewCanvas({ preview, pose, emptyText }) {
   const canvasRef = useRef(null)
 
   useEffect(() => {
@@ -73,14 +128,17 @@ function MapPreviewCanvas({ preview, emptyText }) {
       const scale = Math.min(rect.width / source.width, rect.height / source.height) * 0.94
       const width = source.width * scale
       const height = source.height * scale
+      const left = (rect.width - width) / 2
+      const top = (rect.height - height) / 2
       context.imageSmoothingEnabled = false
-      context.drawImage(source, (rect.width - width) / 2, (rect.height - height) / 2, width, height)
+      context.drawImage(source, left, top, width, height)
+      drawRobotPose(context, preview, pose, left, top, scale)
     }
     draw()
     const observer = new ResizeObserver(draw)
     observer.observe(canvas)
     return () => observer.disconnect()
-  }, [preview])
+  }, [pose, preview])
 
   return preview?.data
     ? <canvas ref={canvasRef} className="indoor-map-canvas" aria-label="地图预览" />
@@ -401,6 +459,9 @@ function IndoorMapManagement() {
 
   const lidarAge = mappingStatus?.sensors?.lidar
   const odomAge = mappingStatus?.sensors?.odom
+  const mappingPose = Number.isFinite(mappingStatus?.pose?.x) && Number.isFinite(mappingStatus?.pose?.y)
+    ? mappingStatus.pose
+    : livePreview?.pose
 
   return (
     <div className="patrol-page indoor-map-page">
@@ -431,10 +492,11 @@ function IndoorMapManagement() {
             </span>
           </div>
           <div className="indoor-map-preview-wrap">
-            <MapPreviewCanvas preview={livePreview} emptyText={mappingRunning ? '正在等待第一帧地图…' : '开始建图后显示实时地图'} />
+            <MapPreviewCanvas preview={livePreview} pose={mappingPose} emptyText={mappingRunning ? '正在等待第一帧地图…' : '开始建图后显示实时地图'} />
             <div className="indoor-map-overlay">
               <span>算法 {mappingStatus?.algorithm || 'cartographer'}</span>
               <span>时长 {formatDuration(mappingStatus?.elapsed)}</span>
+              <span>车辆 {Number.isFinite(mappingPose?.x) ? `${mappingPose.x.toFixed(2)}, ${mappingPose.y.toFixed(2)}` : '定位中'}</span>
               <span>里程计 {odomAge >= 0 ? `${odomAge.toFixed(1)}s` : '--'}</span>
               <span>雷达 {lidarAge >= 0 ? `${lidarAge.toFixed(1)}s` : '--'}</span>
             </div>
