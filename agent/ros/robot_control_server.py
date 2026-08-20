@@ -312,9 +312,37 @@ def current_navigation_pose() -> dict:
     with nav_pose_lock:
         if nav_pose is None:
             return {}
-        pose = dict(nav_pose)
-        pose["age"] = max(0.0, time.time() - nav_pose_time)
-        return pose
+        amcl_pose = dict(nav_pose)
+        amcl_age = max(0.0, time.time() - nav_pose_time)
+    if tf_buffer is not None:
+        for child_frame in ("base_footprint", "base_link"):
+            try:
+                transform = tf_buffer.lookup_transform(
+                    "map", child_frame, rospy.Time(0), rospy.Duration(0.05)
+                )
+            except (
+                tf2_ros.LookupException,
+                tf2_ros.ConnectivityException,
+                tf2_ros.ExtrapolationException,
+            ):
+                continue
+            translation = transform.transform.translation
+            rotation = transform.transform.rotation
+            stamp = transform.header.stamp.to_sec()
+            return {
+                **amcl_pose,
+                "frame_id": transform.header.frame_id or "map",
+                "child_frame_id": child_frame,
+                "x": float(translation.x),
+                "y": float(translation.y),
+                "yaw": quaternion_to_yaw(rotation.z, rotation.w),
+                "stamp": stamp,
+                "age": max(0.0, time.time() - stamp) if stamp > 0 else 0.0,
+                "amclPoseAge": amcl_age,
+            }
+    amcl_pose["age"] = amcl_age
+    amcl_pose["amclPoseAge"] = amcl_age
+    return amcl_pose
 
 
 def localization_pose_path(map_name: str) -> Path:
@@ -396,7 +424,7 @@ def localization_status() -> dict:
         global_active = global_localization_active
         global_started = global_localization_started_at
     has_reference = source in ("saved", "manual", "global")
-    settled = has_reference and time.time() - seeded_at >= AMCL_SETTLE_SEC and pose_updates >= 3
+    settled = has_reference and time.time() - seeded_at >= AMCL_SETTLE_SEC and pose_updates >= 1
     valid = bool(valid and has_reference and settled)
     if not has_reference:
         last_error = "尚未提供该地图的初始位姿"
@@ -889,6 +917,17 @@ def cancel_navigation_goals() -> None:
     cancel_goal_pub.publish(GoalID())
 
 
+def request_nomotion_update_after_settle() -> None:
+    time.sleep(AMCL_SETTLE_SEC + 0.2)
+    if nomotion_update_client is None or rospy.is_shutdown():
+        return
+    try:
+        rospy.wait_for_service("/request_nomotion_update", timeout=1.0)
+        nomotion_update_client()
+    except Exception as exc:
+        log.warning("请求 AMCL 静止更新失败: %s", exc)
+
+
 def publish_initial_pose(x: float, y: float, yaw: float, source: str = "manual") -> dict:
     global localization_source, localization_seeded_at, localization_pose_updates
     global localization_restore_state, localization_restore_error
@@ -923,12 +962,11 @@ def publish_initial_pose(x: float, y: float, yaw: float, source: str = "manual")
         pose.header.stamp = rospy.Time.now()
         initial_pose_pub.publish(pose)
         time.sleep(0.08)
-    if nomotion_update_client is not None:
-        try:
-            rospy.wait_for_service("/request_nomotion_update", timeout=1.0)
-            nomotion_update_client()
-        except Exception as exc:
-            log.warning("请求 AMCL 静止更新失败: %s", exc)
+    threading.Thread(
+        target=request_nomotion_update_after_settle,
+        name="amcl-nomotion-update",
+        daemon=True,
+    ).start()
     return {
         "accepted": True,
         "source": source,
