@@ -283,8 +283,8 @@ export default function PatrolPoints() {
     <div className="patrol-page">
       <div className="patrol-header">
         <div className="patrol-header-left">
-          <h1>巡检点位</h1>
-          <span className="patrol-subtitle">在区域内标记关键巡检位置</span>
+          <h1>室外巡检点位</h1>
+          <span className="patrol-subtitle">使用经纬度在园区区域内标记室外巡检位置</span>
         </div>
         <div className="patrol-header-actions">
           <ThemedSelect

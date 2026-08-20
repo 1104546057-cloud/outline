@@ -293,8 +293,8 @@ export default function PatrolAreas() {
       {/* 页头 */}
       <div className="patrol-header">
         <div className="patrol-header-left">
-          <h1>巡检区域</h1>
-          <span className="patrol-subtitle">在地图上框选区域范围，定义巡检边界</span>
+          <h1>室外巡检区域</h1>
+          <span className="patrol-subtitle">在园区地图上框选区域范围，定义室外巡检边界</span>
         </div>
         <div className="patrol-header-actions">
           {drawing ? (

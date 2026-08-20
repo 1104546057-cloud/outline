@@ -78,12 +78,19 @@ function App() {
           <Route path="cluster" element={<ClusterManagement />} />
           <Route path="cluster-control" element={<ClusterControl />} />
           <Route path="live-video" element={<LiveVideo />} />
-          <Route path="patrol/areas" element={<PatrolAreas />} />
-          <Route path="patrol/points" element={<PatrolPoints />} />
-          <Route path="patrol/routes" element={<PatrolRoutes />} />
+          <Route path="patrol" element={<Navigate to="/patrol/indoor" replace />} />
+          <Route path="patrol/indoor" element={<Navigate to="/patrol/indoor/navigation" replace />} />
+          <Route path="patrol/indoor/navigation" element={<PatrolNavigation />} />
+          <Route path="patrol/outdoor" element={<Navigate to="/patrol/outdoor/areas" replace />} />
+          <Route path="patrol/outdoor/areas" element={<PatrolAreas />} />
+          <Route path="patrol/outdoor/points" element={<PatrolPoints />} />
+          <Route path="patrol/outdoor/routes" element={<PatrolRoutes />} />
           <Route path="patrol/tasks" element={<PatrolTasks />} />
-          <Route path="patrol/navigation" element={<PatrolNavigation />} />
           <Route path="patrol/results" element={<PatrolResults />} />
+          <Route path="patrol/areas" element={<Navigate to="/patrol/outdoor/areas" replace />} />
+          <Route path="patrol/points" element={<Navigate to="/patrol/outdoor/points" replace />} />
+          <Route path="patrol/routes" element={<Navigate to="/patrol/outdoor/routes" replace />} />
+          <Route path="patrol/navigation" element={<Navigate to="/patrol/indoor/navigation" replace />} />
           <Route path="video-analysis" element={<VideoAnalysis />} />
           <Route path="statistics-analysis" element={<PlaceholderPage title="数据统计研判" description="综合数据统计与趋势研判模块正在建设中" icon="◇" />} />
         </Route>

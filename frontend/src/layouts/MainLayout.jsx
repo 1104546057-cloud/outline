@@ -6,17 +6,25 @@ import '../styles/MainLayout.css'
 const primaryNav = [
   { label: '校园巡逻管控', path: '/dashboard', match: ['/dashboard', '/device-cockpit'] },
   { label: '视频识别分析', path: '/video-analysis', match: ['/video-analysis'] },
-  { label: '巡检管理', path: '/patrol/navigation', match: ['/patrol'] },
+  { label: '巡检管理', path: '/patrol/indoor', match: ['/patrol'] },
   { label: '数据统计研判', path: '/statistics-analysis', match: ['/statistics-analysis'] },
 ]
 
-const patrolNavItems = [
-  { label: '巡检区域', path: '/patrol/areas', icon: 'area' },
-  { label: '巡检点位', path: '/patrol/points', icon: 'pin' },
-  { label: '巡检线路', path: '/patrol/routes', icon: 'route' },
-  { label: '巡检任务', path: '/patrol/tasks', icon: 'task' },
-  { label: '巡检导航', path: '/patrol/navigation', icon: 'navigation' },
-  { label: '巡航成果', path: '/patrol/results', icon: 'gallery' },
+const patrolModuleItems = [
+  { label: '室内巡检', path: '/patrol/indoor', icon: 'navigation' },
+  { label: '室外巡检', path: '/patrol/outdoor', icon: 'area' },
+  { label: '任务中心', path: '/patrol/tasks', icon: 'task' },
+  { label: '巡检成果', path: '/patrol/results', icon: 'gallery' },
+]
+
+const indoorPatrolItems = [
+  { label: '室内实时导航', path: '/patrol/indoor/navigation', icon: 'navigation' },
+]
+
+const outdoorPatrolItems = [
+  { label: '巡检区域', path: '/patrol/outdoor/areas', icon: 'area' },
+  { label: '室外点位', path: '/patrol/outdoor/points', icon: 'pin' },
+  { label: '室外线路', path: '/patrol/outdoor/routes', icon: 'route' },
 ]
 
 const settingsGroups = [
@@ -76,6 +84,11 @@ function MainLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const showPatrolNav = location.pathname.startsWith('/patrol')
+  const patrolContextItems = location.pathname.startsWith('/patrol/indoor')
+    ? indoorPatrolItems
+    : location.pathname.startsWith('/patrol/outdoor') ? outdoorPatrolItems : []
+  const patrolContextTitle = location.pathname.startsWith('/patrol/indoor') ? '室内巡检' : '室外巡检'
+  const showPatrolContextNav = patrolContextItems.length > 0
   const user = useMemo(() => {
     try { return JSON.parse(localStorage.getItem('user') || '{}') } catch { return {} }
   }, [])
@@ -114,7 +127,11 @@ function MainLayout() {
   const timeText = currentTime.toLocaleTimeString('zh-CN', { hour12: false })
 
   return (
-    <div className={`main-layout ${showPatrolNav ? 'has-patrol-nav' : ''}`} id="main-layout">
+    <div className={[
+      'main-layout',
+      showPatrolNav ? 'has-patrol-nav' : '',
+      showPatrolContextNav ? 'has-patrol-context-nav' : '',
+    ].filter(Boolean).join(' ')} id="main-layout">
       <header className="tech-header">
         <div className="tech-header-grid" />
         <div className="system-clock">
@@ -191,9 +208,23 @@ function MainLayout() {
         <nav className="patrol-module-nav" aria-label="巡检管理二级导航">
           <span className="patrol-module-title">巡检管理</span>
           <div className="patrol-module-links">
-            {patrolNavItems.map(item => (
+            {patrolModuleItems.map(item => (
               <NavLink key={item.path} to={item.path} className="patrol-module-link">
                 <AppIcon name={item.icon} size={16} />
+                <span>{item.label}</span>
+              </NavLink>
+            ))}
+          </div>
+        </nav>
+      ) : null}
+
+      {showPatrolContextNav ? (
+        <nav className="patrol-context-nav" aria-label={`${patrolContextTitle}功能导航`}>
+          <span className="patrol-context-title">{patrolContextTitle}</span>
+          <div className="patrol-context-links">
+            {patrolContextItems.map(item => (
+              <NavLink key={item.path} to={item.path} className="patrol-context-link">
+                <AppIcon name={item.icon} size={14} />
                 <span>{item.label}</span>
               </NavLink>
             ))}

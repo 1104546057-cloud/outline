@@ -345,8 +345,8 @@ export default function PatrolTasks() {
     <div className="patrol-page">
       <div className="patrol-header">
         <div className="patrol-header-left">
-          <h1>巡检任务</h1>
-          <span className="patrol-subtitle">创建并监控无人设备的巡检执行任务</span>
+          <h1>任务中心</h1>
+          <span className="patrol-subtitle">集中创建、查看并管理巡检执行任务</span>
         </div>
         <div className="patrol-header-actions">
           <button className="patrol-btn patrol-btn-secondary" onClick={() => navigate('/patrol/areas')}>巡检区域</button>

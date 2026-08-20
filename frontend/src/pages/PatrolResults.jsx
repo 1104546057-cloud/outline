@@ -180,7 +180,7 @@ export default function PatrolResults() {
       <header className="pr-header">
         <div>
           <span className="pr-kicker">PATROL ARCHIVE</span>
-          <h1>巡航成果</h1>
+          <h1>巡检成果</h1>
           <p>集中查看巡航图片、视频、GPS 轨迹与 AI 分析结果</p>
         </div>
         <button className="pr-refresh" type="button" onClick={() => setRefreshKey(key => key + 1)} disabled={loading}>

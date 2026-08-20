@@ -319,8 +319,8 @@ export default function PatrolRoutes() {
     <div className="patrol-page">
       <div className="patrol-header">
         <div className="patrol-header-left">
-          <h1>巡检线路</h1>
-          <span className="patrol-subtitle">串联多个点位规划巡检路径，首尾自动闭环</span>
+          <h1>室外巡检线路</h1>
+          <span className="patrol-subtitle">串联经纬度点位规划室外巡检路径，首尾自动闭环</span>
         </div>
         <div className="patrol-header-actions">
           <ThemedSelect

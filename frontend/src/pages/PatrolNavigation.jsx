@@ -716,8 +716,8 @@ export default function PatrolNavigation() {
     <div className="patrol-page patrol-navigation-page">
       <div className="patrol-header">
         <div className="patrol-header-left">
-          <h1>巡检导航</h1>
-          <span className="patrol-subtitle">SLAM 地图目标点导航</span>
+          <h1>室内实时导航</h1>
+          <span className="patrol-subtitle">室内 SLAM 地图定位与目标点导航</span>
         </div>
         <div className="patrol-header-actions">
           <ThemedSelect
