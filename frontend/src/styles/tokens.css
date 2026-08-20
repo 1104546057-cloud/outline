@@ -1,0 +1,197 @@
+/* ============================================================
+   Design Tokens — 智慧校园巡逻管理系统
+   全局视觉令牌：颜色、间距、圆角、阴影、边框、字体、过渡
+   ============================================================ */
+
+:root {
+  /* ---- 基础背景 ---- */
+  --c-bg-base: #020817;
+  --c-bg-deep: #01122a;
+  --c-bg-panel: rgba(5, 23, 50, .92);
+  --c-bg-panel-strong: rgba(7, 31, 65, .97);
+  --c-bg-panel-soft: rgba(9, 44, 78, .64);
+  --c-bg-card: rgba(7, 31, 65, .94);
+  --c-bg-subtle: rgba(8, 48, 82, .62);
+  --c-bg-hover: rgba(13, 78, 123, .62);
+  --c-bg-input: rgba(3, 27, 55, .86);
+  --c-bg-input-hover: #052544;
+  --c-bg-overlay: rgba(0, 6, 18, .78);
+
+  /* ---- 主色（青蓝系） ---- */
+  --c-primary: #2bd2ff;
+  --c-primary-light: #62ddff;
+  --c-primary-dark: #168dd2;
+  --c-primary-bg: rgba(43, 210, 255, .1);
+  --c-primary-border: rgba(43, 210, 255, .3);
+  --c-blue: #2385ff;
+
+  /* ---- 边框 ---- */
+  --c-border: rgba(45, 169, 229, .34);
+  --c-border-light: rgba(45, 146, 199, .2);
+  --c-border-soft: rgba(45, 146, 199, .2);
+  --c-border-focus: #2bd2ff;
+  --c-border-input: rgba(58, 158, 207, .4);
+
+  /* ---- 文字层级 ---- */
+  --c-text-primary: #dff5ff;
+  --c-text: #d8f0fb;
+  --c-text-secondary: #8db4c8;
+  --c-text-muted: #527890;
+  --c-text-placeholder: #3e667e;
+  --c-text-disabled: #55788d;
+  --c-text-invert: #020817;
+
+  /* ---- 功能色 ---- */
+  --c-success: #31e3a1;
+  --c-success-bg: rgba(49, 227, 161, .08);
+  --c-success-border: rgba(49, 227, 161, .3);
+  --c-warning: #ffb64a;
+  --c-warning-bg: rgba(255, 182, 74, .08);
+  --c-warning-border: rgba(255, 182, 74, .35);
+  --c-danger: #ff5b72;
+  --c-danger-bg: rgba(255, 91, 114, .08);
+  --c-danger-border: rgba(255, 91, 114, .35);
+  --c-info: #61b8ff;
+  --c-info-bg: rgba(55, 149, 255, .08);
+  --c-info-border: rgba(55, 149, 255, .35);
+  --c-neutral: #8397a5;
+  --c-neutral-bg: rgba(106, 127, 143, .1);
+  --c-neutral-border: rgba(112, 140, 158, .25);
+
+  /* ---- 间距（4px 基线） ---- */
+  --sp-0: 0;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+
+  /* ---- 圆角 ---- */
+  --r-xs: 2px;
+  --r-sm: 3px;
+  --r-md: 4px;
+  --r-lg: 6px;
+  --r-xl: 8px;
+  --r-full: 999px;
+
+  /* ---- 阴影 ---- */
+  --sh-sm: 0 3px 12px rgba(0, 0, 0, .2);
+  --sh-md: 0 8px 24px rgba(0, 0, 0, .28);
+  --sh-lg: 0 14px 38px rgba(0, 0, 0, .36);
+  --sh-xl: 0 22px 70px rgba(0, 0, 0, .55);
+  --sh-primary: 0 0 20px rgba(43, 210, 255, .25);
+  --sh-glow-cyan: 0 0 12px rgba(43, 210, 255, .28);
+  --sh-glow-success: 0 0 12px rgba(49, 227, 161, .22);
+  --sh-glow-danger: 0 0 18px rgba(255, 64, 94, .22);
+
+  /* ---- 字体 ---- */
+  --font-sans: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+  --font-mono: 'Courier New', 'JetBrains Mono', 'Consolas', monospace;
+  --fs-page-title: 20px;
+  --fs-page-subtitle: 11px;
+  --fs-section-title: 15px;
+  --fs-body: 14px;
+  --fs-body-sm: 13px;
+  --fs-caption: 11px;
+  --fs-label: 12px;
+  --fs-metric: 24px;
+  --fs-metric-sm: 18px;
+  --lh-tight: 1.2;
+  --lh-normal: 1.5;
+  --lh-relaxed: 1.65;
+
+  /* ---- 过渡 ---- */
+  --t-fast: .15s ease;
+  --t-base: .2s ease;
+  --t-slow: .3s ease;
+
+  /* ---- z-index 层级 ---- */
+  --z-base: 1;
+  --z-content: 10;
+  --z-header: 500;
+  --z-dropdown: 1000;
+  --z-modal: 2000;
+  --z-toast: 3000;
+
+  /* ---- 布局 ---- */
+  --header-height: 92px;
+  --content-max-width: none;
+  --content-padding-x: 22px;
+  --content-padding-y: 18px;
+  --min-page-width: 1180px;
+}
+
+/* ============================================================
+   全局基础重置（仅补充已有样式未覆盖的部分）
+   ============================================================ */
+
+/* 全局键盘焦点样式 */
+:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+  border-radius: var(--r-sm);
+}
+
+/* 全局 disabled 状态 */
+button:disabled,
+input:disabled,
+textarea:disabled,
+select:disabled {
+  cursor: not-allowed;
+  opacity: .72;
+}
+
+/* 全局滚动条样式（深色系） */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(65, 175, 222, .35) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: var(--r-full);
+  background: rgba(65, 175, 222, .35);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(65, 175, 222, .55);
+}
+
+/* 选中文字颜色 */
+::selection {
+  background: rgba(43, 210, 255, .25);
+  color: #fff;
+}
+
+/* 全局过渡 — 所有交互元素默认平滑过渡 */
+button,
+a,
+input,
+textarea,
+select,
+[role="button"] {
+  transition: color var(--t-base), border-color var(--t-base), background-color var(--t-base), box-shadow var(--t-base), transform var(--t-base), opacity var(--t-base);
+}

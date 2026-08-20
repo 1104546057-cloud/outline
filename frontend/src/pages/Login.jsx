@@ -1,0 +1,324 @@
+/* eslint-disable react/prop-types */
+import { useEffect, useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
+import '../styles/Login.css'
+
+function LoginIcon({ name, size = 19 }) {
+  const paths = {
+    user: <><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></>,
+    lock: <><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></>,
+    eye: <><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></>,
+    eyeOff: <><path d="m3 3 18 18M10.6 6.2A10.8 10.8 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-3 3.7M6.2 6.2C3.5 8 2 12 2 12s3.5 6 10 6c1.3 0 2.5-.2 3.5-.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></>,
+    shield: <><path d="M12 3 4.5 6v5.5c0 4.7 3.1 7.8 7.5 9.5 4.4-1.7 7.5-4.8 7.5-9.5V6L12 3Z"/><path d="m9 12 2 2 4-5"/></>,
+    alert: <><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></>,
+    refresh: <><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></>,
+    captcha: <><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M7 10h.01M12 10h.01M17 10h.01M7 14h10"/></>,
+  }
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>
+}
+
+function Login() {
+  const [mode, setMode] = useState('login')
+  const [username, setUsername] = useState('')
+  const [nickname, setNickname] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [rememberMe, setRememberMe] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [modalType, setModalType] = useState(null)
+
+  const [captchaId, setCaptchaId] = useState('')
+  const [captchaImage, setCaptchaImage] = useState('')
+  const [captchaCode, setCaptchaCode] = useState('')
+  const [captchaLoading, setCaptchaLoading] = useState(false)
+
+  const navigate = useNavigate()
+
+  const fetchCaptcha = useCallback(async () => {
+    setCaptchaLoading(true)
+    setCaptchaCode('')
+    try {
+      const res = await fetch('/api/auth/captcha')
+      const data = await res.json()
+      setCaptchaId(data.captcha_id)
+      setCaptchaImage(data.image)
+    } catch {
+      // 忽略网络错误，保持旧验证码
+    } finally {
+      setCaptchaLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    const saved = localStorage.getItem('dwc_remember')
+    if (saved) {
+      try {
+        const data = JSON.parse(saved)
+        setUsername(data.username || '')
+        setPassword(data.password || '')
+        setRememberMe(true)
+      } catch {
+        localStorage.removeItem('dwc_remember')
+      }
+    }
+    fetchCaptcha()
+  }, [fetchCaptcha])
+
+  const handleLogin = async event => {
+    event.preventDefault()
+    setError('')
+    setSuccess('')
+    if (!username.trim()) { setError('请输入用户名'); return }
+    if (!password.trim()) { setError('请输入密码'); return }
+    if (!captchaCode.trim()) { setError('请输入验证码'); return }
+    setIsLoading(true)
+
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: username.trim(),
+          password,
+          captcha_id: captchaId,
+          captcha_code: captchaCode.trim(),
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        setError(data.detail || '用户名或密码错误')
+        // 验证失败时刷新验证码
+        fetchCaptcha()
+        return
+      }
+
+      localStorage.setItem('user', JSON.stringify({ username: data.username, nickname: data.nickname, token: data.token }))
+      if (rememberMe) localStorage.setItem('dwc_remember', JSON.stringify({ username: username.trim(), password }))
+      else localStorage.removeItem('dwc_remember')
+      navigate('/dashboard')
+    } catch {
+      setError('无法连接到服务器，请检查后端服务是否启动')
+      fetchCaptcha()
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const switchMode = nextMode => {
+    setMode(nextMode)
+    setError('')
+    setSuccess('')
+    setPassword('')
+    setConfirmPassword('')
+    setCaptchaCode('')
+  }
+
+  const handleRegister = async event => {
+    event.preventDefault()
+    setError('')
+    setSuccess('')
+
+    const normalizedUsername = username.trim()
+    const normalizedNickname = nickname.trim()
+
+    if (!/^[A-Za-z0-9_]{3,32}$/.test(normalizedUsername)) { setError('用户名需为 3-32 位字母、数字或下划线'); return }
+    if (password.trim().length === 0) { setError('密码不能全为空白'); return }
+    if (password.length < 6) { setError('密码至少需要 6 个字符'); return }
+    if (password !== confirmPassword) { setError('两次输入的密码不一致'); return }
+    if (new TextEncoder().encode(password).length > 72) { setError('密码不能超过 72 字节'); return }
+    if (!captchaCode.trim()) { setError('请输入验证码'); return }
+    setIsLoading(true)
+
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: normalizedUsername,
+          password,
+          nickname: normalizedNickname || null,
+          captcha_id: captchaId,
+          captcha_code: captchaCode.trim(),
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        setError(data.detail || '注册失败，请稍后重试')
+        fetchCaptcha()
+        return
+      }
+
+      setMode('login')
+      setUsername(data.username)
+      setNickname('')
+      setPassword('')
+      setConfirmPassword('')
+      setCaptchaCode('')
+      setSuccess(data.message || '注册成功，请使用新账号登录')
+      fetchCaptcha()
+    } catch {
+      setError('无法连接到服务器，请检查后端服务是否启动')
+      fetchCaptcha()
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <div className="login-page" id="login-page">
+      <div className="login-scene" aria-hidden="true">
+        <span className="login-grid" />
+        <span className="login-orbit orbit-one" />
+        <span className="login-orbit orbit-two" />
+        <span className="login-beam beam-left" />
+        <span className="login-beam beam-right" />
+        <span className="campus-silhouette" />
+      </div>
+
+      <header className="login-system-title">
+        <span className="title-line left" />
+        <div>
+          <small>SMART CAMPUS PATROL MANAGEMENT SYSTEM</small>
+          <h1>智慧校园巡逻管理系统</h1>
+        </div>
+        <span className="title-line right" />
+      </header>
+
+      <main className="login-stage">
+        <section className="login-console">
+          <span className="console-corner corner-tl" /><span className="console-corner corner-tr" />
+          <span className="console-corner corner-bl" /><span className="console-corner corner-br" />
+          <div className="console-glow" />
+
+          <div className="login-console-head">
+            <span className="head-wing left" />
+            <div className="console-title">
+              <LoginIcon name="shield" size={21} />
+              <div><h2>{mode === 'login' ? '用户登录' : '账号注册'}</h2><small>{mode === 'login' ? 'USER AUTHENTICATION' : 'ACCOUNT REGISTRATION'}</small></div>
+            </div>
+            <span className="head-wing right" />
+          </div>
+
+          <form className={`tech-login-form ${mode === 'register' ? 'register-form' : ''}`} onSubmit={mode === 'login' ? handleLogin : handleRegister} id="login-form">
+            {error && <div className="login-error" id="error-message"><LoginIcon name="alert" size={17} /><span>{error}</span></div>}
+            {success && <div className="login-success" role="status"><LoginIcon name="shield" size={17} /><span>{success}</span></div>}
+
+            <label className="tech-field" htmlFor="username">
+              <span className="field-icon"><LoginIcon name="user" /></span>
+              <span className="field-divider" />
+              <input id="username" type="text" placeholder="请输入用户名" value={username} onChange={event => setUsername(event.target.value)} autoComplete="username" disabled={isLoading} autoFocus />
+              <i className="field-focus-line" />
+            </label>
+
+            <label className="tech-field" htmlFor="password">
+              <span className="field-icon"><LoginIcon name="lock" /></span>
+              <span className="field-divider" />
+              <input id="password" type={showPassword ? 'text' : 'password'} placeholder="请输入密码" value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" disabled={isLoading} />
+              <button type="button" className="password-toggle" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? '隐藏密码' : '显示密码'}>
+                <LoginIcon name={showPassword ? 'eyeOff' : 'eye'} size={17} />
+              </button>
+              <i className="field-focus-line" />
+            </label>
+
+            {mode === 'register' && (
+              <>
+                <label className="tech-field" htmlFor="nickname">
+                  <span className="field-icon"><LoginIcon name="user" /></span>
+                  <span className="field-divider" />
+                  <input id="nickname" type="text" placeholder="请输入昵称（可选）" value={nickname} onChange={event => setNickname(event.target.value)} autoComplete="nickname" maxLength={100} disabled={isLoading} />
+                  <i className="field-focus-line" />
+                </label>
+
+                <label className="tech-field" htmlFor="confirm-password">
+                  <span className="field-icon"><LoginIcon name="lock" /></span>
+                  <span className="field-divider" />
+                  <input id="confirm-password" type={showPassword ? 'text' : 'password'} placeholder="请再次输入密码" value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} autoComplete="new-password" disabled={isLoading} />
+                  <i className="field-focus-line" />
+                </label>
+              </>
+            )}
+
+            {/* 验证码行 */}
+            <div className="captcha-row">
+              <label className="tech-field captcha-input-field" htmlFor="captcha">
+                <span className="field-icon"><LoginIcon name="captcha" /></span>
+                <span className="field-divider" />
+                <input
+                  id="captcha"
+                  type="text"
+                  placeholder="请输入验证码"
+                  value={captchaCode}
+                  onChange={event => setCaptchaCode(event.target.value)}
+                  autoComplete="off"
+                  maxLength={6}
+                  disabled={isLoading}
+                />
+                <i className="field-focus-line" />
+              </label>
+
+              <button
+                type="button"
+                className="captcha-img-btn"
+                onClick={fetchCaptcha}
+                disabled={captchaLoading}
+                title="点击刷新验证码"
+                aria-label="刷新验证码"
+              >
+                {captchaLoading
+                  ? <span className="captcha-spinner" />
+                  : captchaImage
+                    ? <img src={captchaImage} alt="验证码" className="captcha-img" />
+                    : <span className="captcha-placeholder"><LoginIcon name="refresh" size={18} /></span>
+                }
+                <span className="captcha-refresh-hint"><LoginIcon name="refresh" size={13} /></span>
+              </button>
+            </div>
+
+            <div className="login-options">
+              {mode === 'login' ? (
+                <label className="tech-checkbox">
+                  <input type="checkbox" checked={rememberMe} onChange={event => setRememberMe(event.target.checked)} />
+                  <span className="checkbox-ui"><i /></span>
+                  <span>记住登录信息</span>
+                </label>
+              ) : <span className="register-hint">注册成功后需手动登录</span>}
+              <button type="button" onClick={() => mode === 'login' ? setModalType('forgot') : switchMode('login')}>{mode === 'login' ? '忘记密码？' : '返回登录'}</button>
+            </div>
+
+            <button type="submit" className="tech-login-button" id="login-button" disabled={isLoading}>
+              <span className="button-scan" />
+              {isLoading ? <><i className="login-spinner" />{mode === 'login' ? '身份验证中...' : '注册处理中...'}</> : mode === 'login' ? '登 录' : '注 册'}
+            </button>
+
+            {mode === 'login' && <button type="button" className="register-entry" onClick={() => switchMode('register')} disabled={isLoading}>账号申请</button>}
+
+            <div className="secure-tip"><span className="secure-dot" />安全接入通道已启用 <b>SECURE CHANNEL</b></div>
+          </form>
+        </section>
+      </main>
+
+      <footer className="login-footer">
+        <span>智慧校园无人巡逻综合管理平台</span>
+        <i />
+        <span>© 2026 SMART CAMPUS</span>
+      </footer>
+
+      {modalType && (
+        <div className="login-modal-backdrop" onMouseDown={() => setModalType(null)}>
+          <div className="login-modal" onMouseDown={event => event.stopPropagation()}>
+            <span className="modal-alert-icon"><LoginIcon name="alert" size={27} /></span>
+            <small>SYSTEM MESSAGE</small>
+            <h3>忘记密码</h3>
+            <p>请联系系统管理员重置您的登录密码。</p>
+            <button onClick={() => setModalType(null)}>我知道了</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default Login

@@ -1,0 +1,1214 @@
+/* 登录页和数据总览拥有独立主题；此文件统一其余业务子页面。 */
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page,
+  .patrol-results-page,
+  .placeholder-page
+) {
+  --sub-bg: #020817;
+  --sub-panel: rgba(5, 23, 50, .92);
+  --sub-panel-strong: rgba(7, 31, 65, .97);
+  --sub-panel-soft: rgba(9, 44, 78, .64);
+  --sub-border: rgba(45, 169, 229, .38);
+  --sub-border-soft: rgba(45, 146, 199, .2);
+  --sub-cyan: #2bd2ff;
+  --sub-blue: #2385ff;
+  --sub-text: #d8f0fb;
+  --sub-text-secondary: #8db4c8;
+  --sub-muted: #527890;
+  --sub-success: #31e3a1;
+  --sub-warning: #ffb64a;
+  --sub-danger: #ff5b72;
+  --color-primary: #28cfff;
+  --color-primary-light: #62ddff;
+  --color-primary-dark: #168dd2;
+  --color-primary-bg: rgba(43, 210, 255, .1);
+  --color-primary-border: rgba(43, 210, 255, .3);
+  --color-bg-body: #020817;
+  --color-bg-white: rgba(5, 23, 50, .94);
+  --color-bg-card: rgba(7, 31, 65, .94);
+  --color-bg-subtle: rgba(8, 48, 82, .62);
+  --color-bg-hover: rgba(13, 78, 123, .62);
+  --color-text-primary: #dff5ff;
+  --color-text-secondary: #8db4c8;
+  --color-text-muted: #527890;
+  --color-text-placeholder: #3e667e;
+  --color-border: rgba(45, 169, 229, .34);
+  --color-border-light: rgba(45, 146, 199, .2);
+  --color-border-focus: #2bd2ff;
+  --shadow-sm: 0 3px 12px rgba(0, 0, 0, .2);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, .28);
+  --shadow-lg: 0 14px 38px rgba(0, 0, 0, .36);
+  --shadow-xl: 0 22px 70px rgba(0, 0, 0, .55);
+  --shadow-primary: 0 0 20px rgba(43, 210, 255, .25);
+  position: relative;
+  width: 100%;
+  min-width: 1080px;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  color: var(--sub-text-secondary);
+  background:
+    radial-gradient(circle at 50% 18%, rgba(10, 91, 157, .22), transparent 36%),
+    linear-gradient(145deg, #020817, #031228 52%, #020817);
+  overflow: auto;
+  isolation: isolate;
+  color-scheme: dark;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page,
+  .patrol-results-page,
+  .placeholder-page
+)::-webkit-scrollbar,
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page,
+  .patrol-results-page
+) *::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page,
+  .patrol-results-page
+) * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page,
+  .patrol-results-page,
+  .placeholder-page
+)::before {
+  content: '';
+  position: fixed;
+  z-index: -1;
+  inset: 92px 0 0;
+  pointer-events: none;
+  opacity: .42;
+  background-image:
+    linear-gradient(rgba(38, 155, 218, .05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(38, 155, 218, .05) 1px, transparent 1px);
+  background-size: 34px 34px;
+}
+
+/* 页面画布及高度 */
+.user-management,
+.patrol-page {
+  overflow: hidden;
+}
+
+.device-management,
+.cluster-management,
+.device-control-page,
+.cluster-control-page,
+.live-video-page {
+  max-width: none;
+  padding: 18px 22px 24px;
+}
+
+.patrol-page {
+  height: 100%;
+}
+
+/* 通用页面标题栏 */
+:is(.um-header, .dm-header, .cm-header, .dc-header, .cc-header, .lv-header, .patrol-header) {
+  position: relative;
+  min-height: 62px;
+  margin: 0 0 14px;
+  padding: 10px 14px 12px;
+  border: 1px solid var(--sub-border-soft);
+  border-left: 3px solid var(--sub-cyan);
+  background: linear-gradient(90deg, rgba(8, 66, 108, .46), rgba(4, 24, 51, .42) 60%, transparent);
+  box-shadow: inset 0 0 25px rgba(20, 127, 194, .06);
+  flex-shrink: 0;
+}
+
+:is(.um-header, .dm-header, .cm-header, .dc-header, .cc-header, .lv-header, .patrol-header)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: -1px;
+  width: 82px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--sub-cyan), transparent);
+  box-shadow: 0 0 8px var(--sub-cyan);
+}
+
+:is(.um-header, .dm-header, .cm-header, .dc-header, .cc-header, .lv-header, .patrol-header)::after {
+  content: 'SYSTEM MODULE';
+  position: absolute;
+  right: 13px;
+  bottom: 6px;
+  color: rgba(61, 148, 187, .3);
+  font: 7px/1 'Courier New', monospace;
+  letter-spacing: 1.4px;
+  pointer-events: none;
+}
+
+.user-management .um-header,
+.patrol-page .patrol-header {
+  margin: 14px 18px;
+}
+
+:is(.um-header-left, .dm-header-left, .cm-header-left, .dc-header, .cc-header, .lv-header) {
+  align-items: center;
+}
+
+:is(.um-header, .dm-header, .cm-header, .dc-header, .cc-header, .lv-header, .patrol-header) :is(.page-title, h1) {
+  margin: 0;
+  color: #e9f9ff;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-shadow: 0 0 10px rgba(43, 210, 255, .28);
+}
+
+:is(.um-header, .dm-header, .cm-header, .dc-header, .cc-header, .lv-header, .patrol-header) :is(.page-subtitle, .patrol-subtitle) {
+  color: var(--sub-muted);
+  font-size: 11px;
+  letter-spacing: .25px;
+}
+
+/* 统一主按钮 */
+:is(
+  .btn-primary,
+  .dm-btn-add,
+  .dm-btn-scan,
+  .cm-btn-create,
+  .dc-btn-test,
+  .cc-btn-toggle-cam,
+  .lv-btn-primary,
+  .patrol-btn-primary,
+  .dm-btn-submit,
+  .cm-btn-submit,
+  .dc-btn-send,
+  .cc-btn-send
+) {
+  color: #effcff;
+  border: 1px solid rgba(48, 207, 255, .62);
+  border-radius: 3px;
+  background: linear-gradient(135deg, rgba(12, 133, 204, .92), rgba(20, 83, 177, .92));
+  box-shadow: 0 0 14px rgba(31, 169, 236, .18), inset 0 0 12px rgba(255,255,255,.05);
+}
+
+:is(
+  .btn-primary,
+  .dm-btn-add,
+  .dm-btn-scan,
+  .cm-btn-create,
+  .dc-btn-test,
+  .cc-btn-toggle-cam,
+  .lv-btn-primary,
+  .patrol-btn-primary,
+  .dm-btn-submit,
+  .cm-btn-submit,
+  .dc-btn-send,
+  .cc-btn-send
+):hover:not(:disabled) {
+  color: #fff;
+  border-color: #7ce7ff;
+  background: linear-gradient(135deg, rgba(20, 164, 229, .96), rgba(25, 102, 206, .96));
+  box-shadow: 0 0 20px rgba(43, 210, 255, .32);
+  transform: translateY(-1px);
+}
+
+:is(.btn-secondary, .dm-btn-cancel, .cm-btn-cancel, .patrol-btn-secondary, .lv-btn, .cc-btn-arrange) {
+  color: var(--sub-text-secondary);
+  border: 1px solid rgba(63, 157, 207, .36);
+  border-radius: 3px;
+  background: rgba(8, 47, 82, .58);
+}
+
+:is(.btn-secondary, .dm-btn-cancel, .cm-btn-cancel, .patrol-btn-secondary, .lv-btn, .cc-btn-arrange):hover:not(:disabled) {
+  color: #e7f9ff;
+  border-color: var(--sub-cyan);
+  background: rgba(14, 91, 139, .68);
+}
+
+:is(.btn-danger, .dm-btn-delete, .cm-btn-danger, .patrol-btn-danger, .lv-btn-danger, .dc-btn-emergency, .cc-btn-emergency) {
+  color: #ff9eaa;
+  border: 1px solid rgba(255, 91, 114, .46);
+  border-radius: 3px;
+  background: rgba(139, 25, 48, .3);
+  box-shadow: none;
+}
+
+:is(.btn-danger, .dm-btn-delete, .cm-btn-danger, .patrol-btn-danger, .lv-btn-danger, .dc-btn-emergency, .cc-btn-emergency):hover:not(:disabled) {
+  color: #fff;
+  border-color: var(--sub-danger);
+  background: rgba(198, 36, 66, .58);
+  box-shadow: 0 0 18px rgba(255, 64, 94, .22);
+}
+
+/* 通用卡片和容器 */
+:is(
+  .um-stat-card,
+  .um-table,
+  .dm-device-card,
+  .cm-card,
+  .dc-selector-card,
+  .dc-camera-card,
+  .dc-control-card,
+  .dc-log-container,
+  .cc-selector-card,
+  .cc-cameras-section,
+  .cc-control-card,
+  .cc-log-container,
+  .lv-toolbar,
+  .lv-video-card,
+  .patrol-sidebar,
+  .patrol-card,
+  .patrol-task-card,
+  .patrol-task-stat,
+  .patrol-video-section
+) {
+  color: var(--sub-text-secondary);
+  border: 1px solid var(--sub-border);
+  border-radius: 4px;
+  background: linear-gradient(145deg, var(--sub-panel-strong), var(--sub-panel));
+  box-shadow: inset 0 0 24px rgba(18, 123, 190, .055), 0 0 14px rgba(0, 71, 132, .1);
+}
+
+:is(.um-stat-card, .dm-device-card, .cm-card, .patrol-card, .patrol-task-card, .lv-video-card):hover {
+  border-color: rgba(49, 204, 255, .72);
+  box-shadow: inset 0 0 25px rgba(19, 140, 210, .08), 0 0 18px rgba(26, 154, 223, .14);
+  transform: translateY(-2px);
+}
+
+:is(.dm-device-card, .cm-card, .patrol-card, .patrol-task-card, .lv-video-card) {
+  position: relative;
+  overflow: hidden;
+}
+
+:is(.dm-device-card, .cm-card, .patrol-card, .patrol-task-card, .lv-video-card)::before {
+  content: '';
+  position: absolute;
+  z-index: 3;
+  left: -1px;
+  top: -1px;
+  width: 30px;
+  height: 2px;
+  background: var(--sub-cyan);
+  box-shadow: 0 0 7px var(--sub-cyan);
+}
+
+/* 文字层级 */
+:is(
+  .um-stat-number,
+  .user-cell-name,
+  .dm-device-name,
+  .dm-stat-value,
+  .dm-sys-section-title,
+  .dm-sys-value,
+  .dm-sys-info-value,
+  .cm-title,
+  .cm-device-list h4,
+  .dc-selector-left h2,
+  .dc-camera-title,
+  .dc-control-card h3,
+  .dc-log-header h3,
+  .cc-selector-left h2,
+  .cc-cameras-title,
+  .cc-control-card h3,
+  .cc-log-header h3,
+  .lv-video-card-name,
+  .patrol-card-title,
+  .patrol-task-title,
+  .patrol-task-stat-value,
+  .patrol-map-hint h3
+) {
+  color: var(--sub-text);
+}
+
+:is(
+  .um-stat-label,
+  .user-nickname,
+  .time-cell,
+  .dm-device-ip,
+  .dm-stat-label,
+  .dm-device-gps,
+  .dm-form-hint,
+  .dm-token-desc,
+  .dm-token-meta,
+  .dm-sys-label,
+  .dm-sys-info-label,
+  .cm-desc,
+  .dc-device-info,
+  .dc-control-desc,
+  .dc-speed-info,
+  .dc-log-time,
+  .cc-cluster-info,
+  .cc-control-desc,
+  .cc-speed-info,
+  .cc-log-time,
+  .lv-video-card-ip,
+  .lv-placeholder-hint,
+  .lv-empty-desc,
+  .patrol-card-desc,
+  .patrol-card-meta,
+  .patrol-task-info-row .label,
+  .patrol-task-stat-label,
+  .patrol-form-hint,
+  .patrol-map-hint p
+) {
+  color: var(--sub-muted);
+}
+
+/* 用户管理 */
+.user-management { background-color: var(--sub-bg); }
+.um-search {
+  color: var(--sub-muted);
+  border: 1px solid rgba(55, 151, 202, .36);
+  border-radius: 3px;
+  background: rgba(5, 35, 66, .72);
+}
+.um-search:focus-within { border-color: var(--sub-cyan); box-shadow: 0 0 0 2px rgba(43, 210, 255, .1); }
+.um-search input { color: var(--sub-text); }
+.um-stats { padding: 0 18px 14px; }
+.um-stat-card { padding: 13px 16px; }
+.um-stat-icon { border-radius: 3px; border: 1px solid rgba(62, 163, 215, .25); background: rgba(11, 69, 111, .56) !important; }
+.um-stat-icon.total { color: var(--sub-cyan); }.um-stat-icon.active { color: var(--sub-success); }.um-stat-icon.inactive { color: var(--sub-danger); }
+.um-table-container { padding: 0 18px 18px; scrollbar-width: none; }
+.um-table { overflow: hidden; border-collapse: separate; }
+.um-table thead { background: rgba(8, 61, 101, .68); }
+.um-table th { color: #69b9d8; border-color: var(--sub-border-soft); font-size: 11px; letter-spacing: .5px; }
+.um-table td { color: var(--sub-text-secondary); border-color: rgba(49, 125, 167, .16); }
+.um-table tbody tr { background: transparent; }.um-table tbody tr:hover { background: rgba(15, 87, 133, .25); }
+.user-cell-avatar { color: var(--sub-cyan); border: 1px solid rgba(43, 210, 255, .34); background: rgba(22, 123, 179, .2); }
+.action-btn { border-radius: 3px; background: rgba(7, 43, 76, .62); }
+.action-btn.edit { color: #5bcaff; }.action-btn.delete { color: #ff8796; }
+.status-badge.active { color: var(--sub-success); background: rgba(49, 227, 161, .08); }.status-badge.inactive { color: var(--sub-danger); background: rgba(255, 91, 114, .08); }
+
+/* 设备管理 */
+.dm-device-grid, .cm-grid { gap: 14px; }
+.dm-device-card, .cm-card { padding: 18px; }
+.dm-device-icon { color: var(--sub-cyan); border: 1px solid rgba(43, 210, 255, .35); border-radius: 3px; background: rgba(16, 105, 165, .22); }
+.dm-device-status.online { color: var(--sub-success); background: rgba(49, 227, 161, .1); border-color: rgba(49, 227, 161, .3); }
+.dm-device-status.offline { color: #8397a5; background: rgba(106, 127, 143, .1); border-color: rgba(112, 140, 158, .25); }
+.dm-device-stats { border-color: var(--sub-border-soft); }
+.dm-stat-item { background: rgba(6, 41, 73, .55); border: 1px solid rgba(40, 126, 172, .15); }
+.dm-stat-bar-container, .dm-sys-bar-track, .dm-sys-core-bar-track { background: rgba(46, 100, 132, .2); }
+.dm-device-gps, .dm-device-actions { border-color: var(--sub-border-soft); }
+.dm-btn-icon, .cm-btn-icon { color: #78a9c1; border: 1px solid rgba(57, 145, 192, .28); border-radius: 3px; background: rgba(7, 44, 77, .62); }
+.dm-btn-icon:hover, .cm-btn-icon:hover { color: #e4f8ff; border-color: var(--sub-cyan); background: rgba(13, 91, 137, .58); }
+.dm-extra-tag { color: #75b4cf; border-color: rgba(57, 153, 201, .25); background: rgba(7, 47, 81, .55); }
+.dm-expand-btn { color: #65b9db; border-color: rgba(54, 160, 210, .28); background: rgba(8, 56, 94, .4); }
+.dm-expand-btn:hover { color: #dff7ff; border-color: var(--sub-cyan); background: rgba(12, 82, 128, .66); }
+.dm-sys-panel { border-color: rgba(47, 156, 208, .28); background: rgba(3, 20, 42, .74); }
+.dm-sys-section { border-color: var(--sub-border-soft); background: rgba(7, 42, 72, .54); }
+.dm-sys-section-title { border-color: rgba(45, 122, 163, .18); }
+.dm-sys-row, .dm-sys-nic { border-color: rgba(45, 122, 163, .16); }
+.dm-sys-core, .dm-sys-info-item { background: rgba(7, 37, 65, .72); border: 1px solid rgba(39, 118, 158, .14); }
+.dm-sys-meta span { color: #79a9bf; background: rgba(8, 55, 91, .68); }
+.dm-hardware-diagram { padding: .75rem; overflow-x: auto; color: #8bc5dd; border: 1px solid rgba(47, 146, 194, .24); border-radius: 3px; background: rgba(2, 20, 42, .78); font: .7rem/1.35 'JetBrains Mono', 'Consolas', monospace; white-space: pre; scrollbar-width: none; }
+.dm-hardware-list { margin: 0; padding-left: 1.2rem; color: #78a8be; font: .72rem/1.5 'JetBrains Mono', 'Consolas', monospace; }
+.dm-scan-label { display: block; margin-bottom: .5rem; color: #86adc0; font-size: .88rem; font-weight: 500; }
+.dm-scan-cache, .dm-inline-empty { color: var(--sub-muted) !important; }
+.dm-device-type-inline { margin-left: 8px; color: var(--sub-cyan); font-size: .8rem; font-weight: 600; }
+.dm-vendor-tag { margin-left: 6px; padding: 1px 5px; color: #79a8be; border: 1px solid rgba(48, 132, 176, .18); border-radius: 2px; background: rgba(6, 42, 72, .65); font-size: .75rem; }
+.dm-token-new { color: #9ccee1; border-color: rgba(49, 227, 161, .3); background: rgba(26, 113, 83, .14); }
+.dm-token-code, .dm-token-item { color: #8dc2d8; border-color: var(--sub-border-soft); background: rgba(3, 23, 46, .72); }
+.dm-token-status.active, .dm-sys-nic-status.up { color: #8ff4c8; background: rgba(24, 121, 88, .22); }
+.dm-token-status.inactive, .dm-sys-nic-status.down { color: #ff9eaa; background: rgba(139, 25, 48, .28); }
+.dm-wifi-item { color: var(--sub-text-secondary); border-color: var(--sub-border-soft); background: rgba(7, 43, 75, .6); }
+.dm-wifi-item:hover { border-color: var(--sub-cyan); background: rgba(12, 78, 123, .55); }
+.dm-wifi-ssid { color: #dff5ff; }
+.dm-wifi-ip { color: #79a9bf; }
+.dm-wifi-item-action { color: #83dfff; background: rgba(10, 83, 128, .54); }
+.dm-wifi-item:hover .dm-wifi-item-action { color: #effcff; background: rgba(18, 126, 181, .76); }
+.dm-btn-icon.token:hover { color: #83dfff; border-color: var(--sub-cyan); background: rgba(12, 82, 128, .66); }
+:is(.dm-btn-icon.delete, .cm-btn-icon.delete):hover { color: #ff9eaa; border-color: var(--sub-danger); background: rgba(139, 25, 48, .34); }
+
+/* 集群管理 */
+.cm-card { min-height: 240px; }
+.cm-device-list { border-top: 1px solid var(--sub-border-soft); padding-top: 12px; }
+.cm-device-item { color: var(--sub-text-secondary); border-color: rgba(43, 125, 169, .2); background: rgba(6, 40, 71, .6); }
+.cm-btn-add-device { color: var(--sub-success); border-color: rgba(49, 227, 161, .35); background: rgba(24, 121, 88, .12); }
+.cm-btn-add-device:hover { color: #a8ffdd; border-color: var(--sub-success); background: rgba(24, 121, 88, .22); }
+
+/* 表单、选择器与弹窗 */
+:is(
+  .modal-overlay,
+  .dm-modal-overlay,
+  .cm-modal-overlay,
+  .patrol-modal-overlay
+) {
+  background: rgba(0, 6, 18, .78);
+  backdrop-filter: blur(5px);
+}
+
+:is(.modal-content, .dm-modal, .cm-modal, .patrol-modal) {
+  position: relative;
+  color: var(--sub-text-secondary);
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: linear-gradient(145deg, #08234a, #031027);
+  background-clip: padding-box;
+  box-shadow: 0 22px 70px rgba(0,0,0,.65), inset 0 0 30px rgba(21, 125, 199, .07);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+:is(.modal-content, .dm-modal, .cm-modal, .patrol-modal)::after {
+  content: '';
+  position: absolute;
+  z-index: 30;
+  inset: 0;
+  pointer-events: none;
+  border: 1px solid rgba(45, 190, 246, .55);
+  border-radius: inherit;
+}
+
+:is(.modal-header, .dm-modal-header, .cm-modal-header, .patrol-modal-header) {
+  position: relative;
+  z-index: 20;
+  border-color: var(--sub-border-soft);
+  border-radius: 4px 4px 0 0;
+  background: rgba(5, 31, 61, .98);
+}
+
+:is(.modal-header h2, .dm-modal-header h2, .cm-modal-header h2, .patrol-modal-header h2, .delete-modal h3, .dm-delete-modal h3, .cm-delete-modal h3) {
+  color: #e7f8ff;
+}
+
+:is(.modal-close, .dm-modal-close, .cm-modal-close, .patrol-modal-close) {
+  position: relative;
+  z-index: 21;
+  flex: 0 0 auto;
+  color: #dff8ff;
+  border: 1px solid rgba(68, 195, 239, .48);
+  background: rgba(9, 74, 113, .88);
+  box-shadow: 0 0 12px rgba(43, 210, 255, .12);
+}
+
+:is(.modal-close, .dm-modal-close, .cm-modal-close, .patrol-modal-close):hover {
+  color: #fff;
+  border-color: var(--sub-cyan);
+  background: rgba(15, 116, 166, .94);
+}
+
+:is(.modal-form-group label, .dm-form-group label, .cm-form-group label, .patrol-form-group label) { color: #86adc0; }
+
+:is(
+  .modal-form-group input,
+  .dm-form-group input,
+  .dm-form-group select,
+  .cm-form-group input,
+  .cm-form-group textarea,
+  .cm-form-group select,
+  .patrol-form-group input,
+  .patrol-form-group textarea,
+  .patrol-form-group select,
+  .patrol-header-select,
+  .dc-select,
+  .cc-select,
+  .lv-device-select,
+  .dc-input,
+  .cc-input
+) {
+  color: var(--sub-text);
+  border: 1px solid rgba(58, 158, 207, .4);
+  border-radius: 3px;
+  background: rgba(3, 27, 55, .86);
+  outline: none;
+}
+
+:is(
+  .modal-form-group input,
+  .dm-form-group input,
+  .dm-form-group select,
+  .cm-form-group input,
+  .cm-form-group textarea,
+  .cm-form-group select,
+  .patrol-form-group input,
+  .patrol-form-group textarea,
+  .patrol-form-group select,
+  .patrol-header-select,
+  .dc-select,
+  .cc-select,
+  .lv-device-select,
+  .dc-input,
+  .cc-input
+):focus {
+  border-color: var(--sub-cyan);
+  box-shadow: 0 0 0 2px rgba(43, 210, 255, .1), 0 0 12px rgba(43, 210, 255, .08);
+}
+
+:is(.dc-select, .cc-select, .lv-device-select, .patrol-header-select) {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2.25rem;
+  color: #dff5ff;
+  background-color: #031b37;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #71cbe9 50%),
+    linear-gradient(135deg, #71cbe9 50%, transparent 50%);
+  background-position:
+    calc(100% - 15px) calc(50% - 1px),
+    calc(100% - 10px) calc(50% - 1px);
+  background-repeat: no-repeat;
+  background-size: 5px 5px;
+  color-scheme: dark;
+  cursor: pointer;
+  transition: border-color .2s ease, box-shadow .2s ease, color .2s ease;
+}
+
+:is(.dc-select, .cc-select, .lv-device-select, .patrol-header-select):is(:hover, :focus, :active, :open) {
+  color: #effcff;
+  border-color: var(--sub-cyan);
+  background-color: #052544;
+}
+
+.patrol-header-select {
+  min-width: 190px;
+  padding-block: .5rem;
+  padding-left: .85rem;
+  font-family: inherit;
+  font-size: .84rem;
+  line-height: 1.4;
+}
+
+:is(.modal-actions, .dm-modal-footer, .cm-modal-footer, .patrol-modal-footer) { border-color: var(--sub-border-soft); }
+.modal-actions { background: transparent; }
+:is(.dm-modal-footer, .cm-modal-footer, .patrol-modal-footer) { background: rgba(4, 27, 54, .88); }
+:is(.dm-modal-footer, .cm-modal-footer, .patrol-modal-footer) { border-radius: 0 0 4px 4px; }
+.modal-error, .dm-form-error, .patrol-form-error { color: #ff9ba8; border-color: rgba(255, 91, 114, .34); background: rgba(132, 20, 43, .18); }
+.toggle-switch input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 42px;
+  height: 22px;
+  flex: 0 0 42px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(58, 158, 207, .4);
+  border-radius: 999px;
+  background: rgba(59, 102, 129, .4);
+  cursor: pointer;
+  transition: background .3s ease;
+}
+
+.toggle-switch input[type="checkbox"]::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .15);
+  transform: translateX(0);
+  transition: transform .3s ease;
+}
+
+.toggle-switch input[type="checkbox"]:checked {
+  background: var(--sub-blue);
+}
+
+.toggle-switch input[type="checkbox"]:checked::after {
+  transform: translateX(20px);
+}
+
+.toggle-switch .toggle-slider { display: none; }
+
+/* 单设备与集群控制台 */
+:is(.device-control-page, .cluster-control-page) { overflow: auto; }
+:is(.dc-selector-card, .cc-selector-card) { margin-bottom: 14px; padding: 13px 16px; }
+:is(.dc-device-info, .cc-cluster-info) { border-color: var(--sub-border-soft); }
+:is(.dc-main-layout, .cc-content-grid) { gap: 14px; }
+:is(.dc-camera-card, .dc-control-card, .dc-log-container, .cc-control-card, .cc-log-container) { border-radius: 4px; }
+:is(.dc-camera-header, .cc-cameras-toolbar) { color: var(--sub-text); border-color: var(--sub-border-soft); background: rgba(7, 51, 88, .72); }
+:is(.dc-log-header, .cc-log-header) { color: var(--sub-text); background: transparent; }
+:is(.dc-camera-viewport, .cc-cameras-canvas, .cc-mini-cam-viewport) { background: #010710; }
+.dc-camera-info-bar, .cc-mini-cam-info { color: #4d7489; border-color: var(--sub-border-soft); background: rgba(2, 17, 35, .95); }
+:is(.dc-camera-retry-btn, .cc-mini-retry) { color: #9ed8ed; border-color: rgba(43, 210, 255, .4); background: rgba(10, 80, 124, .46); }
+:is(.dc-camera-retry-btn, .cc-mini-retry):hover { color: #effcff; border-color: var(--sub-cyan); background: rgba(14, 105, 156, .72); }
+:is(.dc-camera-btn, .dc-btn-clear, .dc-preset-btn, .cc-btn-clear, .cc-preset-btn) { color: #76a9c0; border-color: rgba(56, 145, 191, .28); border-radius: 3px; background: rgba(7, 43, 75, .65); }
+:is(.dc-camera-btn, .dc-btn-clear, .dc-preset-btn, .cc-btn-clear, .cc-preset-btn):hover:not(:disabled) { color: #e9faff; border-color: var(--sub-cyan); background: rgba(12, 82, 128, .66); }
+:is(.dc-preset-commands, .cc-preset-commands) { border-top: 0; }
+:is(.dc-preset-commands, .cc-preset-commands) label { color: var(--sub-text-secondary); }
+:is(.dc-speed-slider, .cc-speed-slider, .cc-size-slider) {
+  -webkit-appearance: auto;
+  appearance: auto;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  accent-color: var(--sub-cyan);
+}
+
+:is(.dc-speed-slider, .cc-speed-slider, .cc-size-slider)::-webkit-slider-thumb {
+  -webkit-appearance: auto;
+  appearance: auto;
+  width: auto;
+  height: auto;
+  margin-top: 0;
+  border: initial;
+  border-radius: initial;
+  background: initial;
+  box-shadow: none;
+}
+:is(.dc-num-btn, .cc-num-btn) { color: #a7d4e6; border: 1px solid rgba(47, 151, 204, .38); border-radius: 4px; background: linear-gradient(145deg, rgba(8, 58, 99, .86), rgba(4, 29, 60, .92)); box-shadow: inset 0 0 14px rgba(25, 130, 196, .06); }
+:is(.dc-num-btn, .cc-num-btn):hover:not(:disabled), :is(.dc-num-btn, .cc-num-btn).active { color: #fff; border-color: var(--sub-cyan); background: rgba(15, 119, 177, .7); box-shadow: 0 0 14px rgba(43, 210, 255, .2); }
+:is(.dc-num-btn.stop, .cc-num-btn.stop) { color: #ff9eaa; border-color: rgba(255, 91, 114, .4); background: rgba(112, 22, 42, .34); }
+:is(.dc-logs, .cc-logs) { scrollbar-width: none; border-color: rgba(43, 145, 194, .24); background: rgba(1, 12, 27, .72); }
+:is(.dc-log-item, .cc-log-item) { border-color: rgba(43, 116, 154, .14); }
+:is(.dc-log-msg, .cc-log-msg) { color: #78a6bc; }
+:is(.dc-log-msg.success, .cc-log-msg.success) { color: var(--sub-success); }
+:is(.dc-log-msg.error, .cc-log-msg.error) { color: var(--sub-danger); }
+:is(.dc-log-msg.warning, .cc-log-msg.warning) { color: var(--sub-warning); }
+.cc-cameras-section { margin-bottom: 14px; }
+.cc-cameras-canvas { border-color: var(--sub-border-soft); background-image: linear-gradient(rgba(29, 132, 190, .055) 1px, transparent 1px), linear-gradient(90deg, rgba(29, 132, 190, .055) 1px, transparent 1px); background-size: 24px 24px; }
+.cc-mini-cam { color: var(--sub-text-secondary); border-color: rgba(43, 167, 224, .42); border-radius: 3px; background: #031026; box-shadow: 0 5px 18px rgba(0,0,0,.28); }
+.cc-mini-cam-header { color: var(--sub-text); border-color: var(--sub-border-soft); background: rgba(8, 57, 94, .94); }
+.cc-cameras-resize-bar { background: rgba(7, 43, 75, .8); border-color: var(--sub-border-soft); }
+.cc-cameras-resize-bar:hover { background: rgba(12, 82, 128, .72); }
+:is(.dc-num-btn.stop, .cc-num-btn.stop):hover:not(:disabled) { color: #ffdbe0; border-color: var(--sub-danger); background: rgba(160, 31, 55, .58); }
+
+/* 实时视频 */
+.live-video-page { overflow: auto; }
+.lv-toolbar { margin-bottom: 14px; padding: 12px 14px; }
+.lv-layout-btns { border: 1px solid var(--sub-border-soft); border-radius: 3px; background: rgba(3, 25, 51, .75); }
+.lv-layout-btn { color: #658fa6; border-radius: 2px; }
+.lv-layout-btn:hover:not(.active) { color: #bfeeff; background: rgba(10, 72, 113, .48); }
+.lv-layout-btn.active { color: #e9faff; background: rgba(17, 111, 169, .65); box-shadow: inset 0 0 10px rgba(43, 210, 255, .1); }
+.lv-video-grid { gap: 12px; }
+.lv-video-card-header { color: var(--sub-text); border-color: var(--sub-border-soft); background: rgba(7, 49, 84, .9); }
+.lv-card-btn { color: #72a6bf; border-color: rgba(51, 139, 185, .24); background: rgba(5, 35, 63, .72); }
+.lv-card-btn:hover { color: #fff; border-color: var(--sub-cyan); background: rgba(14, 90, 137, .7); }
+.lv-video-container { background: #01060e; }
+.lv-video-placeholder { color: #456d83; background: radial-gradient(circle, rgba(11, 55, 87, .42), #010710 70%); }
+.lv-loading-overlay, .lv-error-overlay { background: rgba(1, 8, 18, .88); }
+.lv-error-retry { color: #9ed8ed; border-color: rgba(43, 210, 255, .4); background: rgba(10, 80, 124, .46); }
+.lv-error-retry:hover { color: #effcff; border-color: var(--sub-cyan); background: rgba(14, 105, 156, .72); }
+.lv-video-overlay-info { color: #a6d1e2; background: rgba(1, 12, 26, .76); }
+.lv-empty-state { color: var(--sub-muted); border-color: var(--sub-border-soft); background: rgba(4, 25, 51, .62); }
+.lv-toast.success { color: #b1ffe0; border-color: rgba(49, 227, 161, .4); background: rgba(11, 77, 58, .95); }.lv-toast.error { color: #ffb2bd; border-color: rgba(255, 91, 114, .4); background: rgba(86, 18, 34, .95); }
+
+/* 巡检管理 */
+.patrol-body { margin: 0 18px 18px; border: 1px solid var(--sub-border); background: rgba(3, 17, 38, .8); }
+.patrol-sidebar { border: 0; border-right: 1px solid var(--sub-border); border-radius: 0; }
+.patrol-sidebar-toolbar { border-color: var(--sub-border-soft); background: rgba(7, 48, 81, .62); }
+.patrol-sidebar-toolbar select { color: var(--sub-text); border-color: rgba(57, 151, 199, .35); border-radius: 3px; background: rgba(3, 25, 52, .82); }
+.patrol-sidebar-list, .patrol-point-picker, .patrol-modal-body { scrollbar-width: none; }
+.patrol-card { box-shadow: none; }
+.patrol-card:hover { background: rgba(10, 68, 108, .62); transform: translateX(2px); }
+.patrol-card.active { border-color: var(--sub-cyan); background: rgba(12, 86, 133, .58); box-shadow: inset 3px 0 0 var(--sub-cyan), 0 0 12px rgba(43, 210, 255, .1); }
+.patrol-card.active .patrol-card-title { color: #effcff; }
+.patrol-card-tag { color: #6f9cb2; border-color: rgba(50, 135, 179, .24); background: rgba(3, 27, 54, .65); }
+.patrol-card.active .patrol-card-tag { color: #8eddf4; border-color: rgba(43, 210, 255, .25); background: rgba(7, 66, 102, .5); }
+.patrol-card-actions, .patrol-task-actions { border-color: var(--sub-border-soft); }
+.patrol-map-container, .patrol-task-map-container { background: #031025; }
+.patrol-nav-panel { border-color: var(--sub-border-soft); background: rgba(5, 35, 64, .72); }
+.patrol-nav-row, .patrol-nav-label { color: var(--sub-text-secondary); }
+.patrol-nav-row strong, .patrol-nav-coordinate span { color: var(--sub-text); }
+.patrol-nav-coordinate span { border-color: var(--sub-border-soft); background: rgba(3, 24, 49, .82); }
+.patrol-waypoint-item { color: var(--sub-text-secondary); border-color: var(--sub-border-soft); background: rgba(3, 24, 49, .82); }
+.patrol-waypoint-empty { color: var(--sub-muted); border-color: var(--sub-border-soft); background: rgba(3, 24, 49, .62); }
+.patrol-nav-map-section, .patrol-nav-map-container, .patrol-nav-map-canvas { background: #031025; }
+.patrol-nav-map-canvas { border-color: rgba(43, 177, 228, .34); box-shadow: 0 18px 50px rgba(0,0,0,.42); }
+.patrol-map-hint { color: var(--sub-text-secondary); border: 1px solid rgba(43, 183, 235, .4); border-radius: 4px; background: rgba(4, 24, 51, .9); box-shadow: 0 12px 35px rgba(0,0,0,.38); }
+.patrol-map-badge { color: var(--sub-text-secondary); border: 1px solid rgba(43, 177, 228, .38); border-radius: 3px; background: rgba(3, 24, 49, .9); box-shadow: 0 8px 22px rgba(0,0,0,.32); }
+.patrol-map-badge strong { color: #e4f8ff; }
+.patrol-btn { border-radius: 3px; }
+.patrol-btn-success { color: #dfffee; border: 1px solid rgba(49, 227, 161, .42); background: rgba(23, 145, 99, .58); box-shadow: none; }
+.patrol-btn-warning { color: #fff2d7; border: 1px solid rgba(255, 182, 74, .42); background: rgba(154, 91, 16, .58); box-shadow: none; }
+.patrol-btn-icon { color: #658fa6; }.patrol-btn-icon:hover { color: var(--sub-cyan); background: rgba(11, 77, 118, .48); }
+.patrol-task-grid { padding: 0 18px 18px; gap: 12px; }
+.patrol-task-card.running { border-color: rgba(49, 227, 161, .52); box-shadow: inset 3px 0 0 var(--sub-success), 0 0 15px rgba(49, 227, 161, .08); }
+.patrol-task-info { border-color: var(--sub-border-soft); }
+.patrol-task-stat { background: rgba(5, 35, 64, .72); }
+.patrol-point-picker { border-color: var(--sub-border-soft); background: rgba(2, 19, 40, .65); }
+.patrol-point-item { color: var(--sub-text-secondary); border-color: rgba(47, 127, 169, .18); background: rgba(6, 39, 69, .58); }
+.patrol-point-item:hover, .patrol-point-item.selected { border-color: var(--sub-cyan); background: rgba(10, 80, 124, .54); }
+.patrol-selected-item { color: var(--sub-text-secondary); border-color: var(--sub-border-soft); background: rgba(6, 39, 69, .62); }
+.patrol-video-frame { background: #010710; }
+.patrol-video-placeholder { color: #456e84; }
+.patrol-legend { color: #6b97ac; border-color: var(--sub-border-soft); background: rgba(3, 24, 49, .88); }
+.patrol-draw-banner { color: #dff8ff; border-color: rgba(43, 210, 255, .4); background: rgba(8, 91, 139, .9); }
+
+/* 状态及加载 */
+.patrol-status-pending { color: #8fa9b8; border-color: rgba(132, 160, 177, .28); background: rgba(100, 123, 138, .1); }
+.patrol-status-running { color: var(--sub-success); border-color: rgba(49, 227, 161, .35); background: rgba(49, 227, 161, .08); }
+.patrol-status-paused { color: var(--sub-warning); border-color: rgba(255, 182, 74, .35); background: rgba(255, 182, 74, .08); }
+.patrol-status-completed { color: #61b8ff; border-color: rgba(55, 149, 255, .35); background: rgba(55, 149, 255, .08); }
+.patrol-status-cancelled { color: var(--sub-danger); border-color: rgba(255, 91, 114, .35); background: rgba(255, 91, 114, .08); }
+:is(.um-loading, .um-empty, .patrol-empty, .patrol-loading, .dm-scan-status, .lv-empty-state) { color: var(--sub-muted); }
+:is(.um-spinner, .patrol-spinner, .dm-scan-spinner, .dc-camera-spinner, .cc-mini-cam-spinner, .lv-spinner) { border-color: rgba(43, 210, 255, .2); border-top-color: var(--sub-cyan); }
+
+/* Toast */
+.toast-notification { border-radius: 3px; box-shadow: 0 14px 40px rgba(0,0,0,.4); }
+.toast-notification.success { color: #b2ffe1; border-color: rgba(49, 227, 161, .4); background: rgba(10, 75, 56, .95); }
+.toast-notification.error { color: #ffb3bd; border-color: rgba(255, 91, 114, .4); background: rgba(91, 20, 37, .95); }
+
+/* 占位页 */
+.placeholder-page { min-width: 1080px; background: radial-gradient(circle, rgba(9, 83, 142, .26), transparent 35%), #020817; }
+.placeholder-content { width: 470px; padding: 45px 40px; border: 1px solid var(--sub-border); border-radius: 4px; background: linear-gradient(145deg, rgba(7, 31, 66, .94), rgba(3, 16, 36, .96)); box-shadow: 0 0 30px rgba(15, 133, 205, .13); }
+.placeholder-icon { color: var(--sub-cyan); text-shadow: 0 0 15px var(--sub-cyan); }
+.placeholder-content h2 { color: #e8f9ff; }.placeholder-content p, .progress-text { color: var(--sub-muted); }
+.progress-bar { background: rgba(45, 104, 137, .22); }.progress-fill { background: linear-gradient(90deg, var(--sub-blue), var(--sub-cyan)); box-shadow: 0 0 8px var(--sub-cyan); }
+
+/* 自绘下拉列表绕过系统原生弹出层，避免 Windows / Chromium 展开瞬间闪白。 */
+.themed-select {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.themed-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  width: 100%;
+  min-width: 0;
+  padding: .65rem .85rem;
+  color: #dff5ff;
+  border: 1px solid rgba(58, 158, 207, .4);
+  border-radius: 3px;
+  background: #031b37;
+  font: inherit;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  transition: border-color .2s ease, box-shadow .2s ease, background-color .2s ease;
+}
+
+.themed-select-trigger:hover,
+.themed-select-trigger:focus,
+.themed-select.is-open .themed-select-trigger {
+  color: #effcff;
+  border-color: var(--sub-cyan, #2bd2ff);
+  background-color: #052544;
+  box-shadow: 0 0 0 2px rgba(43, 210, 255, .1), 0 0 12px rgba(43, 210, 255, .08);
+}
+
+.themed-select.is-disabled .themed-select-trigger {
+  color: #668a9c;
+  border-color: rgba(58, 123, 156, .24);
+  background: #07182c;
+  cursor: not-allowed;
+  opacity: .72;
+}
+
+.themed-select-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.themed-select-arrow {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-right: 1.5px solid #71cbe9;
+  border-bottom: 1.5px solid #71cbe9;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform .18s ease;
+}
+
+.themed-select.is-open .themed-select-arrow {
+  transform: translateY(2px) rotate(225deg);
+}
+
+.themed-select-menu {
+  position: fixed;
+  z-index: 10000;
+  max-height: min(320px, 45vh);
+  padding: 4px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  color: #e4f6fd;
+  border: 1px solid rgba(43, 190, 239, .58);
+  border-radius: 4px;
+  background: #061a35;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .58), inset 0 0 18px rgba(43, 210, 255, .04);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(65, 175, 222, .48) #061a35;
+}
+
+.themed-select-menu::-webkit-scrollbar {
+  width: 7px;
+}
+
+.themed-select-menu::-webkit-scrollbar-track {
+  background: #061a35;
+}
+
+.themed-select-menu::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(65, 175, 222, .48);
+}
+
+.themed-select-option {
+  padding: .58rem .72rem;
+  overflow: hidden;
+  color: #d8eff9;
+  border-radius: 2px;
+  font-size: .88rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.themed-select-option.is-active {
+  color: #ffffff;
+  background: #0b4e78;
+}
+
+.themed-select-option.is-selected {
+  color: #ffffff;
+  background: #0b5b8a;
+}
+
+.themed-select-option.is-disabled {
+  color: #668b9e;
+  background: transparent;
+  cursor: not-allowed;
+}
+
+.themed-select-option.is-disabled.is-selected {
+  color: #d5f2fc;
+  background: #123f5f;
+}
+
+.lv-toolbar .themed-select,
+.patrol-header-actions .themed-select {
+  width: auto;
+}
+
+.dm-form-group .themed-select-trigger,
+.cm-form-group .themed-select-trigger,
+.patrol-form-group .themed-select-trigger {
+  padding: .7rem .85rem;
+  font-size: .9rem;
+}
+
+/* 保留原生 select 的深色兜底，供后续尚未接入自绘组件的页面使用。 */
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page
+) select {
+  color-scheme: dark;
+  background-color: #031b37;
+}
+
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page
+) select :is(option, optgroup) {
+  color: #e4f6fd;
+  background-color: #061a35;
+  font-weight: 500;
+}
+
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page
+) select option:checked {
+  color: #ffffff;
+  background-color: #0b5b8a;
+  background-image: linear-gradient(#0b5b8a, #0b5b8a);
+  box-shadow: 0 0 0 100vmax #0b5b8a inset;
+}
+
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page
+) select option:disabled {
+  color: #78a5b9;
+}
+
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page
+) select option:disabled:checked {
+  color: #d5f2fc;
+  background-color: #123f5f;
+  background-image: linear-gradient(#123f5f, #123f5f);
+  box-shadow: 0 0 0 100vmax #123f5f inset;
+}
+
+/* 补齐旧页面样式中仍会露出的浅色局部和交互状态。 */
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page
+) :is(input, textarea, select) {
+  color-scheme: dark;
+  caret-color: var(--sub-cyan);
+}
+
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page
+) :is(input, textarea)::placeholder {
+  color: var(--sub-muted);
+  opacity: .82;
+}
+
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page
+) :is(input, textarea):-webkit-autofill {
+  -webkit-text-fill-color: var(--sub-text);
+  box-shadow: 0 0 0 1000px #031b37 inset;
+  caret-color: var(--sub-cyan);
+}
+
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page
+) button:disabled {
+  color: #55788d;
+  border-color: rgba(54, 116, 148, .24);
+  background: rgba(24, 54, 78, .58);
+  box-shadow: none;
+  opacity: .72;
+}
+
+.dm-device-gps,
+.dc-speed-control,
+.cc-speed-control {
+  color: var(--sub-text-secondary);
+  border-color: var(--sub-border-soft);
+  background: rgba(5, 35, 64, .72);
+}
+
+.dc-speed-control :is(label, span),
+.cc-speed-control :is(label, span) {
+  color: var(--sub-text-secondary);
+}
+
+.cc-cameras-count {
+  color: var(--sub-cyan);
+  border: 1px solid rgba(43, 210, 255, .28);
+  background: rgba(13, 91, 139, .38);
+}
+
+:is(.dc-btn-send, .cc-btn-send):disabled {
+  color: #5a8095;
+  border: 1px solid rgba(51, 126, 165, .24);
+  background: linear-gradient(135deg, rgba(17, 61, 91, .72), rgba(12, 42, 73, .72));
+}
+
+:is(.dm-modal-body, .cm-modal-body, .patrol-modal-body, .modal-body) {
+  color: var(--sub-text-secondary);
+  background: rgba(3, 20, 43, .48);
+}
+
+:is(.dm-scan-panel, .dm-scan-result, .dm-token-panel, .dm-wifi-list, .cm-device-picker) {
+  color: var(--sub-text-secondary);
+  border-color: var(--sub-border-soft);
+  background: rgba(3, 23, 48, .68);
+}
+
+:is(.dm-empty, .cm-empty, .dc-empty, .cc-empty, .lv-empty-state, .patrol-empty) {
+  color: var(--sub-muted);
+  border-color: rgba(43, 145, 194, .24);
+  background: rgba(3, 24, 49, .68);
+}
+
+.patrol-map-toolbar :is(button, select),
+.patrol-legend,
+.patrol-map-badge,
+.patrol-map-hint {
+  color: var(--sub-text-secondary);
+  border-color: var(--sub-border);
+  background: rgba(3, 24, 49, .92);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .34);
+}
+
+.patrol-map-toolbar :is(button, select):hover {
+  color: var(--sub-text);
+  border-color: var(--sub-cyan);
+  background: rgba(10, 76, 119, .9);
+}
+
+.patrol-map-el.amap-container {
+  background: #031025 !important;
+}
+
+.patrol-page :is(.amap-toolbar, .amap-scalecontrol, .amap-controlbar) {
+  color: var(--sub-text-secondary) !important;
+  border-color: var(--sub-border) !important;
+  background: #061a35 !important;
+  filter: brightness(.72) saturate(.9) hue-rotate(155deg);
+}
+
+.patrol-page :is(.amap-info-content, .amap-info-sharp) {
+  color: var(--sub-text-secondary) !important;
+  border-color: var(--sub-border) !important;
+  background: #061a35 !important;
+}
+
+@media (max-width: 1350px) {
+  .device-management, .cluster-management, .device-control-page, .cluster-control-page, .live-video-page { padding: 14px; }
+  .user-management .um-header, .patrol-page .patrol-header { margin: 10px 12px; }
+  .um-stats { padding: 0 12px 10px; }
+  .um-table-container { padding: 0 12px 12px; }
+  .patrol-body { margin: 0 12px 12px; }
+  .patrol-task-grid { padding: 0 12px 12px; }
+}
+
+/* ---- 全局焦点样式增强（覆盖所有子页面） ---- */
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page,
+  .patrol-results-page,
+  .placeholder-page
+) button:focus-visible,
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page,
+  .patrol-results-page,
+  .placeholder-page
+) a:focus-visible,
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page,
+  .patrol-results-page,
+  .placeholder-page
+) [role="button"]:focus-visible,
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page,
+  .patrol-results-page,
+  .placeholder-page
+) [tabindex]:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+}
+
+/* ---- 全局 disabled 状态 ---- */
+:is(
+  .user-management,
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page,
+  .patrol-page,
+  .patrol-results-page
+) button:disabled {
+  cursor: not-allowed;
+}
+
+/* ---- 页面内容区滚动行为统一 ---- */
+:is(
+  .device-management,
+  .cluster-management,
+  .device-control-page,
+  .cluster-control-page,
+  .live-video-page
+) {
+  max-width: var(--content-max-width);
+  padding: var(--content-padding-y) var(--content-padding-x);
+}
+
+/* ---- 移除已无用的 SYSTEM MODULE 静态文字（保留 SubpageTheme 自身的） ---- */

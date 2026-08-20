@@ -1,0 +1,101 @@
+docs/*
+study_docs/*
+
+build
+dist
+
+*.egg-info
+
+.agent
+
+.env
+
+*.files
+
+venv
+.venv
+.conda/
+.DS_Store
+
+cypress/screenshots
+cypress/videos
+cypress/downloads
+
+__pycache__
+
+.ipynb_checkpoints
+
+*.db
+
+.mypy_cache
+
+chat_files
+
+.chroma
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+.pnpm-store
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+.aider*
+.coverage
+
+.history
+
+# Python
+*.pyc
+.pytest_cache/
+
+# IDE
+*.code-workspace
+
+# OS
+Thumbs.db
+
+# Temp files
+*.tmp
+*.bak
+
+# Camera record videos
+camera_videos/
+camera_snapshots/
+ai_analysis/
+
+.codex_tmp/
+AGENTS.md
+
+exp/
+
+# WorkBuddy 工作区数据
+.workbuddy/
+
+# 部署脚本临时目录
+.deploy_tmp/
+
+# 临时侦察与调试脚本
+tmp/
+
+# Vite 临时文件
+vite.config.js.timestamp-*.mjs

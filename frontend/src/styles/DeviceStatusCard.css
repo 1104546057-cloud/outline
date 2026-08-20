@@ -1,0 +1,40 @@
+.overview-device {
+  width: 100%;
+  display: block;
+  padding: 8px;
+  margin-bottom: 6px;
+  text-align: left;
+  color: #a8ccdf;
+  border: 1px solid rgba(42, 131, 187, .25);
+  background: linear-gradient(105deg, rgba(9, 49, 84, .58), rgba(4, 24, 51, .58));
+  transition: .2s ease;
+}
+
+.overview-device:hover,
+.overview-device.selected {
+  border-color: rgba(42, 202, 255, .78);
+  background: linear-gradient(105deg, rgba(10, 88, 139, .58), rgba(5, 31, 65, .72));
+  box-shadow: inset 3px 0 0 #2bd2ff, 0 0 10px rgba(20, 148, 210, .14);
+}
+
+.overview-device-head { display: flex; align-items: center; gap: 8px; }
+.device-symbol { width: 28px; height: 28px; flex: 0 0 28px; display: grid; place-items: center; color: #6389a2; border: 1px solid rgba(90, 135, 165, .4); border-radius: 50%; font-size: 10px; }
+.device-symbol.online { color: #41e5a7; border-color: rgba(65, 229, 167, .55); box-shadow: 0 0 8px rgba(65, 229, 167, .2); }
+.device-symbol.warning { color: #ffbd55; border-color: rgba(255, 189, 85, .6); }
+.device-main { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.device-main strong { overflow: hidden; color: #e0f4ff; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.device-main small { overflow: hidden; margin-top: 2px; color: #547d96; font: 9px/1.2 'Courier New', monospace; text-overflow: ellipsis; white-space: nowrap; }
+.status-pill { padding: 2px 6px; color: #718b99; border: 1px solid rgba(100, 129, 145, .34); font-size: 8px; }
+.status-pill.online { color: #43dfaa; border-color: rgba(67, 223, 170, .38); background: rgba(25, 147, 108, .12); }
+.status-pill.warning { color: #ffc364; border-color: rgba(255, 184, 72, .42); background: rgba(159, 92, 8, .16); }
+.device-telemetry { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+.metric-bar-row { display: grid; grid-template-columns: 28px 1fr 30px; align-items: center; gap: 4px; color: #52788e; font-size: 8px; }
+.metric-bar-row strong { color: #8db7cb; font: 9px/1 'Courier New', monospace; text-align: right; }
+.metric-bar-track { height: 3px; overflow: hidden; background: rgba(61, 113, 147, .23); }
+.metric-bar-track i { display: block; height: 100%; background: #2bd2ff; box-shadow: 0 0 6px #2bd2ff; }
+.metric-bar-track i.blue { background: #4f80ff; box-shadow: 0 0 6px #4f80ff; }
+.metric-bar-track i.red { background: #ff536b; box-shadow: 0 0 6px #ff536b; }
+.device-details { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin-top: 7px; }
+.device-details span { min-width: 0; display: flex; flex-direction: column; color: #476c81; font-size: 8px; }
+.device-details b { overflow: hidden; margin-top: 2px; color: #8db9ce; font-size: 9px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+

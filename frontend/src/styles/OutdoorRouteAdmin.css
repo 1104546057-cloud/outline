@@ -1,0 +1,376 @@
+/* OutdoorRouteAdmin.css — 校园室外巡检路线管理页面样式 */
+
+.outdoor-route-admin {
+  padding: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.outdoor-route-admin__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.outdoor-route-admin__filter-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--c-text-secondary, #555);
+}
+
+.outdoor-route-admin__select {
+  padding: 6px 10px;
+  border: 1px solid var(--c-border, #d0d0d0);
+  border-radius: 6px;
+  background: var(--c-bg, #fff);
+  color: var(--c-text, #1f1f1f);
+  font-size: 14px;
+  min-width: 280px;
+}
+
+.outdoor-route-admin__select:focus-visible {
+  outline: 2px solid var(--c-primary, #1677ff);
+  outline-offset: 1px;
+}
+
+.outdoor-route-admin__layout {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .outdoor-route-admin__layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 列表项 */
+.outdoor-route-admin__route-items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.outdoor-route-admin__route-item {
+  padding: 12px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border: 1px solid transparent;
+}
+
+.outdoor-route-admin__route-item:hover {
+  background: var(--c-bg-hover, #f5f7fa);
+}
+
+.outdoor-route-admin__route-item.is-active {
+  background: var(--c-primary-bg, #e8f1ff);
+  border-color: var(--c-primary, #1677ff);
+}
+
+.outdoor-route-admin__route-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.outdoor-route-admin__route-name {
+  font-weight: 600;
+  color: var(--c-text, #1f1f1f);
+}
+
+.outdoor-route-admin__route-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--c-text-tertiary, #888);
+  display: flex;
+  gap: 6px;
+}
+
+/* 详情面板 */
+.outdoor-route-admin__detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.outdoor-route-admin__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.outdoor-route-admin__field-label {
+  font-size: 12px;
+  color: var(--c-text-tertiary, #888);
+}
+
+.outdoor-route-admin__field-value {
+  font-size: 14px;
+  color: var(--c-text, #1f1f1f);
+  font-weight: 500;
+}
+
+.outdoor-route-admin__desc {
+  margin: 12px 0;
+  padding: 10px 12px;
+  background: var(--c-bg-info, #f0f7ff);
+  border-left: 3px solid var(--c-primary, #1677ff);
+  font-size: 13px;
+  color: var(--c-text-secondary, #555);
+  border-radius: 0 4px 4px 0;
+}
+
+.outdoor-route-admin__section-title {
+  margin: 18px 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-text, #1f1f1f);
+}
+
+/* 航点表格 */
+.outdoor-route-admin__waypoints {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.outdoor-route-admin__waypoints th,
+.outdoor-route-admin__waypoints td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--c-border, #eee);
+}
+
+.outdoor-route-admin__waypoints th {
+  background: var(--c-bg-subtle, #f5f7fa);
+  font-weight: 600;
+  color: var(--c-text-secondary, #555);
+}
+
+.outdoor-route-admin__waypoints tbody tr:hover {
+  background: var(--c-bg-hover, #fafbfc);
+}
+
+.outdoor-route-admin__hint {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--c-text-tertiary, #888);
+  padding: 8px 10px;
+  background: var(--c-bg-warning, #fff7e6);
+  border-radius: 4px;
+  border-left: 3px solid var(--c-warning, #faad14);
+}
+
+/* 顶部操作消息 */
+.outdoor-route-admin__msg {
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  background: var(--c-bg-info, #e8f1ff);
+  border-left: 3px solid var(--c-primary, #1677ff);
+  border-radius: 0 4px 4px 0;
+  font-size: 13px;
+  color: var(--c-text-secondary, #555);
+}
+
+/* 详情面板顶部操作按钮 */
+.outdoor-route-admin__detail-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+/* 弹窗（与标定弹窗风格一致） */
+.outdoor-route-admin__modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.outdoor-route-admin__modal {
+  background: var(--c-bg, #fff);
+  border-radius: 8px;
+  width: 100%;
+  max-width: 760px;
+  max-height: 92vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+
+.outdoor-route-admin__modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--c-border, #eee);
+}
+
+.outdoor-route-admin__modal-header h2 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--c-text, #1f1f1f);
+}
+
+.outdoor-route-admin__modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--c-text-tertiary, #888);
+  line-height: 1;
+  padding: 0;
+}
+
+.outdoor-route-admin__modal-close:hover {
+  color: var(--c-text, #1f1f1f);
+}
+
+.outdoor-route-admin__modal-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.outdoor-route-admin__modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--c-border, #eee);
+}
+
+/* 表单 */
+.outdoor-route-admin__form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.outdoor-route-admin__form-full {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.outdoor-route-admin__form-row label,
+.outdoor-route-admin__form-full label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--c-text-secondary, #555);
+}
+
+.outdoor-route-admin__form-row input,
+.outdoor-route-admin__form-row select,
+.outdoor-route-admin__form-full input {
+  padding: 6px 10px;
+  border: 1px solid var(--c-border, #d0d0d0);
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--c-text, #1f1f1f);
+  background: var(--c-bg, #fff);
+}
+
+.outdoor-route-admin__form-row input:focus-visible,
+.outdoor-route-admin__form-row select:focus-visible,
+.outdoor-route-admin__form-full input:focus-visible {
+  outline: 2px solid var(--c-primary, #1677ff);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+.outdoor-route-admin__required {
+  color: var(--c-error, #ff4d4f);
+  margin-left: 2px;
+}
+
+.outdoor-route-admin__form-error {
+  padding: 8px 10px;
+  margin-bottom: 12px;
+  background: var(--c-bg-error, #fff1f0);
+  border: 1px solid var(--c-error, #ff4d4f);
+  border-radius: 4px;
+  color: var(--c-error, #cf1322);
+  font-size: 13px;
+}
+
+/* 三列布局（适用 3 个字段） */
+.outdoor-route-admin__form-row:nth-child(n+5) {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+/* 航点编辑器 */
+.outdoor-route-admin__section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 18px 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-text, #1f1f1f);
+}
+
+.outdoor-route-admin__waypoint-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.outdoor-route-admin__waypoint-form {
+  padding: 12px;
+  border: 1px solid var(--c-border, #e8e8e8);
+  border-radius: 6px;
+  background: var(--c-bg-subtle, #fafbfc);
+}
+
+.outdoor-route-admin__waypoint-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--c-text-secondary, #555);
+}
+
+.outdoor-route-admin__waypoint-ops {
+  display: flex;
+  gap: 4px;
+}
+
+.outdoor-route-admin__waypoint-ops button {
+  padding: 2px 8px;
+  border: 1px solid var(--c-border, #d0d0d0);
+  background: var(--c-bg, #fff);
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--c-text-secondary, #555);
+}
+
+.outdoor-route-admin__waypoint-ops button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.outdoor-route-admin__waypoint-del {
+  color: var(--c-error, #ff4d4f) !important;
+}
