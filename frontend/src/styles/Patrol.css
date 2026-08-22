@@ -1574,6 +1574,18 @@
 
 .indoor-map-control-panel { align-self: start; }
 
+.indoor-map-camera {
+  height: 180px;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(43, 145, 194, .25);
+  background: #010710;
+}
+
+.indoor-map-camera .cockpit-camera-label {
+  bottom: 8px;
+  font-size: 10px;
+}
+
 .indoor-drive-console {
   --cockpit-cyan: #2bd2ff;
   padding: 18px 16px 14px;

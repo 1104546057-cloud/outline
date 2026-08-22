@@ -1,6 +1,7 @@
 /* eslint-disable react/prop-types */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { CameraFeed } from '../components/CockpitSensorFeed'
 import RobotDirectionPad from '../components/RobotDirectionPad'
 import { getRobotDirectionValues, ROBOT_DIRECTION_KEY_MAP } from '../components/robotDirectionPadConfig'
 import ThemedSelect from '../components/ThemedSelect'
@@ -514,6 +515,9 @@ function IndoorMapManagement() {
 
         <aside className="indoor-map-panel indoor-map-control-panel">
           <div className="indoor-map-panel-header"><div><h2>建图行驶控制</h2><p>复用设备操作台方向键 · 按住移动，松开停车</p></div></div>
+          <div className="indoor-map-camera">
+            <CameraFeed device={selectedDevice} label="车辆前视摄像头" view="color" />
+          </div>
           <div className="indoor-drive-console">
             <RobotDirectionPad
               activeDirection={activeDirection}
