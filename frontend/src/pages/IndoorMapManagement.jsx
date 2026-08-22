@@ -516,7 +516,7 @@ function IndoorMapManagement() {
         <aside className="indoor-map-panel indoor-map-control-panel">
           <div className="indoor-map-panel-header"><div><h2>建图行驶控制</h2><p>复用设备操作台方向键 · 按住移动，松开停车</p></div></div>
           <div className="indoor-map-camera">
-            <CameraFeed device={selectedDevice} label="车辆前视摄像头" view="color" />
+            <CameraFeed device={selectedDevice} label="车辆前视摄像头" view="color" lowLatency />
           </div>
           <div className="indoor-drive-console">
             <RobotDirectionPad
