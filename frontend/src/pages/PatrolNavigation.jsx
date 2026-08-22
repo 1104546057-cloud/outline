@@ -167,17 +167,6 @@ function drawTrail(ctx, preview, trail) {
     ctx.stroke()
     ctx.restore()
   }
-
-  const origin = points[0]
-  ctx.save()
-  ctx.beginPath()
-  ctx.arc(origin.px, origin.py, 8, 0, Math.PI * 2)
-  ctx.fillStyle = '#3b82f6'
-  ctx.strokeStyle = '#ffffff'
-  ctx.lineWidth = 2
-  ctx.fill()
-  ctx.stroke()
-  ctx.restore()
 }
 
 function drawArrow(ctx, px, py, mapYaw, fillStyle, radius = 18) {
@@ -332,9 +321,9 @@ export default function PatrolNavigation() {
     ctx.imageSmoothingEnabled = false
     ctx.drawImage(mapCanvas, 0, 0)
 
-    const visibleTrail = mergeCurrentIntoTrail(poseTrail, robotPose)
+    const visibleTrail = localizationReady ? mergeCurrentIntoTrail(poseTrail, robotPose) : []
     drawTrail(ctx, preview, visibleTrail)
-    if (robotPose) {
+    if (localizationReady && robotPose) {
       const { px, py } = mapToPreview(preview, robotPose.x, robotPose.y)
       drawArrow(ctx, px, py, robotPose.yaw || 0, '#22c55e', 18)
       ctx.beginPath()
@@ -352,7 +341,7 @@ export default function PatrolNavigation() {
       ctx.fill()
     }
     ctx.restore()
-  }, [activeWaypointId, mapView, preview, previewPixels, poseTrail, robotPose, target, waypoints, yawDeg])
+  }, [activeWaypointId, localizationReady, mapView, preview, previewPixels, poseTrail, robotPose, target, waypoints, yawDeg])
 
   const loadDevices = useCallback(async () => {
     setLoadingDevices(true)
@@ -449,6 +438,10 @@ export default function PatrolNavigation() {
     return () => window.removeEventListener('resize', handleResize)
   }, [drawMap, preview])
   useEffect(() => {
+    if (!localizationReady) {
+      setPoseTrail(current => current.length ? [] : current)
+      return
+    }
     const point = normalizeTrailPoint(robotPose)
     if (!point) return
     setPoseTrail(current => {
@@ -458,7 +451,7 @@ export default function PatrolNavigation() {
       }
       return next
     })
-  }, [robotPose])
+  }, [localizationReady, robotPose])
   useEffect(() => { drawMap() }, [drawMap])
   useEffect(() => {
     if (!selectedDeviceId) return undefined
@@ -937,8 +930,7 @@ export default function PatrolNavigation() {
               </div>
             )}
             <div className="patrol-legend patrol-nav-legend">
-              <div className="patrol-legend-item"><div className="patrol-legend-dot" style={{ background: '#3b82f6' }} />原点</div>
-              <div className="patrol-legend-item"><div className="patrol-legend-line" style={{ background: '#22d3ee' }} />轨迹</div>
+              <div className="patrol-legend-item"><div className="patrol-legend-line" style={{ background: '#22d3ee' }} />可信定位轨迹</div>
               <div className="patrol-legend-item"><div className="patrol-legend-dot" style={{ background: '#22c55e' }} />当前车位</div>
               <div className="patrol-legend-item"><div className="patrol-legend-dot" style={{ background: '#ff4f64' }} />巡航点</div>
             </div>
