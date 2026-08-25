@@ -15,6 +15,7 @@ import PlaceholderPage from './pages/PlaceholderPage'
 import PatrolAreas from './pages/PatrolAreas'
 import PatrolPoints from './pages/PatrolPoints'
 import PatrolRoutes from './pages/PatrolRoutes'
+import OutdoorRtkNavigation from './pages/OutdoorRtkNavigation'
 import PatrolTasks from './pages/PatrolTasks'
 import PatrolResults from './pages/PatrolResults'
 import PatrolNavigation from './pages/PatrolNavigation'
@@ -87,6 +88,7 @@ function App() {
           <Route path="patrol/outdoor/areas" element={<PatrolAreas />} />
           <Route path="patrol/outdoor/points" element={<PatrolPoints />} />
           <Route path="patrol/outdoor/routes" element={<PatrolRoutes />} />
+          <Route path="patrol/outdoor/navigation" element={<OutdoorRtkNavigation />} />
           <Route path="patrol/tasks" element={<PatrolTasks />} />
           <Route path="patrol/results" element={<PatrolResults />} />
           <Route path="patrol/areas" element={<Navigate to="/patrol/outdoor/areas" replace />} />

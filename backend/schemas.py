@@ -163,6 +163,14 @@ class NavigationStopRequest(BaseModel):
     robotId: Optional[int] = None
 
 
+class RtkNavigationGoalRequest(BaseModel):
+    """发送 WGS-84 厘米级 RTK 室外导航目标"""
+    robotId: Optional[int] = None
+    longitude: float
+    latitude: float
+    yaw: float = 0.0
+
+
 class MappingActionRequest(BaseModel):
     """开始、暂停或放弃一次室内建图会话"""
     robotId: Optional[int] = None

@@ -20,6 +20,7 @@ from schemas import (
     NavigationMapPreviewRequest,
     NavigationStartRequest,
     NavigationStopRequest,
+    RtkNavigationGoalRequest,
 )
 
 
@@ -139,6 +140,73 @@ async def navigation_stop(
     robot_id = require_robot_id(req.robotId)
     require_device(robot_id, db)
     response = await send_navigation_command(robot_id, {"type": "nav_stop"}, "nav_status")
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "response": response}
+
+
+@router.get("/rtk/status")
+async def rtk_navigation_status(
+    robotId: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id, {"type": "rtk_nav_status"}, "rtk_nav_status"
+    )
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "response": response}
+
+
+@router.post("/rtk/start")
+async def rtk_navigation_start(
+    req: NavigationStopRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(req.robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id, {"type": "rtk_nav_start"}, "rtk_nav_status", timeout=12.0
+    )
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "response": response}
+
+
+@router.post("/rtk/goal")
+async def rtk_navigation_goal(
+    req: RtkNavigationGoalRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(req.robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id,
+        {
+            "type": "rtk_nav_goal",
+            "longitude": req.longitude,
+            "latitude": req.latitude,
+            "yaw": req.yaw,
+        },
+        "rtk_nav_ack",
+    )
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "response": response}
+
+
+@router.post("/rtk/stop")
+async def rtk_navigation_stop(
+    req: NavigationStopRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(req.robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id, {"type": "rtk_nav_stop"}, "rtk_nav_status"
+    )
     touch_device_online(robot_id, db)
     return {"ok": bool(response.get("ok")), "response": response}
 

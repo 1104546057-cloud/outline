@@ -23,6 +23,7 @@ const indoorPatrolItems = [
 ]
 
 const outdoorPatrolItems = [
+  { label: 'RTK 实时导航', path: '/patrol/outdoor/navigation', icon: 'navigation' },
   { label: '巡检区域', path: '/patrol/outdoor/areas', icon: 'area' },
   { label: '室外点位', path: '/patrol/outdoor/points', icon: 'pin' },
   { label: '室外线路', path: '/patrol/outdoor/routes', icon: 'route' },
