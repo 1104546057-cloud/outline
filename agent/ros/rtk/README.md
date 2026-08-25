@@ -11,3 +11,5 @@
 本车实测 G70 为 `/dev/wheeltec_gnss -> /dev/ttyACM0`，车载网络来自独立 Quectel 4G 模块。`ntrip_rtcm_client.py` 使用现有 4G 网络连接 FindCM，将 RTCM3 直接写入 G70 USB；不要求额外购买或配置 4G DTU。它从 `/gps/nmea_sentence` 取得新鲜 GGA 回传给 NTRIP caster，并通过本地状态文件向控制 Agent 暴露连接质量。
 
 账号密码只允许保存在车端 `/etc/devices-web-control/rtk.env`（`0640 root:wheeltec`），不经过网页、平台数据库或 WebSocket，也不得提交到 Git。复制 `findcm.env.example` 后填写真实值，确认车辆静止、天线位于室外开阔处，再启动 `DevicesWebControl-ntrip.service`。只有 `/gnss/gpgga.gps_qual=4` 才能放行 RTK 导航。
+
+控制 Agent 也需通过 `DevicesWebControl-robot_control_server-rtk.conf` 加载同一个环境文件；将它安装到 systemd drop-in 目录后执行 `daemon-reload`。这样平台只显示“凭据已配置”，不读取或回传密文。
