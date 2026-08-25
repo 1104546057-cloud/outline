@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from urllib.parse import quote
 
 import jwt
@@ -21,6 +22,7 @@ from remote_gateway import RemoteStream, remote_access_gateway
 
 
 router = APIRouter(prefix="/api/remote-access", tags=["无人设备远程访问"])
+logger = logging.getLogger(__name__)
 
 
 class FilePathPayload(BaseModel):
@@ -255,11 +257,24 @@ async def _proxy_stream(
         for task in done:
             task.result()
     except HTTPException as exc:
+        logger.warning(
+            "Remote stream open failed: device_id=%s kind=%s status=%s detail=%s",
+            device_id,
+            kind,
+            exc.status_code,
+            exc.detail,
+        )
         if accepted:
             await websocket.close(code=4502, reason=str(exc.detail)[:120])
         else:
             await websocket.close(code=4502, reason=str(exc.detail)[:120])
     except Exception:
+        logger.exception(
+            "Remote stream proxy failed: device_id=%s kind=%s accepted=%s",
+            device_id,
+            kind,
+            accepted,
+        )
         if accepted:
             try:
                 await websocket.close(code=1011, reason="remote stream failed")
