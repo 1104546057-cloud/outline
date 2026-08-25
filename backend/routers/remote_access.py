@@ -60,12 +60,19 @@ def _authorize_websocket(token: str | None, device_id: int) -> bool:
 
 
 async def _accept_authorized_websocket(websocket: WebSocket, device_id: int) -> bool:
+    access_token = websocket.cookies.get("access_token")
     authorized = await run_in_threadpool(
         _authorize_websocket,
-        websocket.cookies.get("access_token"),
+        access_token,
         device_id,
     )
     if not authorized:
+        logger.warning(
+            "Remote websocket authorization failed: device_id=%s cookie_present=%s cookie_names=%s",
+            device_id,
+            bool(access_token),
+            sorted(websocket.cookies.keys()),
+        )
         await websocket.close(code=4401, reason="authentication required")
         return False
     return True
