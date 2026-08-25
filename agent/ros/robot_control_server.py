@@ -1446,7 +1446,7 @@ def publish_navigation_goal(x: float, y: float, yaw: float) -> int:
     return subscribers
 
 
-def wgs84_to_map(longitude: float, latitude: float, altitude: float = 0.0) -> tuple[float, float]:
+def wgs84_to_map(longitude: float, latitude: float, altitude: float = 0.0) -> Tuple[float, float]:
     if from_ll_client is None or FromLLRequest is None or GeoPoint is None:
         raise RuntimeError("robot_localization /fromLL 服务类型不可用，请安装 robot_localization 与 geographic_msgs")
     rospy.wait_for_service("/fromLL", timeout=5.0)
