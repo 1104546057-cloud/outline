@@ -8,6 +8,7 @@
   .live-video-page,
   .patrol-page,
   .patrol-results-page,
+  .rtk-page,
   .placeholder-page
 ) {
   --sub-bg: #020817;
@@ -72,6 +73,7 @@
   .live-video-page,
   .patrol-page,
   .patrol-results-page,
+  .rtk-page,
   .placeholder-page
 )::-webkit-scrollbar,
 :is(
@@ -82,7 +84,8 @@
   .cluster-control-page,
   .live-video-page,
   .patrol-page,
-  .patrol-results-page
+  .patrol-results-page,
+  .rtk-page
 ) *::-webkit-scrollbar {
   display: none;
   width: 0;
@@ -97,7 +100,8 @@
   .cluster-control-page,
   .live-video-page,
   .patrol-page,
-  .patrol-results-page
+  .patrol-results-page,
+  .rtk-page
 ) * {
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -112,6 +116,7 @@
   .live-video-page,
   .patrol-page,
   .patrol-results-page,
+  .rtk-page,
   .placeholder-page
 )::before {
   content: '';
