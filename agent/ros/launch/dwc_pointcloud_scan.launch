@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<launch>
+  <!--
+    C16 point cloud to a planar scan owned by DevicesWebControl.
+
+    The lidar publishes one revolution in about 0.05 s.  A narrow height
+    window keeps the near-horizontal ring and prevents multiple vertical
+    rings from being collapsed onto the same 2D map plane.
+
+    Keep scan_topic overrideable so a candidate scan can be verified without
+    replacing the production /scan topic.
+  -->
+  <arg name="scan_topic" default="/scan" />
+  <arg name="node_name" default="dwc_pointcloud_to_laserscan" />
+
+  <node pkg="pointcloud_to_laserscan"
+        type="pointcloud_to_laserscan_node"
+        name="$(arg node_name)"
+        output="screen">
+    <remap from="cloud_in" to="/point_cloud_raw" />
+    <remap from="scan" to="$(arg scan_topic)" />
+
+    <param name="target_frame" value="laser" />
+    <param name="transform_tolerance" value="0.01" />
+
+    <param name="min_height" value="-0.05" />
+    <param name="max_height" value="0.05" />
+
+    <param name="angle_min" value="-3.141592653589793" />
+    <param name="angle_max" value="3.141592653589793" />
+    <param name="angle_increment" value="0.006283185307179586" />
+    <param name="scan_time" value="0.05" />
+    <param name="range_min" value="0.30" />
+    <param name="range_max" value="20.0" />
+    <param name="use_inf" value="true" />
+    <param name="inf_epsilon" value="1.0" />
+    <param name="concurrency_level" value="1" />
+  </node>
+</launch>
