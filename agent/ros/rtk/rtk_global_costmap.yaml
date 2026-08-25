@@ -1,0 +1,10 @@
+global_frame: map
+robot_base_frame: base_footprint
+update_frequency: 2.0
+publish_frequency: 1.0
+rolling_window: true
+static_map: false
+width: 200.0
+height: 200.0
+origin_x: -100.0
+origin_y: -100.0

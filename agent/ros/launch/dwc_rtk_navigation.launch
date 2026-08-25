@@ -1,0 +1,40 @@
+<launch>
+  <!-- G70 publishes WGS-84 /gps/fix; the hardware/DTU supplies RTCM corrections. -->
+  <arg name="gps_topic" default="/gps/fix" />
+  <arg name="imu_topic" default="/imu" />
+  <arg name="odom_topic" default="/odom" />
+  <arg name="scan_topic" default="/scan" />
+  <arg name="base_frame" default="base_footprint" />
+  <arg name="odom_frame" default="odom_combined" />
+
+  <node pkg="robot_localization" type="navsat_transform_node" name="dwc_navsat_transform" output="screen">
+    <rosparam command="load" file="$(dirname)/../rtk/rtk_navsat.yaml" />
+    <remap from="imu/data" to="$(arg imu_topic)" />
+    <remap from="gps/fix" to="$(arg gps_topic)" />
+    <remap from="odometry/filtered" to="/odometry/filtered/global" />
+    <remap from="odometry/gps" to="/odometry/gps" />
+  </node>
+
+  <node pkg="robot_localization" type="ekf_localization_node" name="dwc_rtk_global_ekf" output="screen" clear_params="true">
+    <rosparam command="load" file="$(dirname)/../rtk/rtk_global_ekf.yaml" />
+    <param name="base_link_frame" value="$(arg base_frame)" />
+    <param name="odom_frame" value="$(arg odom_frame)" />
+    <remap from="odometry/filtered" to="/odometry/filtered/global" />
+    <remap from="odom/wheel" to="$(arg odom_topic)" />
+    <remap from="imu/data" to="$(arg imu_topic)" />
+  </node>
+
+  <node pkg="move_base" type="move_base" name="move_base" output="screen" clear_params="true">
+    <rosparam command="load" file="$(dirname)/../rtk/rtk_move_base.yaml" />
+    <rosparam command="load" file="$(dirname)/../rtk/rtk_costmap_common.yaml" ns="global_costmap" />
+    <rosparam command="load" file="$(dirname)/../rtk/rtk_global_costmap.yaml" ns="global_costmap" />
+    <rosparam command="load" file="$(dirname)/../rtk/rtk_costmap_common.yaml" ns="local_costmap" />
+    <rosparam command="load" file="$(dirname)/../rtk/rtk_local_costmap.yaml" ns="local_costmap" />
+    <param name="global_costmap/robot_base_frame" value="$(arg base_frame)" />
+    <param name="local_costmap/robot_base_frame" value="$(arg base_frame)" />
+    <param name="local_costmap/global_frame" value="$(arg odom_frame)" />
+    <param name="global_costmap/obstacle_layer/laser_scan/topic" value="$(arg scan_topic)" />
+    <param name="local_costmap/obstacle_layer/laser_scan/topic" value="$(arg scan_topic)" />
+    <remap from="scan" to="$(arg scan_topic)" />
+  </node>
+</launch>

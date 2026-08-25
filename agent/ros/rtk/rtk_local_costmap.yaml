@@ -1,0 +1,10 @@
+global_frame: odom_combined
+robot_base_frame: base_footprint
+update_frequency: 8.0
+publish_frequency: 4.0
+rolling_window: true
+static_map: false
+width: 16.0
+height: 16.0
+origin_x: -8.0
+origin_y: -8.0

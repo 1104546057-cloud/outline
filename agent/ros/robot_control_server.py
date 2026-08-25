@@ -25,11 +25,20 @@ import websockets
 from actionlib_msgs.msg import GoalID, GoalStatus, GoalStatusArray
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from nav_msgs.msg import OccupancyGrid
+from sensor_msgs.msg import NavSatFix
 from std_srvs.srv import Empty
+from rtk_navigation_core import RtkHealthTracker, RtkThresholds
 try:
     from move_base_msgs.msg import MoveBaseActionResult
 except ImportError:
     MoveBaseActionResult = None
+try:
+    from geographic_msgs.msg import GeoPoint
+    from robot_localization.srv import FromLL, FromLLRequest
+except ImportError:
+    GeoPoint = None
+    FromLL = None
+    FromLLRequest = None
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -61,6 +70,48 @@ ROS_SETUP = os.environ.get("DWC_ROS_SETUP", "/opt/ros/noetic/setup.bash")
 LIDAR_SETUP = os.environ.get("DWC_LIDAR_SETUP", "/home/wheeltec/wheeltec_lidar/devel/setup.bash")
 WHEELTEC_SETUP = os.environ.get("DWC_WHEELTEC_SETUP", "/home/wheeltec/wheeltec_robot/devel/setup.bash")
 CARTOGRAPHER_SETUP = os.environ.get("DWC_CARTOGRAPHER_SETUP", "/home/wheeltec/cartographer_ws/devel/setup.bash")
+SCAN_CONVERTER_LAUNCH = Path(
+    os.environ.get(
+        "DWC_SCAN_CONVERTER_LAUNCH",
+        str(SCRIPT_DIR / "launch" / "dwc_pointcloud_scan.launch"),
+    )
+)
+CARTOGRAPHER_LAUNCH = Path(
+    os.environ.get(
+        "DWC_CARTOGRAPHER_LAUNCH",
+        str(SCRIPT_DIR / "launch" / "dwc_cartographer_2d.launch"),
+    )
+)
+CARTOGRAPHER_CONFIG_DIR = Path(
+    os.environ.get(
+        "DWC_CARTOGRAPHER_CONFIG_DIR",
+        str(SCRIPT_DIR / "cartographer"),
+    )
+)
+RTK_NAV_LOG_FILE = Path(os.environ.get("DWC_RTK_NAV_LOG_FILE", "/tmp/devices_web_control_rtk_navigation.log"))
+RTK_NTRIP_STATUS_FILE = Path(
+    os.environ.get("DWC_RTK_NTRIP_STATUS_FILE", "/tmp/devices_web_control_ntrip_status.json")
+)
+RTK_NAV_LAUNCH = Path(
+    os.environ.get("DWC_RTK_NAV_LAUNCH", str(SCRIPT_DIR / "launch" / "dwc_rtk_navigation.launch"))
+)
+RTK_GPS_TOPIC = os.environ.get("DWC_RTK_GPS_TOPIC", "/gps/fix")
+RTK_GGA_TOPIC = os.environ.get("DWC_RTK_GGA_TOPIC", "/gnss/gpgga")
+RTK_IMU_TOPIC = os.environ.get("DWC_RTK_IMU_TOPIC", "/imu")
+RTK_ODOM_TOPIC = os.environ.get("DWC_RTK_ODOM_TOPIC", "/odom")
+RTK_SCAN_TOPIC = os.environ.get("DWC_RTK_SCAN_TOPIC", "/scan")
+RTK_BASE_FRAME = os.environ.get("DWC_RTK_BASE_FRAME", "base_footprint")
+RTK_ODOM_FRAME = os.environ.get("DWC_RTK_ODOM_FRAME", "odom_combined")
+RTK_LOSS_GRACE_SEC = float(os.environ.get("DWC_RTK_LOSS_GRACE_SEC", "1.0"))
+RTK_TRACKER = RtkHealthTracker(
+    RtkThresholds(
+        stale_sec=float(os.environ.get("DWC_RTK_FIX_STALE_SEC", "2.0")),
+        gga_stale_sec=float(os.environ.get("DWC_RTK_GGA_STALE_SEC", "2.0")),
+        min_jump_m=float(os.environ.get("DWC_RTK_MIN_JUMP_M", "1.0")),
+        max_jump_speed_mps=float(os.environ.get("DWC_RTK_MAX_JUMP_SPEED_MPS", "3.0")),
+        recovery_fixes=max(1, int(os.environ.get("DWC_RTK_RECOVERY_FIXES", "3"))),
+    )
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -84,6 +135,7 @@ tf_listener = None
 nav_lock = threading.Lock()
 nav_process = None
 nav_map_name = None
+nav_mode = None
 nav_pose_lock = threading.Lock()
 nav_pose = None
 nav_pose_time = 0.0
@@ -100,6 +152,13 @@ nav_goal_lock = threading.Lock()
 nav_goal_status = None
 nav_goal_status_time = 0.0
 nav_goal_sent_time = 0.0
+rtk_state_lock = threading.Lock()
+rtk_goal_active = False
+rtk_safety_tripped = False
+rtk_safety_reason = ""
+rtk_safety_tripped_at = 0.0
+rtk_gga_subscriber = None
+from_ll_client = None
 mapping_lock = threading.Lock()
 mapping_process = None
 mapping_started_at = 0.0
@@ -253,6 +312,56 @@ def on_amcl_pose(msg: PoseWithCovarianceStamped) -> None:
             log.warning("保存 AMCL 位姿失败: %s", exc)
 
 
+def on_rtk_fix(msg: NavSatFix) -> None:
+    covariance = list(msg.position_covariance or [])
+    covariance_x = float(covariance[0]) if len(covariance) > 0 and covariance[0] >= 0 else None
+    covariance_y = float(covariance[4]) if len(covariance) > 4 and covariance[4] >= 0 else None
+    try:
+        RTK_TRACKER.update_fix(
+            msg.latitude,
+            msg.longitude,
+            msg.altitude,
+            covariance_x,
+            covariance_y,
+            int(msg.status.status),
+        )
+    except (TypeError, ValueError) as exc:
+        log.warning("忽略非法 G70 定位数据: %s", exc)
+
+
+def on_rtk_gga(msg) -> None:
+    for field in ("gps_qual", "quality", "fix_quality"):
+        if hasattr(msg, field):
+            try:
+                RTK_TRACKER.update_gga(int(getattr(msg, field)))
+            except (TypeError, ValueError):
+                log.warning("G70 GGA 质量字段不是整数: %r", getattr(msg, field))
+            return
+    log.error("%s 消息类型 %s 缺少 gps_qual 字段", RTK_GGA_TOPIC, type(msg).__name__)
+
+
+def subscribe_rtk_gga_when_available() -> None:
+    """Discover the vendor GGA message at runtime without hard-coding its package."""
+    global rtk_gga_subscriber
+    while not rospy.is_shutdown() and rtk_gga_subscriber is None:
+        try:
+            import rostopic
+
+            message_class, resolved_topic, _ = rostopic.get_topic_class(RTK_GGA_TOPIC, blocking=False)
+            if message_class is not None:
+                rtk_gga_subscriber = rospy.Subscriber(
+                    resolved_topic or RTK_GGA_TOPIC,
+                    message_class,
+                    on_rtk_gga,
+                    queue_size=1,
+                )
+                log.info("已订阅 G70 RTK 质量话题 %s (%s)", resolved_topic, message_class.__name__)
+                return
+        except Exception as exc:
+            log.warning("发现 G70 GGA 话题失败，将重试: %s", exc)
+        time.sleep(2.0)
+
+
 def status_stamp_to_sec(status) -> float:
     try:
         return status.goal_id.stamp.to_sec()
@@ -261,7 +370,7 @@ def status_stamp_to_sec(status) -> float:
 
 
 def remember_move_base_status(status, source: str) -> None:
-    global nav_goal_status, nav_goal_status_time
+    global nav_goal_status, nav_goal_status_time, rtk_goal_active
     with nav_goal_lock:
         sent_time = nav_goal_sent_time
         stamp = status_stamp_to_sec(status)
@@ -279,6 +388,16 @@ def remember_move_base_status(status, source: str) -> None:
             "sentAt": sent_time,
         }
         nav_goal_status_time = now
+    if int(status.status) in (
+        GoalStatus.PREEMPTED,
+        GoalStatus.SUCCEEDED,
+        GoalStatus.ABORTED,
+        GoalStatus.REJECTED,
+        GoalStatus.RECALLED,
+        GoalStatus.LOST,
+    ):
+        with rtk_state_lock:
+            rtk_goal_active = False
 
 
 def on_move_base_status(msg: GoalStatusArray) -> None:
@@ -892,6 +1011,7 @@ def navigation_status_response(ok: bool = True, error: str = "") -> dict:
     with nav_lock:
         proc = nav_process
         map_name = nav_map_name
+        mode = nav_mode
     running = proc is not None and proc.poll() is None
     code = None if proc is None or running else proc.poll()
     localization = localization_status()
@@ -902,10 +1022,115 @@ def navigation_status_response(ok: bool = True, error: str = "") -> dict:
         "pid": proc.pid if proc is not None else None,
         "returncode": code,
         "mapName": map_name,
+        "mode": mode,
         "pose": localization["pose"] if running else {},
         "localization": localization,
         "goalStatus": current_navigation_goal_status(),
         "logFile": str(NAV_LOG_FILE),
+        "error": error,
+        "ts": int(time.time()),
+    }
+
+
+def current_rtk_local_pose() -> dict:
+    if tf_buffer is None:
+        return {}
+    for child_frame in (RTK_BASE_FRAME, "base_link"):
+        try:
+            transform = tf_buffer.lookup_transform(
+                "map", child_frame, rospy.Time(0), rospy.Duration(0.05)
+            )
+        except (
+            tf2_ros.LookupException,
+            tf2_ros.ConnectivityException,
+            tf2_ros.ExtrapolationException,
+        ):
+            continue
+        translation = transform.transform.translation
+        rotation = transform.transform.rotation
+        stamp = transform.header.stamp.to_sec()
+        return {
+            "frame_id": transform.header.frame_id or "map",
+            "child_frame_id": child_frame,
+            "x": float(translation.x),
+            "y": float(translation.y),
+            "yaw": quaternion_to_yaw(rotation.z, rotation.w),
+            "stamp": stamp,
+            "age": max(0.0, time.time() - stamp) if stamp > 0 else 0.0,
+        }
+    return {}
+
+
+def rtk_provider_status() -> dict:
+    mode = os.environ.get("DWC_RTK_CORRECTION_MODE", "external_dtu")
+    credentials_configured = all(
+        os.environ.get(name)
+        for name in ("DWC_RTK_NTRIP_HOST", "DWC_RTK_NTRIP_PORT", "DWC_RTK_NTRIP_USERNAME", "DWC_RTK_NTRIP_PASSWORD")
+    )
+    runtime = {}
+    if mode == "ntrip_client":
+        try:
+            value = json.loads(RTK_NTRIP_STATUS_FILE.read_text(encoding="utf-8"))
+            if isinstance(value, dict):
+                runtime = {
+                    key: value.get(key)
+                    for key in (
+                        "connected",
+                        "bytesReceived",
+                        "lastCorrectionAgeSec",
+                        "ggaAgeSec",
+                        "ggaFresh",
+                        "lastError",
+                        "serialDevice",
+                        "mountpoint",
+                        "updatedAt",
+                    )
+                    if key in value
+                }
+        except (OSError, ValueError, TypeError):
+            runtime = {}
+    return {
+        "provider": os.environ.get("DWC_RTK_PROVIDER", "qianxun_findcm"),
+        "correctionMode": mode,
+        "credentialsConfigured": credentials_configured if mode == "ntrip_client" else None,
+        "credentialsLocation": "vehicle_only",
+        "runtime": runtime,
+    }
+
+
+def rtk_navigation_status_response(ok: bool = True, error: str = "") -> dict:
+    with nav_lock:
+        proc = nav_process
+        mode = nav_mode
+    with rtk_state_lock:
+        safety = {
+            "tripped": rtk_safety_tripped,
+            "reason": rtk_safety_reason,
+            "trippedAt": rtk_safety_tripped_at or None,
+            "goalActive": rtk_goal_active,
+            "lossGraceSec": RTK_LOSS_GRACE_SEC,
+        }
+    running = mode == "rtk" and proc is not None and proc.poll() is None
+    return {
+        "type": "rtk_nav_status",
+        "ok": ok,
+        "running": running,
+        "mode": mode,
+        "pid": proc.pid if running else None,
+        "returncode": None if proc is None or proc.poll() is None else proc.poll(),
+        "rtk": RTK_TRACKER.snapshot(),
+        "pose": current_rtk_local_pose() if running else {},
+        "goalStatus": current_navigation_goal_status(),
+        "safety": safety,
+        "provider": rtk_provider_status(),
+        "topics": {
+            "gps": RTK_GPS_TOPIC,
+            "gga": RTK_GGA_TOPIC,
+            "imu": RTK_IMU_TOPIC,
+            "odom": RTK_ODOM_TOPIC,
+            "scan": RTK_SCAN_TOPIC,
+        },
+        "logFile": str(RTK_NAV_LOG_FILE),
         "error": error,
         "ts": int(time.time()),
     }
@@ -1039,8 +1264,9 @@ def finish_global_localization() -> dict:
 
 
 def stop_navigation_process() -> None:
-    global nav_process, nav_map_name, global_localization_active
+    global nav_process, nav_map_name, nav_mode, global_localization_active
     global localization_source, localization_seeded_at, localization_pose_updates
+    global rtk_goal_active
     hard_stop()
     cancel_navigation_goals()
     clear_navigation_pose()
@@ -1049,6 +1275,9 @@ def stop_navigation_process() -> None:
         proc = nav_process
         nav_process = None
         nav_map_name = None
+        nav_mode = None
+    with rtk_state_lock:
+        rtk_goal_active = False
     with localization_lock:
         global_localization_active = False
         localization_source = "none"
@@ -1066,7 +1295,7 @@ def stop_navigation_process() -> None:
 
 
 def start_navigation_process(map_name: str) -> dict:
-    global nav_process, nav_map_name, localization_source, localization_seeded_at
+    global nav_process, nav_map_name, nav_mode, localization_source, localization_seeded_at
     global localization_pose_updates
     global localization_restore_state, localization_restore_error
     if mapping_process_running():
@@ -1102,6 +1331,7 @@ def start_navigation_process(map_name: str) -> dict:
     with nav_lock:
         nav_process = proc
         nav_map_name = yaml_path.name
+        nav_mode = "map"
     with localization_lock:
         localization_source = "none"
         localization_seeded_at = 0.0
@@ -1118,6 +1348,63 @@ def start_navigation_process(map_name: str) -> dict:
         daemon=True,
     ).start()
     return navigation_status_response(True)
+
+
+def start_rtk_navigation_process() -> dict:
+    global nav_process, nav_map_name, nav_mode
+    global rtk_goal_active, rtk_safety_tripped, rtk_safety_reason, rtk_safety_tripped_at
+    if mapping_process_running():
+        raise RuntimeError("建图任务仍在运行，请先保存或放弃本次建图")
+    if not RTK_NAV_LAUNCH.is_file():
+        raise RuntimeError(f"RTK launch 文件不存在: {RTK_NAV_LAUNCH}")
+    with nav_lock:
+        current = nav_process
+    if current is not None and current.poll() is None:
+        stop_navigation_process()
+    if cmd_vel_pub is not None and cmd_vel_pub.get_num_connections() <= 0:
+        raise RuntimeError("底盘 /cmd_vel 无订阅者，请先恢复 turn_on_wheeltec_robot.service")
+
+    clear_navigation_goal_status()
+    RTK_NAV_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    log_file = open(RTK_NAV_LOG_FILE, "ab", buffering=0)
+    command = (
+        f"source {sh_quote(ROS_SETUP)} 2>/dev/null || true; "
+        f"source {sh_quote(LIDAR_SETUP)} 2>/dev/null || true; "
+        f"source {sh_quote(WHEELTEC_SETUP)} 2>/dev/null || true; "
+        "export ROS_MASTER_URI=${ROS_MASTER_URI:-http://localhost:11311}; "
+        "export ROS_IP=${DWC_ROS_IP:-127.0.0.1}; unset ROS_HOSTNAME; "
+        "trap 'kill 0' INT TERM EXIT; "
+        f"roslaunch {sh_quote(str(SCAN_CONVERTER_LAUNCH))} scan_topic:={sh_quote(RTK_SCAN_TOPIC)} & "
+        "converter_pid=$!; sleep 1; "
+        f"roslaunch {sh_quote(str(RTK_NAV_LAUNCH))} "
+        f"gps_topic:={sh_quote(RTK_GPS_TOPIC)} "
+        f"imu_topic:={sh_quote(RTK_IMU_TOPIC)} "
+        f"odom_topic:={sh_quote(RTK_ODOM_TOPIC)} "
+        f"scan_topic:={sh_quote(RTK_SCAN_TOPIC)} "
+        f"base_frame:={sh_quote(RTK_BASE_FRAME)} "
+        f"odom_frame:={sh_quote(RTK_ODOM_FRAME)} & "
+        "navigation_pid=$!; wait $navigation_pid"
+    )
+    proc = subprocess.Popen(
+        ["/bin/bash", "-lc", command],
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
+        preexec_fn=os.setsid,
+        close_fds=True,
+    )
+    with nav_lock:
+        nav_process = proc
+        nav_map_name = None
+        nav_mode = "rtk"
+    with rtk_state_lock:
+        rtk_goal_active = False
+        rtk_safety_tripped = False
+        rtk_safety_reason = ""
+        rtk_safety_tripped_at = 0.0
+    time.sleep(0.8)
+    if proc.poll() is not None:
+        return rtk_navigation_status_response(False, "RTK 导航启动后立即退出，请查看日志")
+    return rtk_navigation_status_response(True)
 
 
 def sh_quote(value: str) -> str:
@@ -1157,6 +1444,104 @@ def publish_navigation_goal(x: float, y: float, yaw: float) -> int:
         subscribers,
     )
     return subscribers
+
+
+def wgs84_to_map(longitude: float, latitude: float, altitude: float = 0.0) -> tuple[float, float]:
+    if from_ll_client is None or FromLLRequest is None or GeoPoint is None:
+        raise RuntimeError("robot_localization /fromLL 服务类型不可用，请安装 robot_localization 与 geographic_msgs")
+    rospy.wait_for_service("/fromLL", timeout=5.0)
+    request = FromLLRequest()
+    request.ll_point = GeoPoint(latitude=latitude, longitude=longitude, altitude=altitude)
+    response = from_ll_client(request)
+    return float(response.map_point.x), float(response.map_point.y)
+
+
+def publish_rtk_navigation_goal(longitude: float, latitude: float, yaw: float) -> dict:
+    global nav_goal_status, nav_goal_status_time, nav_goal_sent_time
+    global rtk_goal_active, rtk_safety_tripped, rtk_safety_reason, rtk_safety_tripped_at
+    values = (float(longitude), float(latitude), float(yaw))
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("RTK 目标必须是有限数值")
+    if not (-180.0 <= values[0] <= 180.0 and -90.0 <= values[1] <= 90.0):
+        raise ValueError("RTK 目标经纬度超出合法范围")
+    with nav_lock:
+        running = nav_mode == "rtk" and nav_process is not None and nav_process.poll() is None
+    if not running:
+        raise RuntimeError("请先启动 RTK 导航模式")
+    health = RTK_TRACKER.snapshot()
+    if not health["valid"]:
+        raise RuntimeError("RTK 定位未就绪: " + health["lastError"])
+    if simple_goal_pub is None:
+        raise RuntimeError("ROS /move_base_simple/goal Publisher 尚未初始化")
+
+    map_x, map_y = wgs84_to_map(values[0], values[1])
+    pose = PoseStamped()
+    pose.header.frame_id = "map"
+    pose.header.stamp = rospy.Time.now()
+    pose.pose.position.x = map_x
+    pose.pose.position.y = map_y
+    pose.pose.orientation.z = math.sin(values[2] / 2.0)
+    pose.pose.orientation.w = math.cos(values[2] / 2.0)
+    with nav_goal_lock:
+        nav_goal_sent_time = time.time()
+        nav_goal_status = None
+        nav_goal_status_time = 0.0
+    with rtk_state_lock:
+        rtk_goal_active = True
+        rtk_safety_tripped = False
+        rtk_safety_reason = ""
+        rtk_safety_tripped_at = 0.0
+    simple_goal_pub.publish(pose)
+    subscribers = simple_goal_pub.get_num_connections()
+    if subscribers <= 0:
+        with rtk_state_lock:
+            rtk_goal_active = False
+        raise RuntimeError("ROS /move_base_simple/goal 没有订阅者，请检查 RTK move_base")
+    log.info(
+        "发布 RTK 目标 WGS84=(%.8f, %.8f) map=(%.3f, %.3f) yaw=%.3f",
+        values[0], values[1], map_x, map_y, values[2],
+    )
+    return {
+        "longitude": values[0],
+        "latitude": values[1],
+        "yaw": values[2],
+        "mapX": map_x,
+        "mapY": map_y,
+        "subscribers": subscribers,
+    }
+
+
+def rtk_safety_loop() -> None:
+    global rtk_goal_active, rtk_safety_tripped, rtk_safety_reason, rtk_safety_tripped_at
+    invalid_since = None
+    while not rospy.is_shutdown():
+        time.sleep(0.1)
+        with nav_lock:
+            running = nav_mode == "rtk" and nav_process is not None and nav_process.poll() is None
+        with rtk_state_lock:
+            goal_active = rtk_goal_active
+        if not running or not goal_active:
+            invalid_since = None
+            continue
+        health = RTK_TRACKER.snapshot()
+        if health["valid"]:
+            invalid_since = None
+            continue
+        if invalid_since is None:
+            invalid_since = time.time()
+            continue
+        if time.time() - invalid_since < RTK_LOSS_GRACE_SEC:
+            continue
+        reason = health["lastError"] or "RTK 定位失效"
+        log.error("RTK 安全停车: %s", reason)
+        cancel_navigation_goals()
+        hard_stop()
+        with rtk_state_lock:
+            rtk_goal_active = False
+            rtk_safety_tripped = True
+            rtk_safety_reason = reason
+            rtk_safety_tripped_at = time.time()
+        invalid_since = None
 
 
 def watchdog_loop() -> None:
@@ -1297,6 +1682,29 @@ def execute_command(command: dict) -> dict:
             "subscribers": subscriber_count,
             "ts": now,
         }
+    if command_type == "rtk_nav_start":
+        try:
+            return start_rtk_navigation_process()
+        except Exception as exc:
+            return rtk_navigation_status_response(False, str(exc))
+    if command_type == "rtk_nav_stop":
+        try:
+            stop_navigation_process()
+            return rtk_navigation_status_response(True)
+        except Exception as exc:
+            return rtk_navigation_status_response(False, str(exc))
+    if command_type == "rtk_nav_status":
+        return rtk_navigation_status_response(True)
+    if command_type == "rtk_nav_goal":
+        try:
+            result = publish_rtk_navigation_goal(
+                float(command.get("longitude")),
+                float(command.get("latitude")),
+                float(command.get("yaw", 0.0)),
+            )
+            return {"type": "rtk_nav_ack", "ok": True, "goal": result, "ts": now}
+        except Exception as exc:
+            return {"type": "rtk_nav_ack", "ok": False, "error": str(exc), "ts": now}
     if command_type == "map_status":
         return mapping_status_response(True)
     if command_type == "map_start":
@@ -1526,7 +1934,7 @@ async def media_loop(url: str, token: str) -> None:
 
 def init_ros() -> None:
     global cmd_vel_pub, simple_goal_pub, initial_pose_pub, cancel_goal_pub
-    global global_localization_client, nomotion_update_client, tf_buffer, tf_listener
+    global global_localization_client, nomotion_update_client, from_ll_client, tf_buffer, tf_listener
     configure_local_ros_network()
     rospy.init_node("devices_web_control_agent", anonymous=False, disable_signals=True)
     cmd_vel_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
@@ -1535,6 +1943,10 @@ def init_ros() -> None:
     cancel_goal_pub = rospy.Publisher("/move_base/cancel", GoalID, queue_size=1)
     global_localization_client = rospy.ServiceProxy("/global_localization", Empty)
     nomotion_update_client = rospy.ServiceProxy("/request_nomotion_update", Empty)
+    if FromLL is not None:
+        from_ll_client = rospy.ServiceProxy("/fromLL", FromLL)
+    else:
+        log.warning("robot_localization.srv.FromLL 不可用，RTK 目标下发将被安全拒绝")
     tf_buffer = tf2_ros.Buffer(cache_time=rospy.Duration(10.0))
     tf_listener = tf2_ros.TransformListener(tf_buffer)
     rospy.Subscriber("/amcl_pose", PoseWithCovarianceStamped, on_amcl_pose, queue_size=1)
@@ -1543,6 +1955,7 @@ def init_ros() -> None:
     rospy.Subscriber("/scan", rospy.AnyMsg, remember_sensor("scan"), queue_size=1)
     rospy.Subscriber("/scan_raw", rospy.AnyMsg, remember_sensor("scan_raw"), queue_size=1)
     rospy.Subscriber("/point_cloud_raw", rospy.AnyMsg, remember_sensor("point_cloud_raw"), queue_size=1)
+    rospy.Subscriber(RTK_GPS_TOPIC, NavSatFix, on_rtk_fix, queue_size=1)
     rospy.Subscriber("/move_base/status", GoalStatusArray, on_move_base_status, queue_size=1)
     if MoveBaseActionResult is not None:
         rospy.Subscriber("/move_base/result", MoveBaseActionResult, on_move_base_result, queue_size=1)
@@ -1565,6 +1978,12 @@ def init_ros() -> None:
         except Exception as exc:
             log.warning("读取 ROS 话题图失败: %s", exc)
     threading.Thread(target=watchdog_loop, name="control-watchdog", daemon=True).start()
+    threading.Thread(
+        target=subscribe_rtk_gga_when_available,
+        name="rtk-gga-discovery",
+        daemon=True,
+    ).start()
+    threading.Thread(target=rtk_safety_loop, name="rtk-safety-watchdog", daemon=True).start()
 
 
 async def run_agent(server: str, token: str) -> None:

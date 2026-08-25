@@ -1,0 +1,22 @@
+[Unit]
+Description=DevicesWebControl FindCM NTRIP to WHEELTEC G70
+After=network-online.target DevicesWebControl-g70.service
+Wants=network-online.target DevicesWebControl-g70.service
+ConditionPathExists=/etc/devices-web-control/rtk.env
+
+[Service]
+Type=simple
+WorkingDirectory=/home/wheeltec/Dong/DevicesWebControl
+Environment="ROS_MASTER_URI=http://localhost:11311"
+Environment="ROS_IP=127.0.0.1"
+EnvironmentFile=/etc/devices-web-control/rtk.env
+ExecStart=/bin/bash -c 'source /opt/ros/noetic/setup.bash; source /home/wheeltec/wheeltec_robot/devel/setup.bash 2>/dev/null; exec python3 /home/wheeltec/Dong/DevicesWebControl/ntrip_rtcm_client.py'
+Restart=always
+RestartSec=5
+User=wheeltec
+Group=wheeltec
+SupplementaryGroups=dialout
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
