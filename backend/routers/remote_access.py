@@ -49,11 +49,25 @@ def _authorize_websocket(token: str | None, device_id: int) -> bool:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
         username = payload.get("sub")
         if not username:
+            logger.warning("Remote websocket token has no subject: device_id=%s", device_id)
             return False
         user_exists = db.query(User.id).filter(User.username == username).first() is not None
         device_exists = db.query(Device.id).filter(Device.id == device_id).first() is not None
+        if not user_exists or not device_exists:
+            logger.warning(
+                "Remote websocket subject lookup failed: device_id=%s username=%s user_exists=%s device_exists=%s",
+                device_id,
+                username,
+                user_exists,
+                device_exists,
+            )
         return user_exists and device_exists
-    except jwt.PyJWTError:
+    except jwt.PyJWTError as exc:
+        logger.warning(
+            "Remote websocket token decode failed: device_id=%s error=%s",
+            device_id,
+            exc.__class__.__name__,
+        )
         return False
     finally:
         db.close()
