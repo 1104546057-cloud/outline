@@ -13,3 +13,17 @@
 账号密码只允许保存在车端 `/etc/devices-web-control/rtk.env`（`0640 root:wheeltec`），不经过网页、平台数据库或 WebSocket，也不得提交到 Git。复制 `findcm.env.example` 后填写真实值，确认车辆静止、天线位于室外开阔处，再启动 `DevicesWebControl-ntrip.service`。只有 `/gnss/gpgga.gps_qual=4` 才能放行 RTK 导航。
 
 控制 Agent 也需通过 `DevicesWebControl-robot_control_server-rtk.conf` 加载同一个环境文件；将它安装到 systemd drop-in 目录后执行 `daemon-reload`。这样平台只显示“凭据已配置”，不读取或回传密文。
+
+## WGS-84 道路采集与规划框架
+
+道路采集由人工驾驶触发：操作员在网页点击一次“开始采集”，车端 Agent 随后从 `/gps/fix` 自动连续记录 WGS-84 轨迹；不需要逐点点击。只有新鲜的原始 GGA `gps_qual=4` 才会写入有效轨迹，失去 Fixed 时自动停止收点，恢复后继续。人工可暂停、继续、停止保存或放弃本次会话。
+
+原始轨迹与生成后的道路网络只保存在车端 `DWC_RTK_ROAD_WORKSPACE_DIR`（默认 `/home/wheeltec/Dong/DevicesWebControl/rtk_roads`）。多次采集的支路可以合并为节点/道路边图，目标先吸附到最近道路节点，再由 A* 只读规划。现场验收前，规划结果只在网页预览，不会自动变成车辆运动命令。
+
+可选环境变量：
+
+- `DWC_RTK_ROAD_WORKSPACE_DIR`：轨迹和道路网络目录。
+- `DWC_RTK_ROAD_PREVIEW_POINTS`：网页预览最大点数，默认 500。
+- `DWC_RTK_ROAD_RECORD_SPACING_M`：原始轨迹最小去重间距，默认 0.05 米。
+- `DWC_RTK_ROAD_NETWORK_SPACING_M`：生成道路网络前的采样间距，默认 0.25 米。
+- `DWC_RTK_ROAD_MERGE_RADIUS_M`：相邻轨迹节点合并半径，默认 0.75 米；必须依据道路宽度和实测结果复核。

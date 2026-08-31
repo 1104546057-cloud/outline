@@ -74,6 +74,11 @@ function mapToPreview(preview, x, y) {
   }
 }
 
+function mapYawToPreview(preview, yaw) {
+  const originYaw = Number(preview?.origin?.[2]) || 0
+  return (Number(yaw) || 0) - originYaw
+}
+
 function getMapBaseScale(preview, width, height) {
   if (!preview || width <= 0 || height <= 0) return 1
   return Math.min(width / preview.previewWidth, height / preview.previewHeight) * 0.96
@@ -325,7 +330,7 @@ export default function PatrolNavigation() {
     drawTrail(ctx, preview, visibleTrail)
     if (localizationReady && robotPose) {
       const { px, py } = mapToPreview(preview, robotPose.x, robotPose.y)
-      drawArrow(ctx, px, py, robotPose.yaw || 0, '#22c55e', 18)
+      drawArrow(ctx, px, py, mapYawToPreview(preview, robotPose.yaw), '#22c55e', 18)
       ctx.beginPath()
       ctx.arc(px, py, 5, 0, Math.PI * 2)
       ctx.fillStyle = '#dfffee'
@@ -334,7 +339,7 @@ export default function PatrolNavigation() {
     drawWaypointMarkers(ctx, preview, waypoints, activeWaypointId)
     if (target) {
       const { px, py } = mapToPreview(preview, target.x, target.y)
-      drawArrow(ctx, px, py, degToRad(yawDeg), '#ff4f64', 16)
+      drawArrow(ctx, px, py, mapYawToPreview(preview, degToRad(yawDeg)), '#ff4f64', 16)
       ctx.beginPath()
       ctx.arc(px, py, 5, 0, Math.PI * 2)
       ctx.fillStyle = '#22d3ee'

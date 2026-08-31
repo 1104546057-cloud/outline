@@ -29,7 +29,7 @@ if [ ! -d "$WORK_DIR" ]; then
   exit 1
 fi
 
-REQUIRED_FILES="iot_client.conf iot_client.py robot_control_server.py ros_camera_server.py rosconsole_camera.config start_camera.sh"
+REQUIRED_FILES="iot_client.conf iot_client.py robot_control_server.py rtk_navigation_core.py rtk_road_network.py ros_camera_server.py rosconsole_camera.config start_camera.sh launch/dwc_pointcloud_scan.launch launch/dwc_cartographer_2d.launch launch/dwc_rtk_navigation.launch cartographer/dwc_2d_mapping.lua rtk/rtk_navsat.yaml rtk/rtk_global_ekf.yaml rtk/rtk_costmap_common.yaml rtk/rtk_global_costmap.yaml rtk/rtk_local_costmap.yaml rtk/rtk_move_base.yaml rtk/findcm.env.example systemd/wheeltec-time-sync"
 
 MISSING_FILES=""
 for file in $REQUIRED_FILES; do
@@ -125,9 +125,14 @@ echo ">>> 3. 为 ROS G70 驱动释放 GNSS 串口..."
 sudo systemctl disable --now gpsd.socket gpsd.service 2>/dev/null || true
 
 echo ">>> 4. 安装 Python / ROS 图像依赖..."
-sudo apt-get -y install python3-psutil python3-opencv python3-numpy python3-websockets ros-noetic-cv-bridge gstreamer1.0-tools gstreamer1.0-plugins-good
+sudo apt-get -y install python3-psutil python3-opencv python3-numpy python3-websockets ros-noetic-cv-bridge ros-noetic-robot-localization ros-noetic-geographic-msgs ros-noetic-move-base ros-noetic-dwa-local-planner gstreamer1.0-tools gstreamer1.0-plugins-good
 
 echo ">>> 5. 授权并配置服务..."
+
+echo ">> 5.0 安装有界时间同步辅助脚本..."
+sudo install -m 0755 "$WORK_DIR/systemd/wheeltec-time-sync" /usr/local/sbin/wheeltec-time-sync
+sudo install -d -m 0750 -o root -g ${RUN_USER} /etc/devices-web-control
+sudo install -m 0640 -o root -g ${RUN_USER} "$WORK_DIR/rtk/findcm.env.example" /etc/devices-web-control/rtk.env.example
 
 echo ">> 5.1 将用户加入硬件访问组 (dialout, video, i2c)..."
 sudo usermod -aG dialout,video,i2c ${RUN_USER} || echo "警告: 组分配可能未完全成功，请检查系统组。"
@@ -157,6 +162,7 @@ User=${RUN_USER}
 Group=${RUN_USER}
 Environment="ROS_MASTER_URI=http://localhost:11311"
 Environment="ROS_IP=127.0.0.1"
+EnvironmentFile=-/etc/devices-web-control/rtk.env
 
 [Install]
 WantedBy=multi-user.target

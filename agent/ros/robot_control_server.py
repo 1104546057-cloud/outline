@@ -28,6 +28,7 @@ from nav_msgs.msg import OccupancyGrid
 from sensor_msgs.msg import NavSatFix
 from std_srvs.srv import Empty
 from rtk_navigation_core import RtkHealthTracker, RtkThresholds
+from rtk_road_network import RoadWorkspace
 try:
     from move_base_msgs.msg import MoveBaseActionResult
 except ImportError:
@@ -111,6 +112,19 @@ RTK_TRACKER = RtkHealthTracker(
         max_jump_speed_mps=float(os.environ.get("DWC_RTK_MAX_JUMP_SPEED_MPS", "3.0")),
         recovery_fixes=max(1, int(os.environ.get("DWC_RTK_RECOVERY_FIXES", "3"))),
     )
+)
+RTK_ROAD_WORKSPACE_DIR = Path(
+    os.environ.get(
+        "DWC_RTK_ROAD_WORKSPACE_DIR",
+        "/home/wheeltec/Dong/DevicesWebControl/rtk_roads",
+    )
+)
+RTK_ROAD_WORKSPACE = RoadWorkspace(
+    RTK_ROAD_WORKSPACE_DIR,
+    preview_limit=int(os.environ.get("DWC_RTK_ROAD_PREVIEW_POINTS", "500")),
+    min_record_spacing_m=float(os.environ.get("DWC_RTK_ROAD_RECORD_SPACING_M", "0.05")),
+    network_spacing_m=float(os.environ.get("DWC_RTK_ROAD_NETWORK_SPACING_M", "0.25")),
+    merge_radius_m=float(os.environ.get("DWC_RTK_ROAD_MERGE_RADIUS_M", "0.75")),
 )
 
 logging.basicConfig(
@@ -324,6 +338,16 @@ def on_rtk_fix(msg: NavSatFix) -> None:
             covariance_x,
             covariance_y,
             int(msg.status.status),
+        )
+        health = RTK_TRACKER.snapshot()
+        RTK_ROAD_WORKSPACE.add_fix(
+            msg.longitude,
+            msg.latitude,
+            msg.altitude,
+            int(msg.status.status),
+            covariance_x,
+            covariance_y,
+            health,
         )
     except (TypeError, ValueError) as exc:
         log.warning("忽略非法 G70 定位数据: %s", exc)
@@ -863,10 +887,11 @@ def start_mapping_process() -> dict:
         "export ROS_MASTER_URI=${ROS_MASTER_URI:-http://localhost:11311}; "
         "export ROS_IP=${DWC_ROS_IP:-127.0.0.1}; unset ROS_HOSTNAME; "
         "trap 'kill 0' INT TERM EXIT; "
-        "roslaunch pointcloud_to_laserscan pointcloud_scan.launch & "
+        f"roslaunch {sh_quote(str(SCAN_CONVERTER_LAUNCH))} scan_topic:=/scan & "
         "converter_pid=$!; "
         "sleep 1; "
-        "roslaunch cartographer_ros 2d_online.launch & "
+        f"roslaunch {sh_quote(str(CARTOGRAPHER_LAUNCH))} "
+        f"configuration_directory:={sh_quote(str(CARTOGRAPHER_CONFIG_DIR))} & "
         "mapper_pid=$!; wait $mapper_pid"
     )
     proc = subprocess.Popen(
@@ -1123,6 +1148,7 @@ def rtk_navigation_status_response(ok: bool = True, error: str = "") -> dict:
         "goalStatus": current_navigation_goal_status(),
         "safety": safety,
         "provider": rtk_provider_status(),
+        "roadSurvey": RTK_ROAD_WORKSPACE.status(),
         "topics": {
             "gps": RTK_GPS_TOPIC,
             "gga": RTK_GGA_TOPIC,
@@ -1131,6 +1157,16 @@ def rtk_navigation_status_response(ok: bool = True, error: str = "") -> dict:
             "scan": RTK_SCAN_TOPIC,
         },
         "logFile": str(RTK_NAV_LOG_FILE),
+        "error": error,
+        "ts": int(time.time()),
+    }
+
+
+def rtk_road_status_response(ok: bool = True, error: str = "") -> dict:
+    return {
+        "type": "rtk_road_status",
+        "ok": ok,
+        "survey": RTK_ROAD_WORKSPACE.status(),
         "error": error,
         "ts": int(time.time()),
     }
@@ -1317,9 +1353,14 @@ def start_navigation_process(map_name: str) -> dict:
         f"source {sh_quote(WHEELTEC_SETUP)} 2>/dev/null || true; "
         "export ROS_MASTER_URI=${ROS_MASTER_URI:-http://localhost:11311}; "
         "export ROS_IP=${DWC_ROS_IP:-127.0.0.1}; unset ROS_HOSTNAME; "
-        f"exec roslaunch turn_on_wheeltec_robot navigation.launch "
+        "trap 'kill 0' INT TERM EXIT; "
+        f"roslaunch {sh_quote(str(SCAN_CONVERTER_LAUNCH))} scan_topic:=/scan & "
+        "converter_pid=$!; "
+        "sleep 1; "
+        f"roslaunch turn_on_wheeltec_robot navigation.launch "
         f"map_file:={sh_quote(str(yaml_path))} "
-        "start_base:=false start_lidar_driver:=false start_scan_converter:=true"
+        "start_base:=false start_lidar_driver:=false start_scan_converter:=false & "
+        "navigation_pid=$!; wait $navigation_pid"
     )
     proc = subprocess.Popen(
         ["/bin/bash", "-lc", command],
@@ -1682,6 +1723,112 @@ def execute_command(command: dict) -> dict:
             "subscribers": subscriber_count,
             "ts": now,
         }
+    if command_type == "rtk_road_status":
+        return rtk_road_status_response(True)
+    if command_type == "rtk_road_start":
+        try:
+            return {
+                "type": "rtk_road_status",
+                "ok": True,
+                "survey": RTK_ROAD_WORKSPACE.start(
+                    str(command.get("name", "")), RTK_TRACKER.snapshot()
+                ),
+                "ts": now,
+            }
+        except Exception as exc:
+            return rtk_road_status_response(False, str(exc))
+    if command_type == "rtk_road_pause":
+        try:
+            return {
+                "type": "rtk_road_status", "ok": True,
+                "survey": RTK_ROAD_WORKSPACE.pause(), "ts": now,
+            }
+        except Exception as exc:
+            return rtk_road_status_response(False, str(exc))
+    if command_type == "rtk_road_resume":
+        try:
+            return {
+                "type": "rtk_road_status", "ok": True,
+                "survey": RTK_ROAD_WORKSPACE.resume(RTK_TRACKER.snapshot()), "ts": now,
+            }
+        except Exception as exc:
+            return rtk_road_status_response(False, str(exc))
+    if command_type == "rtk_road_stop":
+        try:
+            return {
+                "type": "rtk_road_saved", "ok": True,
+                "track": RTK_ROAD_WORKSPACE.stop(),
+                "survey": RTK_ROAD_WORKSPACE.status(), "ts": now,
+            }
+        except Exception as exc:
+            return {"type": "rtk_road_saved", "ok": False, "error": str(exc), "ts": now}
+    if command_type == "rtk_road_discard":
+        try:
+            return {
+                "type": "rtk_road_status", "ok": True,
+                "survey": RTK_ROAD_WORKSPACE.discard(), "ts": now,
+            }
+        except Exception as exc:
+            return rtk_road_status_response(False, str(exc))
+    if command_type == "rtk_road_tracks":
+        return {
+            "type": "rtk_road_tracks", "ok": True,
+            "tracks": RTK_ROAD_WORKSPACE.list_tracks(), "ts": now,
+        }
+    if command_type == "rtk_road_track":
+        try:
+            return {
+                "type": "rtk_road_track", "ok": True,
+                "track": RTK_ROAD_WORKSPACE.get_track(str(command.get("trackId", ""))),
+                "ts": now,
+            }
+        except Exception as exc:
+            return {"type": "rtk_road_track", "ok": False, "error": str(exc), "ts": now}
+    if command_type == "rtk_road_network_build":
+        try:
+            return {
+                "type": "rtk_road_network", "ok": True,
+                "network": RTK_ROAD_WORKSPACE.build_network(
+                    str(command.get("name", "")), list(command.get("trackIds") or [])
+                ),
+                "ts": now,
+            }
+        except Exception as exc:
+            return {"type": "rtk_road_network", "ok": False, "error": str(exc), "ts": now}
+    if command_type == "rtk_road_networks":
+        return {
+            "type": "rtk_road_networks", "ok": True,
+            "networks": RTK_ROAD_WORKSPACE.list_networks(), "ts": now,
+        }
+    if command_type == "rtk_road_network":
+        try:
+            return {
+                "type": "rtk_road_network", "ok": True,
+                "network": RTK_ROAD_WORKSPACE.get_network(str(command.get("networkId", ""))),
+                "ts": now,
+            }
+        except Exception as exc:
+            return {"type": "rtk_road_network", "ok": False, "error": str(exc), "ts": now}
+    if command_type == "rtk_road_plan":
+        try:
+            health = RTK_TRACKER.snapshot()
+            if not health.get("valid"):
+                raise RuntimeError("RTK 定位未就绪: " + str(health.get("lastError") or "等待 Fixed"))
+            position = health.get("position") or {}
+            return {
+                "type": "rtk_road_plan", "ok": True,
+                "plan": RTK_ROAD_WORKSPACE.plan(
+                    str(command.get("networkId", "")),
+                    float(position.get("longitude")),
+                    float(position.get("latitude")),
+                    float(command.get("goalLongitude")),
+                    float(command.get("goalLatitude")),
+                    float(command.get("maxSnapM", 5.0)),
+                ),
+                "ts": now,
+            }
+        except Exception as exc:
+            return {"type": "rtk_road_plan", "ok": False, "error": str(exc), "ts": now}
     if command_type == "rtk_nav_start":
         try:
             return start_rtk_navigation_process()
