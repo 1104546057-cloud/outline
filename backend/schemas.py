@@ -171,6 +171,42 @@ class RtkNavigationGoalRequest(BaseModel):
     yaw: float = 0.0
 
 
+class RtkRoadCollectionStartRequest(BaseModel):
+    """开始一次由人工驾驶完成的 WGS-84 道路采集会话"""
+    robotId: Optional[int] = None
+    name: str = ""
+
+
+class RtkRoadActionRequest(BaseModel):
+    """暂停、继续、停止或放弃道路采集"""
+    robotId: Optional[int] = None
+
+
+class RtkRoadNetworkBuildRequest(BaseModel):
+    """由一条或多条实测轨迹生成可规划道路网络"""
+    robotId: Optional[int] = None
+    name: str = ""
+    trackIds: list[str] = []
+
+
+class RtkRoadPlanRequest(BaseModel):
+    """将目标吸附到道路网络并只读计算路径"""
+    robotId: Optional[int] = None
+    networkId: str
+    goalLongitude: float
+    goalLatitude: float
+    maxSnapM: float = 5.0
+
+
+class RtkRouteStartRequest(BaseModel):
+    """从车辆当前RTK位置开始执行一条道路网络路线"""
+    robotId: Optional[int] = None
+    networkId: str
+    goalLongitude: float
+    goalLatitude: float
+    maxSnapM: float = 5.0
+
+
 class MappingActionRequest(BaseModel):
     """开始、暂停或放弃一次室内建图会话"""
     robotId: Optional[int] = None

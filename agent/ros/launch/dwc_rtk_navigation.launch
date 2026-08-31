@@ -6,6 +6,14 @@
   <arg name="scan_topic" default="/scan" />
   <arg name="base_frame" default="base_footprint" />
   <arg name="odom_frame" default="odom_combined" />
+  <arg name="gps_frame" default="navsat_link" />
+  <arg name="gps_offset_x" default="0.0" />
+  <arg name="gps_offset_y" default="0.0" />
+  <arg name="gps_offset_z" default="0.0" />
+
+  <!-- Defaults preserve the previous origin assumption; replace offsets with measured antenna lever arm. -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="dwc_base_to_navsat"
+        args="$(arg gps_offset_x) $(arg gps_offset_y) $(arg gps_offset_z) 0 0 0 $(arg base_frame) $(arg gps_frame)" />
 
   <node pkg="robot_localization" type="navsat_transform_node" name="dwc_navsat_transform" output="screen">
     <rosparam command="load" file="$(dirname)/../rtk/rtk_navsat.yaml" />

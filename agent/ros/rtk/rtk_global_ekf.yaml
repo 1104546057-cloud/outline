@@ -1,7 +1,9 @@
 frequency: 20
 sensor_timeout: 0.5
 two_d_mode: true
-transform_time_offset: 0.0
+# Publish map->odom slightly into the future so move_base does not request a
+# transform a few milliseconds newer than the latest EKF sample.
+transform_time_offset: 0.10
 transform_timeout: 0.1
 print_diagnostics: true
 publish_tf: true

@@ -21,6 +21,11 @@ from schemas import (
     NavigationStartRequest,
     NavigationStopRequest,
     RtkNavigationGoalRequest,
+    RtkRoadActionRequest,
+    RtkRoadCollectionStartRequest,
+    RtkRoadNetworkBuildRequest,
+    RtkRoadPlanRequest,
+    RtkRouteStartRequest,
 )
 
 
@@ -209,6 +214,264 @@ async def rtk_navigation_stop(
     )
     touch_device_online(robot_id, db)
     return {"ok": bool(response.get("ok")), "response": response}
+
+
+@router.post("/rtk/route/start")
+async def rtk_route_start(
+    req: RtkRouteStartRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(req.robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id,
+        {
+            "type": "rtk_route_start",
+            "networkId": req.networkId,
+            "goalLongitude": req.goalLongitude,
+            "goalLatitude": req.goalLatitude,
+            "maxSnapM": req.maxSnapM,
+        },
+        "rtk_nav_status",
+        timeout=35.0,
+    )
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "response": response}
+
+
+async def send_rtk_route_action(
+    req: RtkRoadActionRequest,
+    command_type: str,
+    db: Session,
+) -> dict[str, Any]:
+    robot_id = require_robot_id(req.robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id, {"type": command_type}, "rtk_nav_status", timeout=12.0
+    )
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "response": response}
+
+
+@router.post("/rtk/route/pause")
+async def rtk_route_pause(
+    req: RtkRoadActionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await send_rtk_route_action(req, "rtk_route_pause", db)
+
+
+@router.post("/rtk/route/resume")
+async def rtk_route_resume(
+    req: RtkRoadActionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await send_rtk_route_action(req, "rtk_route_resume", db)
+
+
+@router.post("/rtk/route/stop")
+async def rtk_route_stop(
+    req: RtkRoadActionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await send_rtk_route_action(req, "rtk_route_stop", db)
+
+
+@router.get("/rtk/roads/status")
+async def rtk_road_collection_status(
+    robotId: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id, {"type": "rtk_road_status"}, "rtk_road_status"
+    )
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "response": response}
+
+
+@router.post("/rtk/roads/start")
+async def rtk_road_collection_start(
+    req: RtkRoadCollectionStartRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(req.robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id,
+        {"type": "rtk_road_start", "name": req.name},
+        "rtk_road_status",
+    )
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "response": response}
+
+
+async def send_rtk_road_action(
+    req: RtkRoadActionRequest,
+    command_type: str,
+    expected_type: str,
+    db: Session,
+) -> dict[str, Any]:
+    robot_id = require_robot_id(req.robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id, {"type": command_type}, expected_type, timeout=12.0
+    )
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "response": response}
+
+
+@router.post("/rtk/roads/pause")
+async def rtk_road_collection_pause(
+    req: RtkRoadActionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await send_rtk_road_action(req, "rtk_road_pause", "rtk_road_status", db)
+
+
+@router.post("/rtk/roads/resume")
+async def rtk_road_collection_resume(
+    req: RtkRoadActionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await send_rtk_road_action(req, "rtk_road_resume", "rtk_road_status", db)
+
+
+@router.post("/rtk/roads/stop")
+async def rtk_road_collection_stop(
+    req: RtkRoadActionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await send_rtk_road_action(req, "rtk_road_stop", "rtk_road_saved", db)
+
+
+@router.post("/rtk/roads/discard")
+async def rtk_road_collection_discard(
+    req: RtkRoadActionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await send_rtk_road_action(req, "rtk_road_discard", "rtk_road_status", db)
+
+
+@router.get("/rtk/roads/tracks")
+async def rtk_road_tracks(
+    robotId: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id, {"type": "rtk_road_tracks"}, "rtk_road_tracks"
+    )
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "tracks": response.get("tracks", [])}
+
+
+@router.get("/rtk/roads/tracks/{track_id}")
+async def rtk_road_track(
+    track_id: str,
+    robotId: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id,
+        {"type": "rtk_road_track", "trackId": track_id},
+        "rtk_road_track",
+        timeout=12.0,
+    )
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "track": response.get("track"), "response": response}
+
+
+@router.post("/rtk/roads/networks/build")
+async def rtk_road_network_build(
+    req: RtkRoadNetworkBuildRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(req.robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id,
+        {"type": "rtk_road_network_build", "name": req.name, "trackIds": req.trackIds},
+        "rtk_road_network",
+        timeout=20.0,
+    )
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "network": response.get("network"), "response": response}
+
+
+@router.get("/rtk/roads/networks")
+async def rtk_road_networks(
+    robotId: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id, {"type": "rtk_road_networks"}, "rtk_road_networks"
+    )
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "networks": response.get("networks", [])}
+
+
+@router.get("/rtk/roads/networks/{network_id}")
+async def rtk_road_network(
+    network_id: str,
+    robotId: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id,
+        {"type": "rtk_road_network", "networkId": network_id},
+        "rtk_road_network",
+        timeout=12.0,
+    )
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "network": response.get("network"), "response": response}
+
+
+@router.post("/rtk/roads/plan")
+async def rtk_road_plan(
+    req: RtkRoadPlanRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    robot_id = require_robot_id(req.robotId)
+    require_device(robot_id, db)
+    response = await send_navigation_command(
+        robot_id,
+        {
+            "type": "rtk_road_plan",
+            "networkId": req.networkId,
+            "goalLongitude": req.goalLongitude,
+            "goalLatitude": req.goalLatitude,
+            "maxSnapM": req.maxSnapM,
+        },
+        "rtk_road_plan",
+        timeout=15.0,
+    )
+    touch_device_online(robot_id, db)
+    return {"ok": bool(response.get("ok")), "plan": response.get("plan"), "response": response}
 
 
 @router.post("/initial-pose")
