@@ -1,7 +1,7 @@
 /* eslint-disable react/prop-types */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import RobotDirectionPad from './RobotDirectionPad'
-import { getRobotDirectionValues } from './robotDirectionPadConfig'
+import { getRobotDirectionValues, ROBOT_DIRECTION_KEY_MAP } from './robotDirectionPadConfig'
 import { authFetch } from '../utils/authFetch'
 
 const SEND_INTERVAL_MS = 180
@@ -145,6 +145,39 @@ export default function RtkSurveyCockpit({ deviceId, device, onNotice }) {
     stopRepeating()
     if (controlledRef.current) sendStop(true)
   }, [sendStop, stopRepeating])
+
+  useEffect(() => {
+    const isTypingTarget = target => {
+      const tag = target?.tagName
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable
+    }
+
+    const handleKeyDown = event => {
+      const direction = ROBOT_DIRECTION_KEY_MAP[event.code]
+      if (!direction) return
+      if (isTypingTarget(event.target)) return
+      event.preventDefault()
+      if (direction === 'stop') {
+        emergencyStop()
+        return
+      }
+      startDirection(direction)
+    }
+
+    const handleKeyUp = event => {
+      const direction = ROBOT_DIRECTION_KEY_MAP[event.code]
+      if (direction && direction !== 'stop' && direction === activeDirectionRef.current) {
+        stopDirection()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+    }
+  }, [emergencyStop, startDirection, stopDirection])
 
   const retryCamera = () => {
     setCameraStatus('loading')

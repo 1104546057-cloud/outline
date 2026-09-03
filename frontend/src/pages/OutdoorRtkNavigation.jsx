@@ -10,9 +10,9 @@ const EARTH_RADIUS_M = 6378137
 const DIRECT_GOAL_MAX_DISTANCE_M = Number(import.meta.env.VITE_RTK_DIRECT_GOAL_MAX_DISTANCE_M || 10)
 const ROAD_NETWORK_MAX_SNAP_M = Number(import.meta.env.VITE_RTK_ROAD_NETWORK_MAX_SNAP_M || 5)
 const MAP_STYLE_URL = import.meta.env.VITE_RTK_MAP_STYLE_URL
-const RASTER_TILE_URL = import.meta.env.VITE_RTK_RASTER_TILE_URL || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
-const MAP_PROVIDER_NAME = import.meta.env.VITE_RTK_MAP_PROVIDER_NAME || 'OpenStreetMap WGS-84 道路底图'
-const RASTER_ATTRIBUTION = import.meta.env.VITE_RTK_RASTER_ATTRIBUTION || '© OpenStreetMap contributors'
+const RASTER_TILE_URL = import.meta.env.VITE_RTK_RASTER_TILE_URL || 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+const MAP_PROVIDER_NAME = import.meta.env.VITE_RTK_MAP_PROVIDER_NAME || 'Esri World Imagery WGS-84 卫星底图'
+const RASTER_ATTRIBUTION = import.meta.env.VITE_RTK_RASTER_ATTRIBUTION || 'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
 
 const EMPTY_LINE = {
   type: 'Feature',
@@ -592,7 +592,7 @@ export default function OutdoorRtkNavigation() {
   }
 
   return (
-    <div className="rtk-page">
+    <div className="rtk-page" data-mode={navigationMode}>
       <header className="rtk-header">
         <div>
           <h1>厘米级 RTK 室外导航</h1>

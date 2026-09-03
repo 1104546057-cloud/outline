@@ -70,10 +70,11 @@ async def serve_frontend(full_path: str):
 
     requested_file = (FRONTEND_DIST_DIR / full_path).resolve()
     if requested_file.is_relative_to(FRONTEND_DIST_DIR) and requested_file.is_file():
-        return FileResponse(requested_file)
+        headers = {"Cache-Control": "public, max-age=31536000, immutable"} if requested_file.suffix in {".js", ".css"} else {"Cache-Control": "no-store"}
+        return FileResponse(requested_file, headers=headers)
 
     index_file = FRONTEND_DIST_DIR / "index.html"
     if index_file.is_file():
-        return FileResponse(index_file)
+        return FileResponse(index_file, headers={"Cache-Control": "no-store"})
 
     raise HTTPException(status_code=404, detail="前端尚未构建，请先生成 frontend/dist")
