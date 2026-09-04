@@ -125,7 +125,7 @@ echo ">>> 3. 为 ROS G70 驱动释放 GNSS 串口..."
 sudo systemctl disable --now gpsd.socket gpsd.service 2>/dev/null || true
 
 echo ">>> 4. 安装 Python / ROS 图像依赖..."
-sudo apt-get -y install python3-psutil python3-opencv python3-numpy python3-websockets ros-noetic-cv-bridge ros-noetic-robot-localization ros-noetic-geographic-msgs ros-noetic-move-base ros-noetic-dwa-local-planner gstreamer1.0-tools gstreamer1.0-plugins-good
+sudo apt-get -y install python3-psutil python3-opencv python3-numpy python3-websockets ros-noetic-cv-bridge ros-noetic-robot-localization ros-noetic-geographic-msgs ros-noetic-move-base ros-noetic-teb-local-planner gstreamer1.0-tools gstreamer1.0-plugins-good
 
 echo ">>> 5. 授权并配置服务..."
 

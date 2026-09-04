@@ -9,7 +9,7 @@ recovery_behavior_enabled: true
 clearing_rotation_allowed: false
 
 base_global_planner: global_planner/GlobalPlanner
-base_local_planner: dwa_local_planner/DWAPlannerROS
+base_local_planner: teb_local_planner/TebLocalPlannerROS
 
 GlobalPlanner:
   allow_unknown: false
@@ -18,25 +18,85 @@ GlobalPlanner:
   use_grid_path: false
   orientation_mode: 1
 
-DWAPlannerROS:
-  max_vel_x: 0.65
-  min_vel_x: 0.05
-  max_vel_trans: 0.65
-  min_vel_trans: 0.05
-  max_vel_theta: 0.8
-  min_vel_theta: 0.15
-  acc_lim_x: 0.45
-  acc_lim_theta: 0.8
-  xy_goal_tolerance: 0.20
-  yaw_goal_tolerance: 0.20
-  latch_xy_goal_tolerance: true
-  sim_time: 2.0
-  vx_samples: 12
-  vtheta_samples: 24
-  path_distance_bias: 32.0
-  goal_distance_bias: 24.0
-  occdist_scale: 0.05
-  stop_time_buffer: 0.4
-  oscillation_reset_dist: 0.25
-  publish_traj_pc: false
-  publish_cost_grid_pc: false
+TebLocalPlannerROS:
+  odom_topic: /odom
+  map_frame: map
+
+  teb_autosize: true
+  dt_ref: 0.3
+  dt_hysteresis: 0.1
+  min_samples: 3
+  max_samples: 120
+  global_plan_overwrite_orientation: false
+  global_plan_viapoint_sep: 1.0
+  via_points_ordered: true
+  max_global_plan_lookahead_dist: 3.0
+  global_plan_prune_distance: 1.0
+  exact_arc_length: true
+  allow_init_with_backwards_motion: false
+  force_reinit_new_goal_dist: 1.0
+  feasibility_check_no_poses: 8
+  publish_feedback: true
+
+  max_vel_x: 0.20
+  max_vel_x_backwards: 0.08
+  max_vel_y: 0.0
+  max_vel_theta: 0.30
+  acc_lim_x: 0.25
+  acc_lim_y: 0.0
+  acc_lim_theta: 0.45
+  min_turning_radius: 1.78
+  wheelbase: 0.530
+  cmd_angle_instead_rotvel: false
+
+  footprint_model:
+    type: polygon
+    vertices: [[-0.15, -0.38], [-0.15, 0.38], [0.67, 0.38], [0.67, -0.38]]
+
+  xy_goal_tolerance: 0.65
+  yaw_goal_tolerance: 3.20
+  free_goal_vel: false
+  complete_global_plan: true
+
+  min_obstacle_dist: 0.35
+  inflation_dist: 0.75
+  include_costmap_obstacles: true
+  costmap_obstacles_behind_robot_dist: 1.0
+  obstacle_poses_affected: 20
+  dynamic_obstacle_inflation_dist: 0.75
+  include_dynamic_obstacles: false
+
+  no_inner_iterations: 5
+  no_outer_iterations: 4
+  optimization_activate: true
+  optimization_verbose: false
+  penalty_epsilon: 0.05
+  weight_max_vel_x: 2.0
+  weight_max_vel_y: 2.0
+  weight_max_vel_theta: 1.0
+  weight_acc_lim_x: 1.0
+  weight_acc_lim_y: 1.0
+  weight_acc_lim_theta: 1.0
+  weight_kinematics_nh: 1000.0
+  weight_kinematics_forward_drive: 1000.0
+  weight_kinematics_turning_radius: 20.0
+  weight_optimaltime: 1.0
+  weight_shortest_path: 0.0
+  weight_obstacle: 60.0
+  weight_inflation: 0.2
+  weight_dynamic_obstacle: 10.0
+  weight_dynamic_obstacle_inflation: 0.2
+  weight_viapoint: 1.0
+  weight_adapt_factor: 2.0
+
+  enable_homotopy_class_planning: false
+  enable_multithreading: true
+  max_number_classes: 2
+
+  shrink_horizon_backup: true
+  shrink_horizon_min_duration: 10.0
+  oscillation_recovery: true
+  oscillation_v_eps: 0.05
+  oscillation_omega_eps: 0.05
+  oscillation_recovery_min_duration: 10.0
+  oscillation_filter_duration: 10.0

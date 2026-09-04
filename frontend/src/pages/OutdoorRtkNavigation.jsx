@@ -1018,7 +1018,10 @@ export default function OutdoorRtkNavigation() {
               <button disabled={!deviceId || Boolean(busy)} onClick={() => refreshRoadAssets(false)}>刷新网络</button>
             </div>
             <div className="rtk-alert">地图图例：黄点/青线为原始采集轨迹，蓝线为生成的道路网络，橙线为规划结果。</div>
-            <small>最大吸附距离为 {ROAD_NETWORK_MAX_SNAP_M} 米。车端会按约 {status?.routeLimits?.waypointSpacingM || 2} 米间距逐点执行；单次自动路线安全上限为 {routeMaxDistanceM} 米。</small>
+            <small>
+              最大吸附距离为 {ROAD_NETWORK_MAX_SNAP_M} 米。执行路线按直线约 {status?.routeLimits?.straightSpacingM || 3} 米、转弯约 {status?.routeLimits?.turnSpacingM || 1} 米稀疏采样；
+              中间点不强制朝向，允许局部避障；横向偏离超过 {status?.routeLimits?.maxDeviationM || 1.2} 米将安全停车；单次路线安全上限为 {routeMaxDistanceM} 米。
+            </small>
             {plannedRoute && !plannedRouteInRange ? <div className="rtk-alert danger">
               当前规划 {formatDistance(plannedRoute.distanceM)}，超过 {routeMaxDistanceM} 米上限，请重新选择较近目标。
             </div> : null}
@@ -1036,6 +1039,8 @@ export default function OutdoorRtkNavigation() {
                 <div><dt>完成节点</dt><dd>{routeExecution.completedPoints || 0} / {routeExecution.pointCount || '--'}</dd></div>
                 <div><dt>执行路线</dt><dd>{formatDistance(routeExecution.distanceM)}</dd></div>
                 <div><dt>当前节点</dt><dd>{routeExecution.active ? (routeExecution.currentIndex || 0) + 1 : '--'}</dd></div>
+                <div><dt>横向偏离</dt><dd>{formatDistance(routeExecution.crossTrackErrorM)}</dd></div>
+                <div><dt>最大偏离</dt><dd>{formatDistance(routeExecution.maxCrossTrackErrorM)}</dd></div>
               </dl>
               {routeExecution.error ? <div className="rtk-alert danger">{routeExecution.error}</div> : null}
               <div className="rtk-actions rtk-route-driving-actions">

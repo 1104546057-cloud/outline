@@ -110,7 +110,13 @@ RTK_GPS_OFFSET_Y = float(os.environ.get("DWC_RTK_GPS_OFFSET_Y", "0.0"))
 RTK_GPS_OFFSET_Z = float(os.environ.get("DWC_RTK_GPS_OFFSET_Z", "0.0"))
 RTK_LOSS_GRACE_SEC = float(os.environ.get("DWC_RTK_LOSS_GRACE_SEC", "1.0"))
 RTK_ROUTE_MAX_DISTANCE_M = float(os.environ.get("DWC_RTK_ROUTE_MAX_DISTANCE_M", "50.0"))
-RTK_ROUTE_WAYPOINT_SPACING_M = float(os.environ.get("DWC_RTK_ROUTE_WAYPOINT_SPACING_M", "2.0"))
+RTK_ROUTE_STRAIGHT_SPACING_M = float(os.environ.get("DWC_RTK_ROUTE_STRAIGHT_SPACING_M", "3.0"))
+RTK_ROUTE_TURN_SPACING_M = float(os.environ.get("DWC_RTK_ROUTE_TURN_SPACING_M", "1.0"))
+RTK_ROUTE_TURN_THRESHOLD_DEG = float(os.environ.get("DWC_RTK_ROUTE_TURN_THRESHOLD_DEG", "12.0"))
+RTK_ROUTE_TURN_WINDOW_M = float(os.environ.get("DWC_RTK_ROUTE_TURN_WINDOW_M", "0.75"))
+RTK_ROUTE_START_SKIP_DISTANCE_M = float(os.environ.get("DWC_RTK_ROUTE_START_SKIP_DISTANCE_M", "1.0"))
+RTK_ROUTE_MAX_DEVIATION_M = float(os.environ.get("DWC_RTK_ROUTE_MAX_DEVIATION_M", "1.2"))
+RTK_ROUTE_DEVIATION_GRACE_SEC = float(os.environ.get("DWC_RTK_ROUTE_DEVIATION_GRACE_SEC", "1.0"))
 RTK_ROUTE_WAYPOINT_TIMEOUT_SEC = float(os.environ.get("DWC_RTK_ROUTE_WAYPOINT_TIMEOUT_SEC", "45.0"))
 RTK_ROUTE_STARTUP_TIMEOUT_SEC = float(os.environ.get("DWC_RTK_ROUTE_STARTUP_TIMEOUT_SEC", "20.0"))
 RTK_FROM_LL_TIMEOUT_SEC = float(os.environ.get("DWC_RTK_FROM_LL_TIMEOUT_SEC", "12.0"))
@@ -1170,7 +1176,13 @@ def rtk_navigation_status_response(ok: bool = True, error: str = "") -> dict:
         ),
         "routeLimits": {
             "maxDistanceM": RTK_ROUTE_MAX_DISTANCE_M,
-            "waypointSpacingM": RTK_ROUTE_WAYPOINT_SPACING_M,
+            "straightSpacingM": RTK_ROUTE_STRAIGHT_SPACING_M,
+            "turnSpacingM": RTK_ROUTE_TURN_SPACING_M,
+            "turnThresholdDeg": RTK_ROUTE_TURN_THRESHOLD_DEG,
+            "maxDeviationM": RTK_ROUTE_MAX_DEVIATION_M,
+            "deviationGraceSec": RTK_ROUTE_DEVIATION_GRACE_SEC,
+            "controller": "teb_ackermann",
+            "intermediateYawRequired": False,
             "waypointTimeoutSec": RTK_ROUTE_WAYPOINT_TIMEOUT_SEC,
             "fromLlTimeoutSec": RTK_FROM_LL_TIMEOUT_SEC,
             "tfReadyTimeoutSec": RTK_TF_READY_TIMEOUT_SEC,
@@ -2285,7 +2297,13 @@ def init_ros() -> None:
         read_health=RTK_TRACKER.snapshot,
         cancel_goal=cancel_navigation_goals,
         hard_stop=hard_stop,
-        waypoint_spacing_m=RTK_ROUTE_WAYPOINT_SPACING_M,
+        straight_spacing_m=RTK_ROUTE_STRAIGHT_SPACING_M,
+        turn_spacing_m=RTK_ROUTE_TURN_SPACING_M,
+        turn_threshold_deg=RTK_ROUTE_TURN_THRESHOLD_DEG,
+        turn_window_m=RTK_ROUTE_TURN_WINDOW_M,
+        max_cross_track_error_m=RTK_ROUTE_MAX_DEVIATION_M,
+        deviation_grace_sec=RTK_ROUTE_DEVIATION_GRACE_SEC,
+        start_skip_distance_m=RTK_ROUTE_START_SKIP_DISTANCE_M,
         waypoint_timeout_sec=RTK_ROUTE_WAYPOINT_TIMEOUT_SEC,
     )
     wait_started = time.time()

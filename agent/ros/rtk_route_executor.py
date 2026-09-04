@@ -28,19 +28,79 @@ def route_yaw(point: dict, next_point: dict) -> float:
     return math.atan2(north, east)
 
 
-def sample_route_points(points: List[dict], spacing_m: float) -> List[dict]:
+def angle_difference(first: float, second: float) -> float:
+    return abs((second - first + math.pi) % (2.0 * math.pi) - math.pi)
+
+
+def route_turn_angle_deg(points: List[dict], index: int, window_m: float = 0.75) -> float:
+    if index <= 0 or index >= len(points) - 1:
+        return 0.0
+    window = max(0.1, float(window_m))
+    before = index - 1
+    while before > 0 and haversine_m(points[before], points[index]) < window:
+        before -= 1
+    after = index + 1
+    while after < len(points) - 1 and haversine_m(points[index], points[after]) < window:
+        after += 1
+    incoming = route_yaw(points[before], points[index])
+    outgoing = route_yaw(points[index], points[after])
+    return math.degrees(angle_difference(incoming, outgoing))
+
+
+def sample_route_points(
+    points: List[dict],
+    straight_spacing_m: float = 3.0,
+    turn_spacing_m: float = 1.0,
+    turn_threshold_deg: float = 12.0,
+    turn_window_m: float = 0.75,
+) -> List[dict]:
     if not points:
         return []
     if len(points) == 1:
         return [dict(points[0])]
-    spacing = max(0.1, float(spacing_m))
+    straight_spacing = max(0.1, float(straight_spacing_m))
+    turn_spacing = min(straight_spacing, max(0.1, float(turn_spacing_m)))
+    threshold = max(0.0, float(turn_threshold_deg))
     sampled = [dict(points[0])]
-    for point in points[1:-1]:
-        if haversine_m(sampled[-1], point) >= spacing:
+    for index, point in enumerate(points[1:-1], start=1):
+        turning = route_turn_angle_deg(points, index, turn_window_m) >= threshold
+        required_spacing = turn_spacing if turning else straight_spacing
+        if haversine_m(sampled[-1], point) >= required_spacing:
             sampled.append(dict(point))
     if haversine_m(sampled[-1], points[-1]) > 0.01:
         sampled.append(dict(points[-1]))
     return sampled
+
+
+def distance_to_route_m(position: dict, route: List[dict]) -> float:
+    if not route:
+        return float("inf")
+    latitude = float(position["latitude"])
+    longitude = float(position["longitude"])
+    cosine = max(0.01, math.cos(math.radians(latitude)))
+
+    def local_xy(point: dict):
+        return (
+            EARTH_RADIUS_M * math.radians(float(point["longitude"]) - longitude) * cosine,
+            EARTH_RADIUS_M * math.radians(float(point["latitude"]) - latitude),
+        )
+
+    if len(route) == 1:
+        return math.hypot(*local_xy(route[0]))
+    best = float("inf")
+    for first, second in zip(route, route[1:]):
+        ax, ay = local_xy(first)
+        bx, by = local_xy(second)
+        dx = bx - ax
+        dy = by - ay
+        length_sq = dx * dx + dy * dy
+        if length_sq <= 1e-9:
+            distance = math.hypot(ax, ay)
+        else:
+            projection = max(0.0, min(1.0, -(ax * dx + ay * dy) / length_sq))
+            distance = math.hypot(ax + projection * dx, ay + projection * dy)
+        best = min(best, distance)
+    return best
 
 
 class RtkRouteExecutor:
@@ -51,16 +111,35 @@ class RtkRouteExecutor:
         read_health: Callable[[], dict],
         cancel_goal: Callable[[], None],
         hard_stop: Callable[[], None],
-        waypoint_spacing_m: float = 2.0,
+        straight_spacing_m: float = 3.0,
+        turn_spacing_m: float = 1.0,
+        turn_threshold_deg: float = 12.0,
+        turn_window_m: float = 0.75,
+        max_cross_track_error_m: float = 1.2,
+        deviation_grace_sec: float = 1.0,
+        start_skip_distance_m: float = 1.0,
         waypoint_timeout_sec: float = 45.0,
         poll_interval_sec: float = 0.1,
+        waypoint_spacing_m: Optional[float] = None,
     ):
         self._send_goal = send_goal
         self._read_goal_status = read_goal_status
         self._read_health = read_health
         self._cancel_goal = cancel_goal
         self._hard_stop = hard_stop
-        self._waypoint_spacing_m = max(0.1, float(waypoint_spacing_m))
+        if waypoint_spacing_m is not None:
+            straight_spacing_m = waypoint_spacing_m
+            turn_spacing_m = waypoint_spacing_m
+        self._straight_spacing_m = max(0.1, float(straight_spacing_m))
+        self._turn_spacing_m = min(
+            self._straight_spacing_m,
+            max(0.1, float(turn_spacing_m)),
+        )
+        self._turn_threshold_deg = max(0.0, float(turn_threshold_deg))
+        self._turn_window_m = max(0.1, float(turn_window_m))
+        self._max_cross_track_error_m = max(0.1, float(max_cross_track_error_m))
+        self._deviation_grace_sec = max(0.0, float(deviation_grace_sec))
+        self._start_skip_distance_m = max(0.0, float(start_skip_distance_m))
         self._waypoint_timeout_sec = max(1.0, float(waypoint_timeout_sec))
         self._poll_interval_sec = max(0.01, float(poll_interval_sec))
         self._lock = threading.Lock()
@@ -84,6 +163,9 @@ class RtkRouteExecutor:
             "completedPoints": 0,
             "progressPct": 0.0,
             "currentGoal": None,
+            "crossTrackErrorM": None,
+            "maxCrossTrackErrorM": 0.0,
+            "deviationLimitM": None,
             "startedAt": None,
             "updatedAt": time.time(),
             "finishedAt": None,
@@ -98,9 +180,27 @@ class RtkRouteExecutor:
         path = list(plan.get("path") or [])
         if len(path) < 2:
             raise ValueError("规划路径有效节点少于2个")
-        points = sample_route_points(path, self._waypoint_spacing_m)
-        if len(points) < 2:
-            raise ValueError("路线压缩后有效节点少于2个")
+        points = sample_route_points(
+            path,
+            self._straight_spacing_m,
+            self._turn_spacing_m,
+            self._turn_threshold_deg,
+            self._turn_window_m,
+        )
+        health = self._read_health() or {}
+        start_position = health.get("position") or {}
+        reference_route = [dict(point) for point in path]
+        if "longitude" in start_position and "latitude" in start_position:
+            start_point = {
+                "longitude": float(start_position["longitude"]),
+                "latitude": float(start_position["latitude"]),
+            }
+            if haversine_m(start_point, reference_route[0]) > 0.01:
+                reference_route.insert(0, start_point)
+            while len(points) > 1 and haversine_m(start_point, points[0]) <= self._start_skip_distance_m:
+                points.pop(0)
+        if not points:
+            raise ValueError("路线压缩后没有可执行节点")
         with self._lock:
             if self._state.get("active"):
                 raise RuntimeError("已有自动驾驶路线正在执行")
@@ -120,6 +220,9 @@ class RtkRouteExecutor:
                 "completedPoints": 0,
                 "progressPct": 0.0,
                 "currentGoal": None,
+                "crossTrackErrorM": 0.0,
+                "maxCrossTrackErrorM": 0.0,
+                "deviationLimitM": self._max_cross_track_error_m,
                 "startedAt": now,
                 "updatedAt": now,
                 "finishedAt": None,
@@ -127,7 +230,7 @@ class RtkRouteExecutor:
             }
             thread = threading.Thread(
                 target=self._run,
-                args=(points,),
+                args=(points, reference_route),
                 name="rtk-route-executor",
                 daemon=True,
             )
@@ -212,9 +315,10 @@ class RtkRouteExecutor:
             time.sleep(self._poll_interval_sec)
         return not self._cancel_event.is_set()
 
-    def _run(self, points: List[dict]) -> None:
+    def _run(self, points: List[dict], reference_route: List[dict]) -> None:
         try:
             index = 0
+            deviation_since = None
             while index < len(points):
                 if self._cancel_event.is_set():
                     break
@@ -253,6 +357,24 @@ class RtkRouteExecutor:
                         raise RuntimeError(
                             "RTK定位失效: " + str(health.get("lastError") or "等待Fixed")
                         )
+                    position = health.get("position") or {}
+                    if "longitude" in position and "latitude" in position:
+                        cross_track = distance_to_route_m(position, reference_route)
+                        current_max = float(self.status().get("maxCrossTrackErrorM") or 0.0)
+                        self._update(
+                            crossTrackErrorM=round(cross_track, 3),
+                            maxCrossTrackErrorM=round(max(current_max, cross_track), 3),
+                        )
+                        if cross_track > self._max_cross_track_error_m:
+                            if deviation_since is None:
+                                deviation_since = time.monotonic()
+                            if time.monotonic() - deviation_since >= self._deviation_grace_sec:
+                                raise RuntimeError(
+                                    "路线横向偏离 %.2f 米，超过安全上限 %.2f 米"
+                                    % (cross_track, self._max_cross_track_error_m)
+                                )
+                        else:
+                            deviation_since = None
                     goal_status = self._read_goal_status() or {}
                     label = str(goal_status.get("label") or "").upper()
                     if label in SUCCESS_LABELS:

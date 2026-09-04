@@ -1,4 +1,4 @@
-footprint: [[-0.50, -0.38], [-0.50, 0.38], [0.50, 0.38], [0.50, -0.38]]
+footprint: [[-0.15, -0.38], [-0.15, 0.38], [0.67, 0.38], [0.67, -0.38]]
 footprint_padding: 0.08
 transform_tolerance: 0.5
 resolution: 0.10
