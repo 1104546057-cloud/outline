@@ -110,6 +110,7 @@ class RobotControlCmdVel(BaseModel):
     robotId: Optional[int] = None
     linear: float = 0.0
     angular: float = 0.0
+    profile: Optional[str] = None
 
 
 class RobotControlStop(BaseModel):

@@ -130,11 +130,12 @@
 .rtk-drive-title button.lock { color: #ffd791; border-color: rgba(255, 182, 74, .42); }
 .rtk-speed-control { display: grid; grid-template-columns: auto auto; align-items: center; justify-content: space-between; gap: 5px; margin-bottom: 8px; color: #749cae; font-size: 10px; }
 .rtk-speed-control strong { color: #cdeef9; }
-.rtk-speed-adjuster { grid-column: 1 / -1; display: grid; grid-template-columns: 46px minmax(0, 1fr) 46px; align-items: center; gap: 7px; }
-.rtk-speed-adjuster input { width: 100%; margin: 0; accent-color: #2bd2ff; }
-.rtk-speed-adjuster button { min-height: 26px; padding: 3px 5px; color: #9ed8ed; background: rgba(5, 42, 73, .72); border: 1px solid rgba(58, 158, 207, .34); border-radius: 3px; cursor: pointer; font-size: 9px; font-weight: 700; }
-.rtk-speed-adjuster button:hover:not(:disabled) { color: #fff; border-color: #2bd2ff; }
-.rtk-speed-adjuster button:disabled { cursor: not-allowed; opacity: .38; }
+.rtk-speed-gears { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+.rtk-speed-gears button { min-height: 30px; padding: 3px 4px; color: #9ed8ed; background: rgba(5, 42, 73, .72); border: 1px solid rgba(58, 158, 207, .34); border-radius: 3px; cursor: pointer; font-size: 9px; font-weight: 700; }
+.rtk-speed-gears button small { display: block; margin-top: 2px; color: #6f9db4; font-size: 8px; font-weight: 500; }
+.rtk-speed-gears button:hover:not(:disabled), .rtk-speed-gears button.active { color: #fff; border-color: #2bd2ff; background: rgba(13, 91, 133, .78); box-shadow: 0 0 10px rgba(43, 210, 255, .12); }
+.rtk-speed-gears button.active small { color: #b8f2ff; }
+.rtk-speed-gears button:disabled { cursor: not-allowed; opacity: .38; }
 .rtk-direction-pad.cockpit-direction-grid { height: 118px; }
 .rtk-control-warning { padding: 6px 8px; margin-top: 7px; color: #ffd791; background: rgba(91, 58, 15, .34); border: 1px solid rgba(255, 182, 74, .22); border-radius: 3px; font-size: 9px; }
 .rtk-control-warning.danger { color: #ffb6c0; background: rgba(91, 20, 37, .42); border-color: rgba(255, 91, 114, .3); }

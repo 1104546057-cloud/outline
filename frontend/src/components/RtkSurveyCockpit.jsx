@@ -5,6 +5,7 @@ import { getRobotDirectionValues, ROBOT_DIRECTION_KEY_MAP } from './robotDirecti
 import { authFetch } from '../utils/authFetch'
 
 const SEND_INTERVAL_MS = 180
+const SPEED_LEVELS_MPS = [0.25, 0.5, 0.75, 1.0]
 
 const readError = async (response, fallback) => {
   try {
@@ -16,8 +17,8 @@ const readError = async (response, fallback) => {
 }
 
 export default function RtkSurveyCockpit({ deviceId, device, onNotice }) {
-  const [controlConfig, setControlConfig] = useState({ maxLinear: 0.4, maxAngular: 1.2 })
-  const [speedRatio, setSpeedRatio] = useState(0.15)
+  const [controlConfig, setControlConfig] = useState({ maxLinear: 0.4, maxAngular: 1.2, rtkSurveyMaxLinear: 1.0 })
+  const [speedLevel, setSpeedLevel] = useState(0)
   const [armed, setArmed] = useState(false)
   const [activeDirection, setActiveDirection] = useState(null)
   const [cameraStatus, setCameraStatus] = useState('loading')
@@ -74,7 +75,7 @@ export default function RtkSurveyCockpit({ deviceId, device, onNotice }) {
       const response = await authFetch('/api/robot-control/cmd_vel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ robotId: numericDeviceId, linear, angular }),
+        body: JSON.stringify({ robotId: numericDeviceId, linear, angular, profile: 'rtk_survey' }),
       })
       if (!response.ok) throw new Error(await readError(response, '车辆控制失败'))
       controlledRef.current = true
@@ -87,11 +88,14 @@ export default function RtkSurveyCockpit({ deviceId, device, onNotice }) {
     }
   }, [armed, deviceConnected, numericDeviceId, stopRepeating])
 
+  const surveyMaxLinear = Math.max(0.1, Number(controlConfig.rtkSurveyMaxLinear) || 1.0)
+  const selectedSpeedMps = Math.min(SPEED_LEVELS_MPS[speedLevel], surveyMaxLinear)
+  const speedRatio = selectedSpeedMps / surveyMaxLinear
   const directionValues = useCallback(direction => getRobotDirectionValues(
     direction,
-    controlConfig.maxLinear * speedRatio,
+    selectedSpeedMps,
     controlConfig.maxAngular * speedRatio,
-  ), [controlConfig, speedRatio])
+  ), [controlConfig.maxAngular, selectedSpeedMps, speedRatio])
 
   const startDirection = useCallback(direction => {
     if (!armed || !deviceConnected || activeDirectionRef.current === direction) return
@@ -129,10 +133,6 @@ export default function RtkSurveyCockpit({ deviceId, device, onNotice }) {
     setArmed(true)
     onNotice?.('遥控已解锁，请保持观察摄像头并按住方向键行驶')
   }, [armed, onNotice, sendStop, stopRepeating])
-
-  const adjustSpeedRatio = useCallback(delta => {
-    setSpeedRatio(current => Math.min(0.5, Math.max(0.05, Number((current + delta).toFixed(2)))))
-  }, [])
 
   useEffect(() => {
     stopRepeating()
@@ -239,21 +239,16 @@ export default function RtkSurveyCockpit({ deviceId, device, onNotice }) {
             <button type="button" className={armed ? 'lock' : 'unlock'} disabled={!deviceConnected} onClick={toggleArmed}>{armed ? '锁定遥控' : '解锁遥控'}</button>
           </div>
           <div className="rtk-speed-control">
-            <span>速度倍率</span><strong>{Math.round(speedRatio * 100)}%</strong>
-            <div className="rtk-speed-adjuster">
-              <button type="button" onClick={() => adjustSpeedRatio(-0.05)} disabled={Boolean(activeDirection) || speedRatio <= 0.05}>−5%</button>
-              <input
-                aria-label="速度倍率"
-                type="range"
-                min="0.05"
-                max="0.5"
-                step="0.05"
-                value={speedRatio}
-                onChange={event => setSpeedRatio(Number(event.target.value))}
-                disabled={Boolean(activeDirection)}
-                title={activeDirection ? '请先松开方向键停车，再调整速度' : '调整人工驾驶速度倍率'}
-              />
-              <button type="button" onClick={() => adjustSpeedRatio(0.05)} disabled={Boolean(activeDirection) || speedRatio >= 0.5}>+5%</button>
+            <span>驾驶速度</span><strong>{selectedSpeedMps.toFixed(2)} m/s</strong>
+            <div className="rtk-speed-gears" role="group" aria-label="人工驾驶速度档位">
+              {SPEED_LEVELS_MPS.map((speed, index) => <button
+                key={speed}
+                type="button"
+                className={speedLevel === index ? 'active' : ''}
+                onClick={() => setSpeedLevel(index)}
+                disabled={Boolean(activeDirection) || speed > surveyMaxLinear}
+                aria-pressed={speedLevel === index}
+              >{index + 1}档 <small>{speed.toFixed(2)}</small></button>)}
             </div>
           </div>
           <RobotDirectionPad

@@ -4,6 +4,7 @@
 通过车端主动连接提供无人车运动控制（cmd_vel / stop / send / ping）和配置查询接口。
 """
 
+import os
 from datetime import datetime
 from typing import Optional
 
@@ -20,6 +21,8 @@ from robot_tcp import (
     require_device,
 )
 from config import ROBOT_CONTROL_MAX_LINEAR, ROBOT_CONTROL_MAX_ANGULAR
+
+ROBOT_CONTROL_RTK_SURVEY_MAX_LINEAR = float(os.getenv("ROBOT_CONTROL_RTK_SURVEY_MAX_LINEAR", "1.0"))
 
 import json
 
@@ -68,7 +71,8 @@ async def robot_control_cmd_vel(
     
     print(f"[{datetime.now()}] [HTTP REQ] POST /api/robot-control/cmd_vel Body: {cmd.dict()}", flush=True)
     device = require_device(cmd.robotId, db)
-    linear = normalize_control_value(cmd.linear, ROBOT_CONTROL_MAX_LINEAR, "linear")
+    linear_limit = ROBOT_CONTROL_RTK_SURVEY_MAX_LINEAR if cmd.profile == "rtk_survey" else ROBOT_CONTROL_MAX_LINEAR
+    linear = normalize_control_value(cmd.linear, linear_limit, "linear")
     angular = normalize_control_value(cmd.angular, ROBOT_CONTROL_MAX_ANGULAR, "angular")
     response = await send_robot_control_message(
         cmd.robotId,
@@ -85,6 +89,7 @@ async def robot_control_cmd_vel(
     return {
         "ok": bool(response.get("ok")),
         "target": {"deviceId": cmd.robotId, "transport": "websocket"},
+        "profile": cmd.profile,
         "linear": linear,
         "angular": angular,
         "response": response,
@@ -170,4 +175,5 @@ async def robot_control_config(
     return {
         "maxLinear": ROBOT_CONTROL_MAX_LINEAR,
         "maxAngular": ROBOT_CONTROL_MAX_ANGULAR,
+        "rtkSurveyMaxLinear": ROBOT_CONTROL_RTK_SURVEY_MAX_LINEAR,
     }
