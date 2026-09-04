@@ -29,7 +29,7 @@ if [ ! -d "$WORK_DIR" ]; then
   exit 1
 fi
 
-REQUIRED_FILES="iot_client.conf iot_client.py robot_control_server.py rtk_navigation_core.py rtk_road_network.py ros_camera_server.py rosconsole_camera.config start_camera.sh launch/dwc_pointcloud_scan.launch launch/dwc_cartographer_2d.launch launch/dwc_rtk_navigation.launch cartographer/dwc_2d_mapping.lua rtk/rtk_navsat.yaml rtk/rtk_global_ekf.yaml rtk/rtk_costmap_common.yaml rtk/rtk_global_costmap.yaml rtk/rtk_local_costmap.yaml rtk/rtk_move_base.yaml rtk/findcm.env.example systemd/wheeltec-time-sync"
+REQUIRED_FILES="iot_client.conf iot_client.py robot_control_server.py rtk_navigation_core.py rtk_road_network.py rtk_route_executor.py ros_camera_server.py rosconsole_camera.config start_camera.sh launch/dwc_pointcloud_scan.launch launch/dwc_cartographer_2d.launch launch/dwc_rtk_navigation.launch cartographer/dwc_2d_mapping.lua rtk/rtk_navsat.yaml rtk/rtk_global_ekf.yaml rtk/rtk_costmap_common.yaml rtk/rtk_global_costmap.yaml rtk/rtk_local_costmap.yaml rtk/rtk_move_base.yaml rtk/findcm.env.example systemd/wheeltec-time-sync"
 
 MISSING_FILES=""
 for file in $REQUIRED_FILES; do

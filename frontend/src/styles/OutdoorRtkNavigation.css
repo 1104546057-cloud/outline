@@ -38,6 +38,7 @@
 }
 .rtk-map .maplibregl-canvas-container,
 .rtk-map .maplibregl-canvas { width: 100% !important; height: 100% !important; }
+.rtk-map-overlay { position: absolute; z-index: 2; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .rtk-map-shell.selecting .maplibregl-canvas { cursor: crosshair; }
 .rtk-map-provider, .rtk-map-hint, .rtk-map-error { position: absolute; z-index: 3; pointer-events: none; backdrop-filter: blur(8px); }
 .rtk-map-provider { left: 12px; bottom: 28px; padding: 6px 9px; color: #b6dceb; background: rgba(2, 15, 34, .78); border: 1px solid rgba(43, 177, 228, .28); border-radius: 4px; font-size: 11px; }
@@ -81,6 +82,14 @@
 .rtk-empty-state { padding: 14px; margin-bottom: 12px; color: #7199ac; background: rgba(7, 48, 81, .38); border: 1px dashed rgba(58, 158, 207, .3); border-radius: 4px; font-size: 12px; text-align: center; }
 .rtk-coordinate-note p { margin: 6px 0; color: #7fa8bb; font-size: 12px; }
 .rtk-message { padding: 11px; color: #9ed8ed; background: rgba(5, 42, 73, .82); border: 1px solid rgba(43, 177, 228, .3); border-radius: 4px; font-size: 12px; }
+.rtk-route-execution { padding: 10px; margin-top: 10px; background: rgba(2, 14, 31, .72); border: 1px solid rgba(43, 177, 228, .28); border-radius: 5px; }
+.rtk-route-execution-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; color: #dff7ff; font-size: 12px; }
+.rtk-route-execution-title span { padding: 4px 8px; color: #9ed8ed; background: rgba(7, 48, 81, .72); border-radius: 999px; font-size: 10px; }
+.rtk-route-execution-title span.state-driving { color: #b8ffe2; background: rgba(11, 77, 58, .72); }
+.rtk-route-execution-title span.state-paused { color: #ffd791; background: rgba(91, 58, 15, .72); }
+.rtk-route-execution-title span.state-failed { color: #ffb6c0; background: rgba(91, 20, 37, .72); }
+.rtk-route-execution progress { width: 100%; height: 9px; margin-bottom: 9px; overflow: hidden; accent-color: #31e3a1; }
+.rtk-route-driving-actions { margin-top: 9px; }
 .rtk-map-point { width: 26px; height: 26px; display: grid; place-items: center; color: #fff; background: #16a34a; border: 3px solid #dff8ff; border-radius: 50%; box-shadow: 0 2px 7px rgba(0,0,0,.28), 0 0 10px rgba(49, 227, 161, .28); font-size: 11px; font-weight: 700; }
 .rtk-map-point.active { width: 32px; height: 32px; background: #f97316; }
 .rtk-vehicle-marker { width: 34px; height: 34px; display: grid; place-items: center; background: rgba(37,99,235,.2); border-radius: 50%; }

@@ -10,9 +10,22 @@ const EARTH_RADIUS_M = 6378137
 const DIRECT_GOAL_MAX_DISTANCE_M = Number(import.meta.env.VITE_RTK_DIRECT_GOAL_MAX_DISTANCE_M || 10)
 const ROAD_NETWORK_MAX_SNAP_M = Number(import.meta.env.VITE_RTK_ROAD_NETWORK_MAX_SNAP_M || 5)
 const MAP_STYLE_URL = import.meta.env.VITE_RTK_MAP_STYLE_URL
-const RASTER_TILE_URL = import.meta.env.VITE_RTK_RASTER_TILE_URL || 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+const RASTER_TILE_URL = import.meta.env.VITE_RTK_RASTER_TILE_URL
+  || 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 const MAP_PROVIDER_NAME = import.meta.env.VITE_RTK_MAP_PROVIDER_NAME || 'Esri World Imagery WGS-84 卫星底图'
-const RASTER_ATTRIBUTION = import.meta.env.VITE_RTK_RASTER_ATTRIBUTION || 'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+const RASTER_ATTRIBUTION = import.meta.env.VITE_RTK_RASTER_ATTRIBUTION
+  || 'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+const DEFAULT_ROUTE_MAX_DISTANCE_M = 50
+const ROUTE_STATE_LABELS = {
+  idle: '待命',
+  starting: '正在启动',
+  driving: '自动驾驶中',
+  paused: '已暂停',
+  stopping: '正在停车',
+  stopped: '已停车',
+  completed: '已完成',
+  failed: '执行失败',
+}
 
 const EMPTY_LINE = {
   type: 'Feature',
@@ -77,10 +90,12 @@ const createMarkerElement = (className, text = '') => {
 
 export default function OutdoorRtkNavigation() {
   const mapElementRef = useRef(null)
+  const mapOverlayRef = useRef(null)
   const mapRef = useRef(null)
   const maplibreRef = useRef(null)
   const markersRef = useRef([])
   const centeredOnVehicleRef = useRef(false)
+  const fittedSavedTracksRef = useRef('')
   const [devices, setDevices] = useState([])
   const [areas, setAreas] = useState([])
   const [routes, setRoutes] = useState([])
@@ -92,6 +107,7 @@ export default function OutdoorRtkNavigation() {
   const [surveyName, setSurveyName] = useState('校园道路采集')
   const [tracks, setTracks] = useState([])
   const [selectedTrackIds, setSelectedTrackIds] = useState([])
+  const [selectedTrackDetails, setSelectedTrackDetails] = useState([])
   const [networkName, setNetworkName] = useState('校园RTK道路网络')
   const [networks, setNetworks] = useState([])
   const [networkId, setNetworkId] = useState('')
@@ -118,6 +134,10 @@ export default function OutdoorRtkNavigation() {
   }), [selectedRoute])
   const nextPoint = routePointsWgs84[nextPointIndex]
   const rtk = status?.rtk || {}
+  const routeExecution = status?.routeExecution || {}
+  const routeActive = Boolean(routeExecution.active)
+  const routePaused = Boolean(routeExecution.paused)
+  const routeMaxDistanceM = Number(status?.routeLimits?.maxDistanceM || DEFAULT_ROUTE_MAX_DISTANCE_M)
   const positionLongitude = rtk.position?.longitude
   const positionLatitude = rtk.position?.latitude
   const currentPosition = useMemo(() => (
@@ -127,14 +147,14 @@ export default function OutdoorRtkNavigation() {
   ), [positionLongitude, positionLatitude])
   const survey = status?.roadSurvey || {}
   const networkNodeById = useMemo(
-    () => new Map((networkData?.nodes || []).map(node => [node.id, node])),
+    () => new Map((networkData?.nodes || []).map(node => [String(node.id), node])),
     [networkData],
   )
   const networkFeatures = useMemo(() => ({
     type: 'FeatureCollection',
     features: (networkData?.edges || []).flatMap((edge, index) => {
-      const first = networkNodeById.get(edge.from)
-      const second = networkNodeById.get(edge.to)
+      const first = networkNodeById.get(String(edge.from))
+      const second = networkNodeById.get(String(edge.to))
       return first && second ? [{
         type: 'Feature',
         properties: { id: index, distanceM: edge.distanceM },
@@ -148,12 +168,38 @@ export default function OutdoorRtkNavigation() {
       }] : []
     }),
   }), [networkData, networkNodeById])
+  const savedTrackFeatures = useMemo(() => ({
+    type: 'FeatureCollection',
+    features: selectedTrackDetails.flatMap(track => {
+      const coordinates = (track.points || [])
+        .filter(point => Number.isFinite(point.longitude) && Number.isFinite(point.latitude))
+        .map(point => [point.longitude, point.latitude])
+      if (!coordinates.length) return []
+      const points = coordinates.map((coordinate, index) => ({
+        type: 'Feature',
+        properties: { kind: 'point', trackId: track.id, sequence: index + 1 },
+        geometry: { type: 'Point', coordinates: coordinate },
+      }))
+      return coordinates.length > 1 ? [{
+        type: 'Feature',
+        properties: { kind: 'line', trackId: track.id },
+        geometry: { type: 'LineString', coordinates },
+      }, ...points] : points
+    }),
+  }), [selectedTrackDetails])
+  const selectedSavedPointCount = useMemo(
+    () => selectedTrackDetails.reduce((total, track) => total + (track.points?.length || 0), 0),
+    [selectedTrackDetails],
+  )
   const directGoalDistance = useMemo(
     () => distanceMetres(currentPosition, draftGoal),
     [currentPosition, draftGoal],
   )
   const directGoalInRange = Number.isFinite(directGoalDistance)
     && directGoalDistance <= DIRECT_GOAL_MAX_DISTANCE_M
+  const plannedRouteInRange = Number.isFinite(plannedRoute?.distanceM)
+    && plannedRoute.distanceM > 0
+    && plannedRoute.distanceM <= routeMaxDistanceM
   const goalAvailable = status?.running && rtk.valid && !status?.safety?.goalActive && !busy
   const canSendDirectGoal = Boolean(goalAvailable && draftGoal && currentPosition && directGoalInRange)
   const canSendRouteGoal = Boolean(goalAvailable && routePointsWgs84.length && nextPoint)
@@ -228,9 +274,13 @@ export default function OutdoorRtkNavigation() {
       if (!trackResponse.ok) throw new Error(await readError(trackResponse, '读取采集轨迹失败'))
       if (!networkResponse.ok) throw new Error(await readError(networkResponse, '读取道路网络失败'))
       const [trackBody, networkBody] = await Promise.all([trackResponse.json(), networkResponse.json()])
-      setTracks(trackBody.tracks || [])
+      const nextTracks = trackBody.tracks || []
+      setTracks(nextTracks)
       setNetworks(networkBody.networks || [])
-      setSelectedTrackIds(previous => previous.filter(id => (trackBody.tracks || []).some(track => track.id === id)))
+      setSelectedTrackIds(previous => {
+        const validSelection = previous.filter(id => nextTracks.some(track => track.id === id))
+        return validSelection.length ? validSelection : (nextTracks[0] ? [nextTracks[0].id] : [])
+      })
       setNetworkId(previous => previous || networkBody.networks?.[0]?.id || '')
       if (!quiet) setMessage('道路数据已刷新')
     } catch (error) {
@@ -242,11 +292,40 @@ export default function OutdoorRtkNavigation() {
     setTracks([])
     setNetworks([])
     setSelectedTrackIds([])
+    setSelectedTrackDetails([])
     setNetworkId('')
     setNetworkData(null)
     setPlannedRoute(null)
     if (deviceId) refreshRoadAssets(true)
   }, [deviceId, refreshRoadAssets])
+
+  useEffect(() => {
+    fittedSavedTracksRef.current = ''
+    if (!deviceId || !selectedTrackIds.length) {
+      setSelectedTrackDetails([])
+      return undefined
+    }
+    let cancelled = false
+    Promise.all(selectedTrackIds.map(async trackId => {
+      const response = await authFetch(
+        `/api/navigation/rtk/roads/tracks/${encodeURIComponent(trackId)}?robotId=${deviceId}`,
+      )
+      if (!response.ok) throw new Error(await readError(response, '读取已保存轨迹坐标失败'))
+      const body = await response.json()
+      if (!body.ok || !body.track) throw new Error(body.response?.error || '已保存轨迹坐标为空')
+      return body.track
+    }))
+      .then(details => {
+        if (!cancelled) setSelectedTrackDetails(details)
+      })
+      .catch(error => {
+        if (!cancelled) {
+          setSelectedTrackDetails([])
+          setMessage(error.message)
+        }
+      })
+    return () => { cancelled = true }
+  }, [deviceId, selectedTrackIds])
 
   useEffect(() => {
     setNetworkData(null)
@@ -291,6 +370,7 @@ export default function OutdoorRtkNavigation() {
         if (disposed) return
         map.addSource('rtk-route', { type: 'geojson', data: EMPTY_LINE })
         map.addSource('rtk-survey', { type: 'geojson', data: EMPTY_LINE })
+        map.addSource('rtk-saved-tracks', { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
         map.addSource('rtk-road-network', { type: 'geojson', data: EMPTY_FEATURE_COLLECTION })
         map.addSource('rtk-planned-route', { type: 'geojson', data: EMPTY_LINE })
         map.addLayer({
@@ -321,6 +401,30 @@ export default function OutdoorRtkNavigation() {
             'line-color': '#20e3d2',
             'line-width': 5,
             'line-opacity': 0.95,
+          },
+        })
+        map.addLayer({
+          id: 'rtk-saved-tracks-line',
+          type: 'line',
+          source: 'rtk-saved-tracks',
+          filter: ['==', ['get', 'kind'], 'line'],
+          paint: {
+            'line-color': '#18e0ff',
+            'line-width': 4,
+            'line-opacity': 0.9,
+          },
+        })
+        map.addLayer({
+          id: 'rtk-saved-tracks-points',
+          type: 'circle',
+          source: 'rtk-saved-tracks',
+          filter: ['==', ['get', 'kind'], 'point'],
+          paint: {
+            'circle-radius': 4,
+            'circle-color': '#fff36b',
+            'circle-stroke-color': '#06243c',
+            'circle-stroke-width': 1.5,
+            'circle-opacity': 0.95,
           },
         })
         map.addLayer({
@@ -355,13 +459,17 @@ export default function OutdoorRtkNavigation() {
 
   const selectGoalCoordinates = useCallback((longitude, latitude) => {
     if (!['direct', 'network'].includes(navigationMode)) return
+    if (routeActive) {
+      setMessage('自动驾驶路线正在执行，请先停车后再重新选择目标。')
+      return
+    }
     const goal = { longitude, latitude }
     setDraftGoal(goal)
     setPlannedRoute(null)
     setMessage(navigationMode === 'network'
       ? `已选择目标意图：${goal.longitude.toFixed(8)}, ${goal.latitude.toFixed(8)}；请执行道路吸附与规划。`
       : `已选择临时目标：${goal.longitude.toFixed(8)}, ${goal.latitude.toFixed(8)}；确认前不会下发。`)
-  }, [navigationMode])
+  }, [navigationMode, routeActive])
 
   const selectMapGoal = useCallback(event => {
     selectGoalCoordinates(event.lngLat.lng, event.lngLat.lat)
@@ -406,6 +514,9 @@ export default function OutdoorRtkNavigation() {
       properties: {},
       geometry: { type: 'LineString', coordinates: surveyCoordinates },
     } : EMPTY_LINE)
+    map.getSource('rtk-saved-tracks')?.setData(
+      ['survey', 'network'].includes(navigationMode) ? savedTrackFeatures : EMPTY_FEATURE_COLLECTION,
+    )
     map.getSource('rtk-road-network')?.setData(
       navigationMode === 'network' ? networkFeatures : EMPTY_FEATURE_COLLECTION,
     )
@@ -463,8 +574,151 @@ export default function OutdoorRtkNavigation() {
     nextPointIndex,
     plannedRoute,
     routePointsWgs84,
+    savedTrackFeatures,
     survey.preview,
   ])
+
+  useEffect(() => {
+    const map = mapRef.current
+    const maplibregl = maplibreRef.current
+    if (!mapReady || !map || !maplibregl || !['survey', 'network'].includes(navigationMode)) return
+    if (navigationMode === 'survey' && survey.active) return
+    const coordinates = navigationMode === 'network'
+      ? (networkData?.nodes || [])
+        .filter(node => Number.isFinite(node.longitude) && Number.isFinite(node.latitude))
+        .map(node => [node.longitude, node.latitude])
+      : selectedTrackDetails.flatMap(track => (track.points || [])
+        .filter(point => Number.isFinite(point.longitude) && Number.isFinite(point.latitude))
+        .map(point => [point.longitude, point.latitude]))
+    if (!coordinates.length) return
+    const fitKey = navigationMode === 'network'
+      ? `network:${networkData?.id || ''}:${coordinates.length}`
+      : `survey:${selectedTrackDetails.map(track => `${track.id}:${track.points?.length || 0}`).join('|')}`
+    if (fittedSavedTracksRef.current === fitKey) return
+    fittedSavedTracksRef.current = fitKey
+    if (coordinates.length === 1) {
+      map.easeTo({ center: coordinates[0], zoom: Math.max(map.getZoom(), 20) })
+      return
+    }
+    const bounds = coordinates.reduce(
+      (nextBounds, coordinate) => nextBounds.extend(coordinate),
+      new maplibregl.LngLatBounds(coordinates[0], coordinates[0]),
+    )
+    map.fitBounds(bounds, { padding: 60, maxZoom: 20, duration: 500 })
+  }, [mapReady, navigationMode, networkData, selectedTrackDetails, survey.active])
+
+  useEffect(() => {
+    const map = mapRef.current
+    const canvas = mapOverlayRef.current
+    if (!mapReady || !map || !canvas) return undefined
+    let animationFrame = 0
+
+    const drawOverlay = () => {
+      animationFrame = 0
+      const width = map.getCanvas().clientWidth
+      const height = map.getCanvas().clientHeight
+      if (!width || !height) return
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2)
+      const renderWidth = Math.round(width * pixelRatio)
+      const renderHeight = Math.round(height * pixelRatio)
+      if (canvas.width !== renderWidth || canvas.height !== renderHeight) {
+        canvas.width = renderWidth
+        canvas.height = renderHeight
+      }
+      const context = canvas.getContext('2d')
+      if (!context) return
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
+      context.clearRect(0, 0, width, height)
+
+      const project = coordinate => map.project(coordinate)
+      const strokeSegments = (segments, color, lineWidth, shadowColor = 'transparent') => {
+        if (!segments.length) return
+        context.save()
+        context.beginPath()
+        segments.forEach(coordinates => {
+          coordinates.forEach((coordinate, index) => {
+            const point = project(coordinate)
+            if (index === 0) context.moveTo(point.x, point.y)
+            else context.lineTo(point.x, point.y)
+          })
+        })
+        context.strokeStyle = color
+        context.lineWidth = lineWidth
+        context.lineCap = 'round'
+        context.lineJoin = 'round'
+        context.shadowColor = shadowColor
+        context.shadowBlur = shadowColor === 'transparent' ? 0 : 5
+        context.stroke()
+        context.restore()
+      }
+
+      if (navigationMode === 'network') {
+        strokeSegments(
+          networkFeatures.features.map(feature => feature.geometry.coordinates),
+          '#168dff',
+          7,
+          'rgba(22, 141, 255, .75)',
+        )
+      }
+
+      if (['survey', 'network'].includes(navigationMode)) {
+        const savedSegments = selectedTrackDetails
+          .map(track => (track.points || []).map(point => [point.longitude, point.latitude]))
+          .filter(coordinates => coordinates.length > 1)
+        const activeSegment = navigationMode === 'survey'
+          ? [(survey.preview || []).map(point => [point.longitude, point.latitude])]
+            .filter(coordinates => coordinates.length > 1)
+          : []
+        strokeSegments(
+          [...savedSegments, ...activeSegment],
+          '#18e0ff',
+          3.5,
+          'rgba(24, 224, 255, .7)',
+        )
+        context.save()
+        context.fillStyle = '#fff36b'
+        context.strokeStyle = '#06243c'
+        context.lineWidth = 1.5
+        selectedTrackDetails.forEach(track => {
+          const points = track.points || []
+          points.forEach(point => {
+            const projected = project([point.longitude, point.latitude])
+            if (projected.x < -8 || projected.y < -8 || projected.x > width + 8 || projected.y > height + 8) return
+            context.beginPath()
+            context.arc(projected.x, projected.y, 4, 0, Math.PI * 2)
+            context.fill()
+            context.stroke()
+          })
+        })
+        context.restore()
+      }
+
+      if (navigationMode === 'network' && (plannedRoute?.path || []).length > 1) {
+        strokeSegments(
+          [(plannedRoute.path || []).map(point => [point.longitude, point.latitude])],
+          '#ff9d3d',
+          8,
+          'rgba(255, 157, 61, .8)',
+        )
+      }
+    }
+
+    const scheduleDraw = () => {
+      if (!animationFrame) animationFrame = window.requestAnimationFrame(drawOverlay)
+    }
+    scheduleDraw()
+    map.on('move', scheduleDraw)
+    map.on('resize', scheduleDraw)
+    map.on('idle', scheduleDraw)
+    return () => {
+      map.off('move', scheduleDraw)
+      map.off('resize', scheduleDraw)
+      map.off('idle', scheduleDraw)
+      if (animationFrame) window.cancelAnimationFrame(animationFrame)
+      const context = canvas.getContext('2d')
+      context?.clearRect(0, 0, canvas.width, canvas.height)
+    }
+  }, [mapReady, navigationMode, networkFeatures, plannedRoute, selectedTrackDetails, survey.preview])
 
   const postAction = async (name, url, body) => {
     setBusy(name)
@@ -591,8 +845,41 @@ export default function OutdoorRtkNavigation() {
     if (data?.plan) setPlannedRoute(data.plan)
   }
 
+  const startAutoRoute = async () => {
+    if (!plannedRoute || !draftGoal || !networkId || !plannedRouteInRange) return
+    const confirmed = window.confirm(
+      `即将启动自动驾驶：规划长度 ${formatDistance(plannedRoute.distanceM)}，安全上限 ${routeMaxDistanceM} 米。\n\n`
+      + '请确认车辆周围无人、现场人员持有急停手段并持续看护。是否开始？',
+    )
+    if (!confirmed) return
+    await postAction('启动自动驾驶', '/api/navigation/rtk/route/start', {
+      robotId: Number(deviceId),
+      networkId,
+      goalLongitude: draftGoal.longitude,
+      goalLatitude: draftGoal.latitude,
+      maxSnapM: ROAD_NETWORK_MAX_SNAP_M,
+    })
+  }
+
+  const pauseAutoRoute = () => postAction(
+    '暂停自动驾驶',
+    '/api/navigation/rtk/route/pause',
+    { robotId: Number(deviceId) },
+  )
+
+  const resumeAutoRoute = async () => {
+    if (!window.confirm('继续后车辆会恢复移动。确认道路仍安全并继续自动驾驶吗？')) return
+    await postAction('继续自动驾驶', '/api/navigation/rtk/route/resume', { robotId: Number(deviceId) })
+  }
+
+  const stopAutoRoute = () => postAction(
+    '紧急停车',
+    '/api/navigation/rtk/route/stop',
+    { robotId: Number(deviceId) },
+  )
+
   return (
-    <div className="rtk-page" data-mode={navigationMode}>
+    <div className="rtk-page">
       <header className="rtk-header">
         <div>
           <h1>厘米级 RTK 室外导航</h1>
@@ -604,11 +891,11 @@ export default function OutdoorRtkNavigation() {
       </header>
 
       <section className={`rtk-toolbar ${navigationMode !== 'route' ? 'direct' : ''}`}>
-        <label>车辆<ThemedSelect value={deviceId} onChange={event => setDeviceId(event.target.value)}>
+        <label>车辆<ThemedSelect value={deviceId} disabled={routeActive} onChange={event => setDeviceId(event.target.value)}>
           <option value="">请选择车辆</option>
           {devices.map(device => <option key={device.id} value={device.id}>{device.name} · {device.control_connected ? 'Agent 已连接' : '未连接'}</option>)}
         </ThemedSelect></label>
-        <label>导航方式<ThemedSelect value={navigationMode} onChange={event => setNavigationMode(event.target.value)}>
+        <label>导航方式<ThemedSelect value={navigationMode} disabled={routeActive} onChange={event => setNavigationMode(event.target.value)}>
           <option value="survey">人工驾驶道路采集</option>
           <option value="network">道路网络选点规划</option>
           <option value="direct">近距离临时目标（试验）</option>
@@ -623,7 +910,7 @@ export default function OutdoorRtkNavigation() {
             <option value="">请选择线路</option>
             {routes.map(route => <option key={route.id} value={route.id}>{route.name}（{route.point_count} 点）</option>)}
           </ThemedSelect></label>
-        </> : navigationMode === 'network' ? <label>道路网络<ThemedSelect value={networkId} onChange={event => setNetworkId(event.target.value)}>
+        </> : navigationMode === 'network' ? <label>道路网络<ThemedSelect value={networkId} disabled={routeActive} onChange={event => setNetworkId(event.target.value)}>
           <option value="">尚未生成道路网络</option>
           {networks.map(network => <option key={network.id} value={network.id}>{network.name}（{network.statistics?.nodeCount || 0}节点）</option>)}
         </ThemedSelect></label> : <div className="rtk-toolbar-note">
@@ -640,11 +927,12 @@ export default function OutdoorRtkNavigation() {
             onClickCapture={captureMapGoal}
           >
             <div className="rtk-map" ref={mapElementRef} />
+            <canvas className="rtk-map-overlay" ref={mapOverlayRef} aria-hidden="true" />
             <div className="rtk-map-provider">{MAP_PROVIDER_NAME}</div>
             {navigationMode === 'direct' ? <div className="rtk-map-hint">单击地图选择临时目标</div> : null}
             {navigationMode === 'network' ? <div className="rtk-map-hint">单击地图表达目标，随后吸附到蓝色实测道路</div> : null}
             {navigationMode === 'survey' && survey.active ? <div className="rtk-map-hint">正在自动记录WGS-84轨迹 · {survey.pointCount || 0}点</div> : null}
-            {mapError ? <div className="rtk-map-error">{mapError}</div> : null}
+            {mapError ? <div className="rtk-map-error">{mapError}；不影响车端继续采集 RTK 轨迹。</div> : null}
           </div>
           {navigationMode === 'survey' ? <RtkSurveyCockpit
             deviceId={deviceId}
@@ -700,6 +988,9 @@ export default function OutdoorRtkNavigation() {
                   <span><strong>{track.name}</strong><small>{track.statistics?.pointCount || 0}点 · {formatDistance(track.statistics?.distanceM)}</small></span>
                 </label>)}
               </div> : <div className="rtk-empty-state">尚无已保存的RTK道路轨迹</div>}
+              {selectedTrackIds.length ? <div className="rtk-alert">
+                已在地图显示 {selectedTrackDetails.length} 条轨迹、{selectedSavedPointCount} 个采集点；取消勾选即可隐藏。
+              </div> : null}
               <label className="rtk-field">道路网络名称
                 <input className="rtk-text-input" value={networkName} maxLength={80} onChange={event => setNetworkName(event.target.value)} />
               </label>
@@ -707,7 +998,7 @@ export default function OutdoorRtkNavigation() {
                 <button className="primary" disabled={!selectedTrackIds.length || Boolean(busy)} onClick={buildRoadNetwork}>生成道路网络</button>
                 <button disabled={!deviceId || Boolean(busy)} onClick={() => refreshRoadAssets(false)}>刷新列表</button>
               </div>
-              <small>可以分多次采集不同支路，再勾选多条轨迹合并。相近路口会自动连接，现场仍需人工核查连通关系。</small>
+              <small>先勾选要使用的轨迹（黄点、青线），再生成道路网络。可以分多次采集不同支路后合并；相近路口会自动连接，现场仍需人工核查连通关系。</small>
             </section>
           </> : navigationMode === 'network' ? <section>
             <h2>道路吸附与路径规划</h2>
@@ -722,12 +1013,38 @@ export default function OutdoorRtkNavigation() {
             </dl>
             {!networkData ? <div className="rtk-alert">请先完成道路采集并生成道路网络。</div> : null}
             <div className="rtk-actions">
-              <button className="success" disabled={!networkData || !draftGoal || !rtk.valid || Boolean(busy)} onClick={planNetworkGoal}>吸附并规划</button>
-              <button disabled={!draftGoal || Boolean(busy)} onClick={() => { setDraftGoal(null); setPlannedRoute(null) }}>清除目标</button>
+              <button className="success" disabled={!networkData || !draftGoal || !rtk.valid || routeActive || Boolean(busy)} onClick={planNetworkGoal}>吸附并规划</button>
+              <button disabled={!draftGoal || routeActive || Boolean(busy)} onClick={() => { setDraftGoal(null); setPlannedRoute(null) }}>清除目标</button>
               <button disabled={!deviceId || Boolean(busy)} onClick={() => refreshRoadAssets(false)}>刷新网络</button>
             </div>
-            <small>最大吸附距离为 {ROAD_NETWORK_MAX_SNAP_M} 米。橙色线为自动规划结果；现场验收前，本页面不会自动执行整条路线。</small>
-            {plannedRoute ? <div className="rtk-alert">规划完成：{plannedRoute.path?.length || 0}个道路节点。后续执行器将在现场逐段验收后启用。</div> : null}
+            <div className="rtk-alert">地图图例：黄点/青线为原始采集轨迹，蓝线为生成的道路网络，橙线为规划结果。</div>
+            <small>最大吸附距离为 {ROAD_NETWORK_MAX_SNAP_M} 米。车端会按约 {status?.routeLimits?.waypointSpacingM || 2} 米间距逐点执行；单次自动路线安全上限为 {routeMaxDistanceM} 米。</small>
+            {plannedRoute && !plannedRouteInRange ? <div className="rtk-alert danger">
+              当前规划 {formatDistance(plannedRoute.distanceM)}，超过 {routeMaxDistanceM} 米上限，请重新选择较近目标。
+            </div> : null}
+            {plannedRoute ? <div className="rtk-alert">规划完成：{plannedRoute.path?.length || 0}个道路节点，等待人工确认启动。</div> : null}
+            <div className="rtk-route-execution">
+              <div className="rtk-route-execution-title">
+                <strong>自动驾驶执行</strong>
+                <span className={`state-${routeExecution.state || 'idle'}`}>
+                  {ROUTE_STATE_LABELS[routeExecution.state] || routeExecution.state || '待命'}
+                </span>
+              </div>
+              <progress max="100" value={routeExecution.progressPct || 0} />
+              <dl className="rtk-goal-grid">
+                <div><dt>执行进度</dt><dd>{routeExecution.progressPct || 0}%</dd></div>
+                <div><dt>完成节点</dt><dd>{routeExecution.completedPoints || 0} / {routeExecution.pointCount || '--'}</dd></div>
+                <div><dt>执行路线</dt><dd>{formatDistance(routeExecution.distanceM)}</dd></div>
+                <div><dt>当前节点</dt><dd>{routeExecution.active ? (routeExecution.currentIndex || 0) + 1 : '--'}</dd></div>
+              </dl>
+              {routeExecution.error ? <div className="rtk-alert danger">{routeExecution.error}</div> : null}
+              <div className="rtk-actions rtk-route-driving-actions">
+                <button className="success" disabled={!plannedRouteInRange || routeActive || !rtk.valid || Boolean(busy)} onClick={startAutoRoute}>确认并开始自动驾驶</button>
+                <button disabled={!routeActive || routePaused || Boolean(busy)} onClick={pauseAutoRoute}>暂停</button>
+                <button className="primary" disabled={!routeActive || !routePaused || !rtk.valid || Boolean(busy)} onClick={resumeAutoRoute}>继续</button>
+                <button className="danger" disabled={!routeActive || Boolean(busy)} onClick={stopAutoRoute}>立即停车</button>
+              </div>
+            </div>
           </section> : navigationMode === 'direct' ? <section>
             <h2>地图点选临时目标</h2>
             <dl className="rtk-goal-grid">

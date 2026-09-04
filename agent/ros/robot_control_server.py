@@ -29,6 +29,7 @@ from sensor_msgs.msg import NavSatFix
 from std_srvs.srv import Empty
 from rtk_navigation_core import RtkHealthTracker, RtkThresholds
 from rtk_road_network import RoadWorkspace
+from rtk_route_executor import RtkRouteExecutor
 try:
     from move_base_msgs.msg import MoveBaseActionResult
 except ImportError:
@@ -103,7 +104,17 @@ RTK_ODOM_TOPIC = os.environ.get("DWC_RTK_ODOM_TOPIC", "/odom")
 RTK_SCAN_TOPIC = os.environ.get("DWC_RTK_SCAN_TOPIC", "/scan")
 RTK_BASE_FRAME = os.environ.get("DWC_RTK_BASE_FRAME", "base_footprint")
 RTK_ODOM_FRAME = os.environ.get("DWC_RTK_ODOM_FRAME", "odom_combined")
+RTK_GPS_FRAME = os.environ.get("DWC_RTK_GPS_FRAME", "navsat_link")
+RTK_GPS_OFFSET_X = float(os.environ.get("DWC_RTK_GPS_OFFSET_X", "0.0"))
+RTK_GPS_OFFSET_Y = float(os.environ.get("DWC_RTK_GPS_OFFSET_Y", "0.0"))
+RTK_GPS_OFFSET_Z = float(os.environ.get("DWC_RTK_GPS_OFFSET_Z", "0.0"))
 RTK_LOSS_GRACE_SEC = float(os.environ.get("DWC_RTK_LOSS_GRACE_SEC", "1.0"))
+RTK_ROUTE_MAX_DISTANCE_M = float(os.environ.get("DWC_RTK_ROUTE_MAX_DISTANCE_M", "50.0"))
+RTK_ROUTE_WAYPOINT_SPACING_M = float(os.environ.get("DWC_RTK_ROUTE_WAYPOINT_SPACING_M", "2.0"))
+RTK_ROUTE_WAYPOINT_TIMEOUT_SEC = float(os.environ.get("DWC_RTK_ROUTE_WAYPOINT_TIMEOUT_SEC", "45.0"))
+RTK_ROUTE_STARTUP_TIMEOUT_SEC = float(os.environ.get("DWC_RTK_ROUTE_STARTUP_TIMEOUT_SEC", "20.0"))
+RTK_FROM_LL_TIMEOUT_SEC = float(os.environ.get("DWC_RTK_FROM_LL_TIMEOUT_SEC", "12.0"))
+RTK_TF_READY_TIMEOUT_SEC = float(os.environ.get("DWC_RTK_TF_READY_TIMEOUT_SEC", "12.0"))
 RTK_TRACKER = RtkHealthTracker(
     RtkThresholds(
         stale_sec=float(os.environ.get("DWC_RTK_FIX_STALE_SEC", "2.0")),
@@ -122,7 +133,9 @@ RTK_ROAD_WORKSPACE_DIR = Path(
 RTK_ROAD_WORKSPACE = RoadWorkspace(
     RTK_ROAD_WORKSPACE_DIR,
     preview_limit=int(os.environ.get("DWC_RTK_ROAD_PREVIEW_POINTS", "500")),
-    min_record_spacing_m=float(os.environ.get("DWC_RTK_ROAD_RECORD_SPACING_M", "0.05")),
+    min_record_spacing_m=float(os.environ.get("DWC_RTK_ROAD_RECORD_SPACING_M", "1.0")),
+    turn_record_spacing_m=float(os.environ.get("DWC_RTK_ROAD_TURN_RECORD_SPACING_M", "0.5")),
+    turn_threshold_deg=float(os.environ.get("DWC_RTK_ROAD_TURN_THRESHOLD_DEG", "12.0")),
     network_spacing_m=float(os.environ.get("DWC_RTK_ROAD_NETWORK_SPACING_M", "0.25")),
     merge_radius_m=float(os.environ.get("DWC_RTK_ROAD_MERGE_RADIUS_M", "0.75")),
 )
@@ -173,6 +186,7 @@ rtk_safety_reason = ""
 rtk_safety_tripped_at = 0.0
 rtk_gga_subscriber = None
 from_ll_client = None
+rtk_route_executor = None
 mapping_lock = threading.Lock()
 mapping_process = None
 mapping_started_at = 0.0
@@ -1149,6 +1163,18 @@ def rtk_navigation_status_response(ok: bool = True, error: str = "") -> dict:
         "safety": safety,
         "provider": rtk_provider_status(),
         "roadSurvey": RTK_ROAD_WORKSPACE.status(),
+        "routeExecution": (
+            rtk_route_executor.status()
+            if rtk_route_executor is not None
+            else RtkRouteExecutor._idle_state()
+        ),
+        "routeLimits": {
+            "maxDistanceM": RTK_ROUTE_MAX_DISTANCE_M,
+            "waypointSpacingM": RTK_ROUTE_WAYPOINT_SPACING_M,
+            "waypointTimeoutSec": RTK_ROUTE_WAYPOINT_TIMEOUT_SEC,
+            "fromLlTimeoutSec": RTK_FROM_LL_TIMEOUT_SEC,
+            "tfReadyTimeoutSec": RTK_TF_READY_TIMEOUT_SEC,
+        },
         "topics": {
             "gps": RTK_GPS_TOPIC,
             "gga": RTK_GGA_TOPIC,
@@ -1303,6 +1329,8 @@ def stop_navigation_process() -> None:
     global nav_process, nav_map_name, nav_mode, global_localization_active
     global localization_source, localization_seeded_at, localization_pose_updates
     global rtk_goal_active
+    if rtk_route_executor is not None:
+        rtk_route_executor.stop("RTK导航进程已停止")
     hard_stop()
     cancel_navigation_goals()
     clear_navigation_pose()
@@ -1423,7 +1451,11 @@ def start_rtk_navigation_process() -> dict:
         f"odom_topic:={sh_quote(RTK_ODOM_TOPIC)} "
         f"scan_topic:={sh_quote(RTK_SCAN_TOPIC)} "
         f"base_frame:={sh_quote(RTK_BASE_FRAME)} "
-        f"odom_frame:={sh_quote(RTK_ODOM_FRAME)} & "
+        f"odom_frame:={sh_quote(RTK_ODOM_FRAME)} "
+        f"gps_frame:={sh_quote(RTK_GPS_FRAME)} "
+        f"gps_offset_x:={RTK_GPS_OFFSET_X:.6f} "
+        f"gps_offset_y:={RTK_GPS_OFFSET_Y:.6f} "
+        f"gps_offset_z:={RTK_GPS_OFFSET_Z:.6f} & "
         "navigation_pid=$!; wait $navigation_pid"
     )
     proc = subprocess.Popen(
@@ -1490,11 +1522,27 @@ def publish_navigation_goal(x: float, y: float, yaw: float) -> int:
 def wgs84_to_map(longitude: float, latitude: float, altitude: float = 0.0) -> Tuple[float, float]:
     if from_ll_client is None or FromLLRequest is None or GeoPoint is None:
         raise RuntimeError("robot_localization /fromLL 服务类型不可用，请安装 robot_localization 与 geographic_msgs")
-    rospy.wait_for_service("/fromLL", timeout=5.0)
     request = FromLLRequest()
     request.ll_point = GeoPoint(latitude=latitude, longitude=longitude, altitude=altitude)
-    response = from_ll_client(request)
-    return float(response.map_point.x), float(response.map_point.y)
+    deadline = time.time() + max(1.0, RTK_FROM_LL_TIMEOUT_SEC)
+    last_error = "服务尚未响应"
+    while time.time() < deadline and not rospy.is_shutdown():
+        remaining = max(0.1, deadline - time.time())
+        try:
+            rospy.wait_for_service("/fromLL", timeout=min(1.0, remaining))
+            response = from_ll_client(request)
+            map_x = float(response.map_point.x)
+            map_y = float(response.map_point.y)
+            if math.isfinite(map_x) and math.isfinite(map_y):
+                return map_x, map_y
+            last_error = "服务返回了非有限坐标"
+        except (rospy.ROSException, rospy.ServiceException) as exc:
+            last_error = str(exc).strip() or exc.__class__.__name__
+        if time.time() < deadline:
+            time.sleep(0.25)
+    raise RuntimeError(
+        "等待 robot_localization /fromLL 坐标转换就绪超时: " + last_error
+    )
 
 
 def publish_rtk_navigation_goal(longitude: float, latitude: float, yaw: float) -> dict:
@@ -1552,6 +1600,100 @@ def publish_rtk_navigation_goal(longitude: float, latitude: float, yaw: float) -
     }
 
 
+def wait_for_rtk_navigation_ready() -> None:
+    deadline = time.time() + max(1.0, RTK_ROUTE_STARTUP_TIMEOUT_SEC)
+    while time.time() < deadline and not rospy.is_shutdown():
+        with nav_lock:
+            running = nav_mode == "rtk" and nav_process is not None and nav_process.poll() is None
+        subscribers = simple_goal_pub.get_num_connections() if simple_goal_pub is not None else 0
+        if running and subscribers > 0:
+            return
+        time.sleep(0.25)
+    raise RuntimeError("等待RTK move_base目标订阅者超时")
+
+
+def wait_for_rtk_tf_ready() -> None:
+    if tf_buffer is None:
+        raise RuntimeError("ROS TF Buffer 尚未初始化")
+    deadline = time.time() + max(1.0, RTK_TF_READY_TIMEOUT_SEC)
+    consecutive = 0
+    last_error = "TF 尚未发布"
+    while time.time() < deadline and not rospy.is_shutdown():
+        try:
+            requested_at = rospy.Time.now()
+            tf_buffer.lookup_transform(
+                RTK_ODOM_FRAME, "map", requested_at, rospy.Duration(0.25)
+            )
+            tf_buffer.lookup_transform(
+                "map", RTK_BASE_FRAME, requested_at, rospy.Duration(0.25)
+            )
+            consecutive += 1
+            if consecutive >= 3:
+                return
+        except (
+            tf2_ros.LookupException,
+            tf2_ros.ConnectivityException,
+            tf2_ros.ExtrapolationException,
+        ) as exc:
+            consecutive = 0
+            last_error = str(exc).strip() or exc.__class__.__name__
+        time.sleep(0.1)
+    raise RuntimeError("等待 RTK map/odom TF 链就绪超时: " + last_error)
+
+
+def start_rtk_route_execution(command: dict) -> dict:
+    if rtk_route_executor is None:
+        raise RuntimeError("RTK路线执行器尚未初始化")
+    current_execution = rtk_route_executor.status()
+    if current_execution.get("active"):
+        raise RuntimeError("已有自动驾驶路线正在执行")
+    health = RTK_TRACKER.snapshot()
+    if not health.get("valid"):
+        raise RuntimeError("RTK定位未就绪: " + str(health.get("lastError") or "等待Fixed"))
+    with nav_lock:
+        running = nav_mode == "rtk" and nav_process is not None and nav_process.poll() is None
+    if not running:
+        start_response = start_rtk_navigation_process()
+        if not start_response.get("ok"):
+            raise RuntimeError(str(start_response.get("error") or "RTK导航进程启动失败"))
+    wait_for_rtk_navigation_ready()
+    health = RTK_TRACKER.snapshot()
+    if not health.get("valid"):
+        raise RuntimeError("RTK定位在导航启动期间失效: " + str(health.get("lastError") or "等待Fixed"))
+    position = health.get("position") or {}
+    plan = RTK_ROAD_WORKSPACE.plan(
+        str(command.get("networkId", "")),
+        float(position.get("longitude")),
+        float(position.get("latitude")),
+        float(command.get("goalLongitude")),
+        float(command.get("goalLatitude")),
+        float(command.get("maxSnapM", 5.0)),
+    )
+    distance_m = float(plan.get("distanceM") or 0.0)
+    if distance_m <= 0.0:
+        raise RuntimeError("规划路线长度为0，无需启动自动驾驶")
+    if distance_m > RTK_ROUTE_MAX_DISTANCE_M:
+        raise RuntimeError(
+            "规划路线 %.1f 米，超过当前安全上限 %.1f 米，请重新选择较近目标"
+            % (distance_m, RTK_ROUTE_MAX_DISTANCE_M)
+        )
+    current_map_x, current_map_y = wgs84_to_map(
+        float(position.get("longitude")),
+        float(position.get("latitude")),
+        float(position.get("altitude") or 0.0),
+    )
+    log.info(
+        "RTK /fromLL 已就绪，当前位置 map=(%.3f, %.3f)，开始执行 %.1f 米路线",
+        current_map_x,
+        current_map_y,
+        distance_m,
+    )
+    wait_for_rtk_tf_ready()
+    log.info("RTK TF 链 map -> %s -> %s 已就绪", RTK_ODOM_FRAME, RTK_BASE_FRAME)
+    rtk_route_executor.start(plan)
+    return rtk_navigation_status_response(True)
+
+
 def rtk_safety_loop() -> None:
     global rtk_goal_active, rtk_safety_tripped, rtk_safety_reason, rtk_safety_tripped_at
     invalid_since = None
@@ -1582,6 +1724,8 @@ def rtk_safety_loop() -> None:
             rtk_safety_tripped = True
             rtk_safety_reason = reason
             rtk_safety_tripped_at = time.time()
+        if rtk_route_executor is not None and rtk_route_executor.status().get("active"):
+            rtk_route_executor.emergency_stop(reason)
         invalid_since = None
 
 
@@ -1829,6 +1973,32 @@ def execute_command(command: dict) -> dict:
             }
         except Exception as exc:
             return {"type": "rtk_road_plan", "ok": False, "error": str(exc), "ts": now}
+    if command_type == "rtk_route_start":
+        try:
+            return start_rtk_route_execution(command)
+        except Exception as exc:
+            return rtk_navigation_status_response(False, str(exc))
+    if command_type == "rtk_route_pause":
+        try:
+            rtk_route_executor.pause()
+            return rtk_navigation_status_response(True)
+        except Exception as exc:
+            return rtk_navigation_status_response(False, str(exc))
+    if command_type == "rtk_route_resume":
+        try:
+            health = RTK_TRACKER.snapshot()
+            if not health.get("valid"):
+                raise RuntimeError("RTK定位未就绪: " + str(health.get("lastError") or "等待Fixed"))
+            rtk_route_executor.resume()
+            return rtk_navigation_status_response(True)
+        except Exception as exc:
+            return rtk_navigation_status_response(False, str(exc))
+    if command_type == "rtk_route_stop":
+        try:
+            rtk_route_executor.stop("人工紧急停车")
+            return rtk_navigation_status_response(True)
+        except Exception as exc:
+            return rtk_navigation_status_response(False, str(exc))
     if command_type == "rtk_nav_start":
         try:
             return start_rtk_navigation_process()
@@ -2082,6 +2252,7 @@ async def media_loop(url: str, token: str) -> None:
 def init_ros() -> None:
     global cmd_vel_pub, simple_goal_pub, initial_pose_pub, cancel_goal_pub
     global global_localization_client, nomotion_update_client, from_ll_client, tf_buffer, tf_listener
+    global rtk_route_executor
     configure_local_ros_network()
     rospy.init_node("devices_web_control_agent", anonymous=False, disable_signals=True)
     cmd_vel_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
@@ -2108,6 +2279,15 @@ def init_ros() -> None:
         rospy.Subscriber("/move_base/result", MoveBaseActionResult, on_move_base_result, queue_size=1)
     else:
         log.warning("move_base_msgs 不可用，将仅通过 /move_base/status 判断导航目标状态")
+    rtk_route_executor = RtkRouteExecutor(
+        send_goal=publish_rtk_navigation_goal,
+        read_goal_status=current_navigation_goal_status,
+        read_health=RTK_TRACKER.snapshot,
+        cancel_goal=cancel_navigation_goals,
+        hard_stop=hard_stop,
+        waypoint_spacing_m=RTK_ROUTE_WAYPOINT_SPACING_M,
+        waypoint_timeout_sec=RTK_ROUTE_WAYPOINT_TIMEOUT_SEC,
+    )
     wait_started = time.time()
     while cmd_vel_pub.get_num_connections() == 0 and time.time() - wait_started < 5:
         if rospy.is_shutdown():

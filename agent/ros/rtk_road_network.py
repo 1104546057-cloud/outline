@@ -29,6 +29,23 @@ def haversine_m(first: dict, second: dict) -> float:
     return EARTH_RADIUS_M * 2.0 * math.atan2(math.sqrt(value), math.sqrt(max(0.0, 1.0 - value)))
 
 
+def bearing_deg(first: dict, second: dict) -> float:
+    latitude_1 = math.radians(float(first["latitude"]))
+    latitude_2 = math.radians(float(second["latitude"]))
+    delta_longitude = math.radians(float(second["longitude"]) - float(first["longitude"]))
+    east = math.sin(delta_longitude) * math.cos(latitude_2)
+    north = (
+        math.cos(latitude_1) * math.sin(latitude_2)
+        - math.sin(latitude_1) * math.cos(latitude_2) * math.cos(delta_longitude)
+    )
+    return math.degrees(math.atan2(east, north))
+
+
+def heading_delta_deg(first: dict, middle: dict, last: dict) -> float:
+    delta = abs(bearing_deg(middle, last) - bearing_deg(first, middle)) % 360.0
+    return min(delta, 360.0 - delta)
+
+
 def utc_iso(timestamp: Optional[float] = None) -> str:
     value = time.time() if timestamp is None else float(timestamp)
     return datetime.fromtimestamp(value, timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
@@ -77,7 +94,9 @@ class RoadWorkspace:
         self,
         root: Path,
         preview_limit: int = 500,
-        min_record_spacing_m: float = 0.05,
+        min_record_spacing_m: float = 1.0,
+        turn_record_spacing_m: float = 0.5,
+        turn_threshold_deg: float = 12.0,
         network_spacing_m: float = 0.25,
         merge_radius_m: float = 0.75,
     ) -> None:
@@ -87,6 +106,11 @@ class RoadWorkspace:
         self.active_dir = self.root / "active"
         self.preview_limit = max(20, int(preview_limit))
         self.min_record_spacing_m = max(0.0, float(min_record_spacing_m))
+        self.turn_record_spacing_m = min(
+            self.min_record_spacing_m,
+            max(0.0, float(turn_record_spacing_m)),
+        )
+        self.turn_threshold_deg = max(1.0, min(90.0, float(turn_threshold_deg)))
         self.network_spacing_m = max(0.05, float(network_spacing_m))
         self.merge_radius_m = max(0.1, float(merge_radius_m))
         self._lock = threading.RLock()
@@ -250,7 +274,12 @@ class RoadWorkspace:
             }
             previous = active["points"][-1] if active["points"] else None
             distance = haversine_m(previous, point) if previous else 0.0
-            if previous and distance < self.min_record_spacing_m:
+            required_spacing = self.min_record_spacing_m
+            if previous and len(active["points"]) >= 2:
+                turn_angle = heading_delta_deg(active["points"][-2], previous, point)
+                if turn_angle >= self.turn_threshold_deg:
+                    required_spacing = self.turn_record_spacing_m
+            if previous and distance < required_spacing:
                 active["skippedDistance"] += 1
                 return False
             active["points"].append(point)
@@ -287,6 +316,9 @@ class RoadWorkspace:
                 "skippedDistance": active["skippedDistance"],
                 "distanceM": active["distanceM"],
                 "lastError": active["lastError"],
+                "recordSpacingM": self.min_record_spacing_m,
+                "turnRecordSpacingM": self.turn_record_spacing_m,
+                "turnThresholdDeg": self.turn_threshold_deg,
                 "preview": preview_points(active["points"], self.preview_limit),
             }
 
