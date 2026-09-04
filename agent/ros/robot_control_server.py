@@ -48,6 +48,7 @@ CONFIG_FILE = SCRIPT_DIR / "iot_client.conf"
 CMD_TIMEOUT_SEC = 0.5
 MAX_LINEAR = 3.0
 MAX_ANGULAR = 2.0
+MANUAL_MAX_ANGULAR_RATE = float(os.environ.get("DWC_MANUAL_MAX_ANGULAR_RATE", "1.2"))
 RECONNECT_DELAY_MAX_SEC = 2
 WEBSOCKET_OPEN_TIMEOUT_SEC = 5
 WEBSOCKET_PING_INTERVAL_SEC = 5
@@ -157,6 +158,8 @@ state_lock = threading.Lock()
 last_cmd_time = 0.0
 current_v = 0.0
 current_w = 0.0
+last_output_w = 0.0
+last_output_w_time = 0.0
 cmd_vel_pub = None
 simple_goal_pub = None
 initial_pose_pub = None
@@ -279,10 +282,12 @@ def send_cmd_to_motor(v: float, w: float, require_subscriber: bool = True) -> in
 
 
 def hard_stop() -> None:
-    global current_v, current_w
+    global current_v, current_w, last_output_w, last_output_w_time
     with state_lock:
         current_v = 0.0
         current_w = 0.0
+        last_output_w = 0.0
+        last_output_w_time = time.monotonic()
     if cmd_vel_pub is not None:
         send_cmd_to_motor(0.0, 0.0, require_subscriber=False)
 
@@ -1756,7 +1761,7 @@ def watchdog_loop() -> None:
 
 
 def execute_command(command: dict) -> dict:
-    global current_v, current_w, last_cmd_time, mapping_paused
+    global current_v, current_w, last_cmd_time, mapping_paused, last_output_w, last_output_w_time
     command_type = command.get("type")
     now = int(time.time())
     if command_type == "ping":
@@ -1782,6 +1787,15 @@ def execute_command(command: dict) -> dict:
             angular = clamp(float(command.get("w", 0.0)), MAX_ANGULAR)
         except (TypeError, ValueError) as exc:
             return {"type": "ack", "ok": False, "error": str(exc), "ts": now}
+        # Manual control can arrive with discrete left/right steps. Slew-limit
+        # angular velocity so the Ackermann steering servo does not snap sides.
+        if linear != 0.0 or angular != 0.0:
+            now_mono = time.monotonic()
+            elapsed = now_mono - last_output_w_time if last_output_w_time else 0.1
+            max_delta = MANUAL_MAX_ANGULAR_RATE * max(0.01, min(elapsed, 0.25))
+            angular = max(last_output_w - max_delta, min(last_output_w + max_delta, angular))
+            last_output_w = angular
+            last_output_w_time = now_mono
         subscriber_count = send_cmd_to_motor(linear, angular)
         with state_lock:
             last_cmd_time = time.time()
