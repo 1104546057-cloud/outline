@@ -2339,7 +2339,6 @@ async def run_agent(server: str, token: str) -> None:
 
     def request_shutdown() -> None:
         hard_stop()
-        rospy.signal_shutdown("process signal")
         shutdown_event.set()
 
     for signum in (signal.SIGINT, signal.SIGTERM):
@@ -2350,6 +2349,8 @@ async def run_agent(server: str, token: str) -> None:
         asyncio.create_task(media_loop(media_url, token)),
     ]
     await shutdown_event.wait()
+    stop_navigation_process()
+    rospy.signal_shutdown("process signal")
     for task in tasks:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
