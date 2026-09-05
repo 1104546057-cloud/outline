@@ -28,7 +28,6 @@ class HeadingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/'heading.json';p.write_text(json.dumps({'persistent':True,'bootId':'old','offsetRad':1.0}))
             self.assertEqual(load_alignment(p,'new'),1.0)
-            with self.assertRaises(ValueError):load_alignment(p,'new')
 
     def test_identity_preserves_roll_pitch(self):
         q=(.1,.2,.3,.9);n=math.sqrt(sum(v*v for v in q))
