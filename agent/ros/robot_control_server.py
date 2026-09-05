@@ -112,7 +112,7 @@ RTK_GPS_OFFSET_X = float(os.environ.get("DWC_RTK_GPS_OFFSET_X", "0.0"))
 RTK_GPS_OFFSET_Y = float(os.environ.get("DWC_RTK_GPS_OFFSET_Y", "0.0"))
 RTK_GPS_OFFSET_Z = float(os.environ.get("DWC_RTK_GPS_OFFSET_Z", "0.0"))
 RTK_LOSS_GRACE_SEC = float(os.environ.get("DWC_RTK_LOSS_GRACE_SEC", "1.0"))
-RTK_ROUTE_MAX_DISTANCE_M = float(os.environ.get("DWC_RTK_ROUTE_MAX_DISTANCE_M", "50.0"))
+RTK_ROUTE_MAX_DISTANCE_M = float(os.environ.get("DWC_RTK_ROUTE_MAX_DISTANCE_M", "inf"))
 RTK_ROUTE_STRAIGHT_SPACING_M = float(os.environ.get("DWC_RTK_ROUTE_STRAIGHT_SPACING_M", "3.0"))
 RTK_ROUTE_TURN_SPACING_M = float(os.environ.get("DWC_RTK_ROUTE_TURN_SPACING_M", "1.0"))
 RTK_ROUTE_TURN_THRESHOLD_DEG = float(os.environ.get("DWC_RTK_ROUTE_TURN_THRESHOLD_DEG", "12.0"))
@@ -1186,7 +1186,7 @@ def rtk_navigation_status_response(ok: bool = True, error: str = "") -> dict:
             else RtkRouteExecutor._idle_state()
         ),
         "routeLimits": {
-            "maxDistanceM": RTK_ROUTE_MAX_DISTANCE_M,
+            "maxDistanceM": RTK_ROUTE_MAX_DISTANCE_M if math.isfinite(RTK_ROUTE_MAX_DISTANCE_M) else None,
             "straightSpacingM": RTK_ROUTE_STRAIGHT_SPACING_M,
             "turnSpacingM": RTK_ROUTE_TURN_SPACING_M,
             "turnThresholdDeg": RTK_ROUTE_TURN_THRESHOLD_DEG,
@@ -1709,7 +1709,7 @@ def start_rtk_route_execution(command: dict) -> dict:
     distance_m = float(plan.get("distanceM") or 0.0)
     if distance_m <= 0.0:
         raise RuntimeError("规划路线长度为0，无需启动自动驾驶")
-    if distance_m > RTK_ROUTE_MAX_DISTANCE_M:
+    if math.isfinite(RTK_ROUTE_MAX_DISTANCE_M) and distance_m > RTK_ROUTE_MAX_DISTANCE_M:
         raise RuntimeError(
             "规划路线 %.1f 米，超过当前安全上限 %.1f 米，请重新选择较近目标"
             % (distance_m, RTK_ROUTE_MAX_DISTANCE_M)
