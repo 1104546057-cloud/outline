@@ -31,6 +31,7 @@ from rtk_navigation_core import RtkHealthTracker, RtkThresholds
 from rtk_road_network import RoadWorkspace
 from rtk_route_executor import RtkRouteExecutor
 from rtk_heading import ALIGNED_TOPIC, install_heading, require_heading, heading_status
+from rtk_velocity_guard import RAW_TOPIC, RtkVelocityGuard
 try:
     from move_base_msgs.msg import MoveBaseActionResult
 except ImportError:
@@ -162,6 +163,7 @@ current_w = 0.0
 last_output_w = 0.0
 last_output_w_time = 0.0
 cmd_vel_pub = None
+rtk_velocity_guard = None
 simple_goal_pub = None
 initial_pose_pub = None
 cancel_goal_pub = None
@@ -289,7 +291,9 @@ def hard_stop() -> None:
         current_w = 0.0
         last_output_w = 0.0
         last_output_w_time = time.monotonic()
-    if cmd_vel_pub is not None:
+    if rtk_velocity_guard is not None:
+        rtk_velocity_guard.stop()
+    elif cmd_vel_pub is not None:
         send_cmd_to_motor(0.0, 0.0, require_subscriber=False)
 
 
@@ -1218,6 +1222,8 @@ def rtk_road_status_response(ok: bool = True, error: str = "") -> dict:
 
 
 def cancel_navigation_goals() -> None:
+    if rtk_velocity_guard is not None:
+        rtk_velocity_guard.stop()
     if cancel_goal_pub is None:
         return
     cancel_goal_pub.publish(GoalID())
@@ -1566,6 +1572,7 @@ def wgs84_to_map(longitude: float, latitude: float, altitude: float = 0.0) -> Tu
 
 
 def publish_rtk_navigation_goal(longitude: float, latitude: float, yaw: float) -> dict:
+    global last_cmd_time
     global nav_goal_status, nav_goal_status_time, nav_goal_sent_time
     global rtk_goal_active, rtk_safety_tripped, rtk_safety_reason, rtk_safety_tripped_at
     values = (float(longitude), float(latitude), float(yaw))
@@ -1600,12 +1607,22 @@ def publish_rtk_navigation_goal(longitude: float, latitude: float, yaw: float) -
         rtk_safety_tripped = False
         rtk_safety_reason = ""
         rtk_safety_tripped_at = 0.0
-    simple_goal_pub.publish(pose)
     subscribers = simple_goal_pub.get_num_connections()
     if subscribers <= 0:
         with rtk_state_lock:
             rtk_goal_active = False
         raise RuntimeError("ROS /move_base_simple/goal 没有订阅者，请检查 RTK move_base")
+    if rtk_velocity_guard is None:
+        raise RuntimeError("RTK velocity guard is not initialized")
+    # Clear an old manual watchdog before granting automatic control.
+    with state_lock:
+        last_cmd_time = 0.0
+    rtk_velocity_guard.arm()
+    try:
+        simple_goal_pub.publish(pose)
+    except Exception:
+        rtk_velocity_guard.stop()
+        raise
     log.info(
         "发布 RTK 目标 WGS84=(%.8f, %.8f) map=(%.3f, %.3f) yaw=%.3f",
         values[0], values[1], map_x, map_y, values[2],
@@ -1753,6 +1770,8 @@ def watchdog_loop() -> None:
     global last_cmd_time
     while not rospy.is_shutdown():
         time.sleep(0.05)
+        if rtk_velocity_guard is not None:
+            rtk_velocity_guard.check_timeout()
         should_stop = False
         with state_lock:
             if last_cmd_time > 0 and time.time() - last_cmd_time > CMD_TIMEOUT_SEC:
@@ -1785,6 +1804,10 @@ def execute_command(command: dict) -> dict:
             "ts": now,
         }
     if command_type == "cmd_vel":
+        if rtk_velocity_guard is not None:
+            with rtk_velocity_guard.lock:
+                if rtk_velocity_guard.enabled:
+                    rtk_velocity_guard.stop()
         try:
             linear = clamp(float(command.get("v", 0.0)), MAX_LINEAR)
             angular = clamp(float(command.get("w", 0.0)), MAX_ANGULAR)
@@ -2280,12 +2303,18 @@ async def media_loop(url: str, token: str) -> None:
 
 def init_ros() -> None:
     global cmd_vel_pub, simple_goal_pub, initial_pose_pub, cancel_goal_pub
+    global rtk_velocity_guard
     global global_localization_client, nomotion_update_client, from_ll_client, tf_buffer, tf_listener
     global rtk_route_executor
     configure_local_ros_network()
     rospy.init_node("devices_web_control_agent", anonymous=False, disable_signals=True)
     install_heading(RTK_IMU_TOPIC)
     cmd_vel_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
+    rtk_velocity_guard = RtkVelocityGuard(
+        lambda v, w: send_cmd_to_motor(v, w, require_subscriber=False))
+    rospy.Subscriber(RAW_TOPIC, Twist,
+                     lambda msg: rtk_velocity_guard.command(msg.linear.x, msg.angular.z),
+                     queue_size=1, tcp_nodelay=True)
     simple_goal_pub = rospy.Publisher("/move_base_simple/goal", PoseStamped, queue_size=1)
     initial_pose_pub = rospy.Publisher("/initialpose", PoseWithCovarianceStamped, queue_size=1)
     cancel_goal_pub = rospy.Publisher("/move_base/cancel", GoalID, queue_size=1)

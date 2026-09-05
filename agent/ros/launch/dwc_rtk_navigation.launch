@@ -25,6 +25,7 @@
   </node>
 
   <node pkg="move_base" type="move_base" name="move_base" output="screen" clear_params="true">
+    <remap from="cmd_vel" to="/rtk/nav_cmd_vel" />
     <rosparam command="load" file="$(dirname)/../rtk/rtk_move_base.yaml" />
     <rosparam command="load" file="$(dirname)/../rtk/rtk_costmap_common.yaml" ns="global_costmap" />
     <rosparam command="load" file="$(dirname)/../rtk/rtk_global_costmap.yaml" ns="global_costmap" />
