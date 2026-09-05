@@ -9,6 +9,7 @@ import asyncio
 import queue
 import subprocess
 import threading
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -38,6 +39,7 @@ CAMERA_RECORDING_CRF = 21
 
 # 快照保存目录（相对于 backend 目录的 ../data/camera_snapshots）
 CAMERA_SNAPSHOTS_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "camera_snapshots"
+CAMERA_PROXY_MAX_FPS = float(os.environ.get("CAMERA_PROXY_MAX_FPS", "15"))
 
 
 @dataclass
@@ -85,6 +87,8 @@ async def proxy_camera_stream(
 
     async def stream_generator():
         """将车端上传的 JPEG 帧封装为浏览器可直接显示的 MJPEG。"""
+        last_sent = 0.0
+        interval = 1.0 / max(1.0, CAMERA_PROXY_MAX_FPS)
         try:
             while True:
                 try:
@@ -93,6 +97,11 @@ async def proxy_camera_stream(
                     if not agent_gateway.is_media_connected(device_id):
                         return
                     continue
+                now = time.monotonic()
+                remaining = interval - (now - last_sent)
+                if remaining > 0:
+                    await asyncio.sleep(remaining)
+                last_sent = time.monotonic()
                 yield (
                     b"--boundarydonotcross\r\n"
                     b"Content-Type: image/jpeg\r\n"
