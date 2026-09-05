@@ -23,6 +23,11 @@ class HeadingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/'heading.json';p.write_text(json.dumps({'bootId':'old','offsetRad':1.0}))
             self.assertEqual(load_alignment(p,'old'),1.0)
+
+    def test_persistent_baseline_survives_boot_change(self):
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d)/'heading.json';p.write_text(json.dumps({'persistent':True,'bootId':'old','offsetRad':1.0}))
+            self.assertEqual(load_alignment(p,'new'),1.0)
             with self.assertRaises(ValueError):load_alignment(p,'new')
 
     def test_identity_preserves_roll_pitch(self):

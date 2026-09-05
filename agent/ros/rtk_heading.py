@@ -27,7 +27,8 @@ def install_heading(raw_topic):
     from sensor_msgs.msg import Imu
     global _offset, _error
     try:
-        _offset = load_alignment(os.environ.get('DWC_RTK_HEADING_FILE', '/tmp/rtk-heading.json'),
+        _offset = load_alignment(os.environ.get('DWC_RTK_HEADING_FILE',
+                                                 str(Path(__file__).resolve().parent / 'rtk' / 'rtk-heading.json')),
                                  Path('/proc/sys/kernel/random/boot_id').read_text().strip())
         _error = ''
     except (OSError, ValueError, KeyError, TypeError) as exc:
@@ -59,7 +60,7 @@ def install_heading(raw_topic):
 
 def load_alignment(path, boot_id):
     data = json.loads(Path(path).read_text())
-    if data.get('bootId') != boot_id:
+    if not data.get('persistent', False) and data.get('bootId') != boot_id:
         raise ValueError('航向标定不属于本次开机，请重新标定')
     offset = float(data['offsetRad'])
     if not math.isfinite(offset) or abs(offset) > math.pi:

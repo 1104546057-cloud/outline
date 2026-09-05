@@ -10,11 +10,13 @@ angular velocity and acceleration. Global EKF and navsat consume the same aligne
 orientation. Raw `/imu` and local odometry consumers are unchanged. Keep navsat
 `yaw_offset` at zero to avoid applying the offset twice.
 
-Before restarting the Agent, create the calibration JSON specified by
-`DWC_RTK_HEADING_FILE` (default `/tmp/rtk-heading.json`): `bootId` must match
-`/proc/sys/kernel/random/boot_id`, and `offsetRad` must be finite and within pi.
-Do not copy a previous boot's calibration. Missing, stale or invalid calibration
-blocks RTK navigation startup; manual control remains available.
+Create the calibration JSON specified by `DWC_RTK_HEADING_FILE` (default
+`/tmp/rtk-heading.json`). A normal calibration has a matching `bootId` and is
+rejected after reboot. The validated vehicle baseline may set `persistent: true`
+so the same offset is reused across computer reboots; `offsetRad` must remain
+finite and within pi. Recalibrate after an IMU reset/reinitialization or any
+sensor mounting change. Missing or invalid calibration blocks RTK navigation
+startup; manual control remains available.
 
 Estimate offset from fresh Fixed GPS displacement during supervised forward
 travel, paired with IMU yaw. Exclude reverse motion, stops, short displacement,
