@@ -377,7 +377,26 @@ class RtkRouteExecutor:
                             deviation_since = None
                     goal_status = self._read_goal_status() or {}
                     label = str(goal_status.get("label") or "").upper()
-                    if label in SUCCESS_LABELS:
+                    if label in FAILURE_LABELS:
+                        raise RuntimeError(
+                            "导航节点执行失败: " + str(goal_status.get("text") or label)
+                        )
+                    # Advance only the current waypoint, never a nearest point on
+                    # the whole route (which could skip a bend or an intersection).
+                    # Tighten the pass radius at corners instead of cutting them.
+                    final_point = index == len(points) - 1
+                    turn = route_turn_angle_deg(points, index)
+                    pass_radius = 0.65 if final_point else (0.4 if turn >= 12.0 else 0.8)
+                    position_reached = (
+                        label == "ACTIVE"
+                        and "longitude" in position and "latitude" in position
+                        and distance_to_route_m(position, reference_route) <= self._max_cross_track_error_m
+                        and haversine_m(position, point) <= pass_radius
+                    )
+                    if label in SUCCESS_LABELS or position_reached:
+                        if final_point and position_reached:
+                            self._cancel_goal()
+                            self._hard_stop()
                         index += 1
                         completed = index
                         self._update(
@@ -385,10 +404,6 @@ class RtkRouteExecutor:
                             progressPct=round(completed * 100.0 / len(points), 1),
                         )
                         break
-                    if label in FAILURE_LABELS:
-                        raise RuntimeError(
-                            "导航节点执行失败: " + str(goal_status.get("text") or label)
-                        )
                     if time.monotonic() - sent_at > self._waypoint_timeout_sec:
                         raise RuntimeError("导航节点执行超时")
                     time.sleep(self._poll_interval_sec)
