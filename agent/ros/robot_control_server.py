@@ -30,6 +30,7 @@ from std_srvs.srv import Empty
 from rtk_navigation_core import RtkHealthTracker, RtkThresholds
 from rtk_road_network import RoadWorkspace
 from rtk_route_executor import RtkRouteExecutor
+from rtk_heading import ALIGNED_TOPIC, install_heading, require_heading, heading_status
 try:
     from move_base_msgs.msg import MoveBaseActionResult
 except ImportError:
@@ -1172,6 +1173,7 @@ def rtk_navigation_status_response(ok: bool = True, error: str = "") -> dict:
         "pose": current_rtk_local_pose() if running else {},
         "goalStatus": current_navigation_goal_status(),
         "safety": safety,
+        "heading": heading_status(),
         "provider": rtk_provider_status(),
         "roadSurvey": RTK_ROAD_WORKSPACE.status(),
         "routeExecution": (
@@ -1441,6 +1443,7 @@ def start_rtk_navigation_process() -> dict:
     global rtk_goal_active, rtk_safety_tripped, rtk_safety_reason, rtk_safety_tripped_at
     if mapping_process_running():
         raise RuntimeError("建图任务仍在运行，请先保存或放弃本次建图")
+    require_heading()
     if not RTK_NAV_LAUNCH.is_file():
         raise RuntimeError(f"RTK launch 文件不存在: {RTK_NAV_LAUNCH}")
     with nav_lock:
@@ -1464,7 +1467,7 @@ def start_rtk_navigation_process() -> dict:
         "converter_pid=$!; sleep 1; "
         f"roslaunch {sh_quote(str(RTK_NAV_LAUNCH))} "
         f"gps_topic:={sh_quote(RTK_GPS_TOPIC)} "
-        f"imu_topic:={sh_quote(RTK_IMU_TOPIC)} "
+        f"imu_topic:={sh_quote(ALIGNED_TOPIC)} "
         f"odom_topic:={sh_quote(RTK_ODOM_TOPIC)} "
         f"scan_topic:={sh_quote(RTK_SCAN_TOPIC)} "
         f"base_frame:={sh_quote(RTK_BASE_FRAME)} "
@@ -2281,6 +2284,7 @@ def init_ros() -> None:
     global rtk_route_executor
     configure_local_ros_network()
     rospy.init_node("devices_web_control_agent", anonymous=False, disable_signals=True)
+    install_heading(RTK_IMU_TOPIC)
     cmd_vel_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
     simple_goal_pub = rospy.Publisher("/move_base_simple/goal", PoseStamped, queue_size=1)
     initial_pose_pub = rospy.Publisher("/initialpose", PoseWithCovarianceStamped, queue_size=1)
