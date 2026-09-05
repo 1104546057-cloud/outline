@@ -38,8 +38,8 @@ TebLocalPlannerROS:
   feasibility_check_no_poses: 8
   publish_feedback: true
 
-  max_vel_x: 0.20
-  max_vel_x_backwards: 0.08
+  max_vel_x: 0.40
+  max_vel_x_backwards: 0.15
   max_vel_y: 0.0
   max_vel_theta: 0.22
   acc_lim_x: 0.25

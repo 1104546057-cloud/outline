@@ -56,8 +56,8 @@ class RtkVelocityGuard:
                 self.angular = 0.0
                 self.publish(0.0, 0.0)
                 return
-            linear = max(-0.08, min(0.20, linear))
-            bound = min(0.11236, abs(linear) / self.radius)
+            linear = max(-0.15, min(0.40, linear))
+            bound = min(0.22472, abs(linear) / self.radius)
             target = max(-bound, min(bound, angular))
             delta = self.angular_rate * elapsed
             output = max(self.angular - delta, min(self.angular + delta, target))

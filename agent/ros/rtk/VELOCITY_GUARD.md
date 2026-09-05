@@ -5,8 +5,8 @@ robot control Agent subscribes and publishes guarded velocities to `/cmd_vel`.
 Deploy the launch, Agent and `rtk_velocity_guard.py` together. No extra ROS
 executable or package is required. Indoor navigation launch is unchanged.
 
-Initial conservative limits are 0.20 m/s forward, 0.08 m/s backward, angular
-speed at most `abs(v)/1.78`, capped at 0.11236 rad/s, and angular change rate
+Current limits are 0.40 m/s forward, 0.15 m/s backward, angular
+speed at most `abs(v)/1.78`, capped at 0.22472 rad/s, and angular change rate
 0.4 rad/s². These are bounds, not an anti-reversing controller. A sudden speed
 reduction prioritizes curvature over slew. No low-pass filter is added.
 
