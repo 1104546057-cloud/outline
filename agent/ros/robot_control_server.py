@@ -32,6 +32,7 @@ from rtk_road_network import RoadWorkspace
 from rtk_route_executor import RtkRouteExecutor
 from rtk_heading import ALIGNED_TOPIC, install_heading, require_heading, heading_status
 from rtk_velocity_guard import RAW_TOPIC, RtkVelocityGuard
+from dai_runtime import gpu_ready_from_payload, parse_systemctl_show
 try:
     from move_base_msgs.msg import MoveBaseActionResult
 except ImportError:
@@ -57,8 +58,24 @@ WEBSOCKET_PING_INTERVAL_SEC = 5
 WEBSOCKET_PING_TIMEOUT_SEC = 5
 MEDIA_SEND_TIMEOUT_SEC = 3
 LOCAL_CAMERA_URL = "http://127.0.0.1:8080/?action=stream&view={view}"
+LOCAL_DETECTIONS_URL = "http://127.0.0.1:8080/detections"
+LOCAL_DETECTION_CONTROL_URL = "http://127.0.0.1:8080/detections/control"
+DAI_SSH_HOST = os.environ.get("DWC_DAI_SSH_HOST", "10.139.91.78").strip()
+DAI_SSH_USER = os.environ.get("DWC_DAI_SSH_USER", "dai").strip()
+DAI_SSH_PORT = int(os.environ.get("DWC_DAI_SSH_PORT", "22"))
+DAI_SSH_IDENTITY_FILE = os.environ.get("DWC_DAI_SSH_IDENTITY_FILE", "").strip()
+if not DAI_SSH_IDENTITY_FILE and os.path.exists("/home/wheeltec/.ssh/id_ed25519"):
+    DAI_SSH_IDENTITY_FILE = "/home/wheeltec/.ssh/id_ed25519"
+DAI_SERVICE_NAME = os.environ.get("DWC_DAI_SERVICE", "dai-remote-yolo.service").strip()
+DAI_HTTP_STATUS_URL = os.environ.get(
+    "DWC_DAI_STATUS_URL",
+    f"http://{DAI_SSH_HOST}:9100/status",
+).strip()
+DAI_SSH_TIMEOUT_SEC = float(os.environ.get("DWC_DAI_SSH_TIMEOUT", "8"))
+DAI_START_TIMEOUT_SEC = float(os.environ.get("DWC_DAI_START_TIMEOUT", "60"))
+DAI_SERVICE_LOCK = threading.Lock()
 MEDIA_HEADER = struct.Struct("!BQ")
-MEDIA_VIEW_CODES = {"color": 1, "depth": 2, "lidar": 3}
+MEDIA_VIEW_CODES = {"color": 1, "depth": 2, "lidar": 3, "gun": 4}
 SLAM_MAP_DIR = Path(os.environ.get("DWC_SLAM_MAP_DIR", "/home/wheeltec/Dong/DevicesWebControl/slam_map"))
 NAV_LOG_FILE = Path(os.environ.get("DWC_NAV_LOG_FILE", "/tmp/devices_web_control_navigation.log"))
 NAV_PREVIEW_MAX_SIZE = int(os.environ.get("DWC_NAV_PREVIEW_MAX_SIZE", "1000"))
@@ -1793,6 +1810,17 @@ def execute_command(command: dict) -> dict:
             "subscribers": cmd_vel_pub.get_num_connections() if cmd_vel_pub is not None else 0,
             "ts": now,
         }
+    if command_type == "recognition_status":
+        try:
+            return {"type": "recognition_status", "ok": True, **recognition_runtime_status(), "ts": now}
+        except Exception as exc:
+            return {"type": "recognition_status", "ok": False, "error": str(exc), "ts": now}
+    if command_type == "recognition_control":
+        try:
+            payload = control_dai_inference(bool(command.get("enabled")))
+            return {"type": "recognition_status", "ok": True, **payload, "ts": now}
+        except Exception as exc:
+            return {"type": "recognition_status", "ok": False, "error": str(exc), "ts": now}
     if command_type == "stop":
         with state_lock:
             last_cmd_time = 0.0
@@ -2112,6 +2140,247 @@ def execute_command(command: dict) -> dict:
     return {"type": "ack", "ok": False, "error": "unknown_type", "ts": now}
 
 
+def fetch_local_detections() -> dict:
+    request = urllib.request.Request(
+        LOCAL_DETECTIONS_URL,
+        headers={"Accept": "application/json", "Connection": "close"},
+    )
+    with urllib.request.urlopen(request, timeout=1.5) as response:
+        payload = json.loads(response.read().decode("utf-8") or "{}")
+    if not isinstance(payload, dict):
+        return {}
+    return payload
+
+
+def control_local_detections(enabled: bool) -> dict:
+    body = json.dumps({"enabled": bool(enabled)}).encode("utf-8")
+    request = urllib.request.Request(
+        LOCAL_DETECTION_CONTROL_URL,
+        data=body,
+        headers={"Accept": "application/json", "Content-Type": "application/json", "Connection": "close"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=3.0) as response:
+        payload = json.loads(response.read().decode("utf-8") or "{}")
+    return payload if isinstance(payload, dict) else {}
+
+
+def _dai_ssh_command(*remote_args, timeout=None) -> subprocess.CompletedProcess:
+    if not DAI_SSH_HOST or not DAI_SSH_USER:
+        raise RuntimeError("dai SSH 目标未配置")
+    command = [
+        "ssh",
+        "-T",
+        "-p",
+        str(DAI_SSH_PORT),
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        f"ConnectTimeout={max(2, int(DAI_SSH_TIMEOUT_SEC))}",
+        "-o",
+        "ServerAliveInterval=5",
+        "-o",
+        "ServerAliveCountMax=1",
+        "-o",
+        "StrictHostKeyChecking=accept-new",
+        "-o",
+        "LogLevel=ERROR",
+    ]
+    if DAI_SSH_IDENTITY_FILE:
+        command.extend(["-i", DAI_SSH_IDENTITY_FILE, "-o", "IdentitiesOnly=yes"])
+    command.append(f"{DAI_SSH_USER}@{DAI_SSH_HOST}")
+    command.extend(remote_args)
+    run_timeout = max(4.0, DAI_SSH_TIMEOUT_SEC + 2.0) if timeout is None else max(4.0, float(timeout))
+    try:
+        return subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=run_timeout,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError("车端未安装 ssh 客户端") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("连接 dai SSH 超时") from exc
+
+
+def _validate_dai_service_name() -> str:
+    if not DAI_SERVICE_NAME or not all(
+        char.isalnum() or char in "_.@:-" for char in DAI_SERVICE_NAME
+    ):
+        raise RuntimeError("dai systemd 服务名非法")
+    return DAI_SERVICE_NAME
+
+
+def _parse_systemctl_show(output: str) -> dict:
+    return parse_systemctl_show(output)
+
+
+def _dai_service_state() -> dict:
+    service_name = _validate_dai_service_name()
+    args = (
+        "systemctl",
+        "show",
+        service_name,
+        "--no-pager",
+        "-p",
+        "MainPID",
+        "-p",
+        "ActiveState",
+        "-p",
+        "SubState",
+        "-p",
+        "UnitFileState",
+    )
+    result = _dai_ssh_command(*args)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "systemctl show 失败").strip()
+        raise RuntimeError(f"dai 服务状态读取失败: {detail}")
+    return _parse_systemctl_show(result.stdout)
+
+
+def _dai_systemctl(action: str) -> dict:
+    if action not in {"start", "disable", "stop"}:
+        raise RuntimeError(f"不允许的 dai systemctl 操作: {action}")
+    service_name = _validate_dai_service_name()
+    ssh_timeout = DAI_START_TIMEOUT_SEC + 8.0 if action in {"start", "stop", "disable"} else None
+    result = _dai_ssh_command("sudo", "-n", "systemctl", action, service_name, timeout=ssh_timeout)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "systemctl 操作失败").strip()
+        raise RuntimeError(
+            f"dai 服务 {action} 失败: {detail}; "
+            "请在 dai 上为该服务配置车端 SSH key 与受限免密 sudo"
+        )
+    return _dai_service_state()
+
+
+def _dai_http_status() -> dict:
+    request = urllib.request.Request(
+        DAI_HTTP_STATUS_URL,
+        headers={"Accept": "application/json", "Connection": "close"},
+    )
+    with urllib.request.urlopen(request, timeout=3.0) as response:
+        payload = json.loads(response.read().decode("utf-8") or "{}")
+    return payload if isinstance(payload, dict) else {}
+
+
+def _dai_runtime_status() -> dict:
+    service = _dai_service_state()
+    detector = {}
+    detector_error = ""
+    try:
+        detector = _dai_http_status()
+    except Exception as exc:
+        detector_error = str(exc)
+    active = service["active_state"] == "active"
+    pid = service["main_pid"]
+    gpu_ready = gpu_ready_from_payload(
+        {"active": active, "main_pid": pid, "active_state": service["active_state"]},
+        detector,
+    )
+    return {
+        "service": {
+            "name": DAI_SERVICE_NAME,
+            "active": active,
+            "active_state": service["active_state"],
+            "sub_state": service["sub_state"],
+            "unit_file_state": service["unit_file_state"],
+            "main_pid": pid,
+        },
+        "detector": detector,
+        "detector_error": detector_error,
+        "online": bool(active and not detector_error),
+        "gpu_ready": gpu_ready,
+        "gpu_released": bool(not active and pid == 0),
+        "ready": gpu_ready,
+        "pid": pid,
+        "state": service["active_state"],
+        "boot_enabled": service["unit_file_state"] == "enabled",
+    }
+
+
+def _wait_dai_runtime(enabled: bool) -> dict:
+    deadline = time.monotonic() + max(5.0, DAI_START_TIMEOUT_SEC if enabled else 12.0)
+    last_status = None
+    while time.monotonic() < deadline:
+        try:
+            last_status = _dai_runtime_status()
+            service = last_status["service"]
+            if enabled:
+                if (
+                    service["active"]
+                    and service["main_pid"] > 0
+                    and last_status["gpu_ready"]
+                ):
+                    return last_status
+            elif last_status["gpu_released"]:
+                return last_status
+        except Exception as exc:
+            last_status = {"error": str(exc)}
+        time.sleep(0.8)
+    if last_status:
+        raise RuntimeError(f"dai 服务未达到预期状态: {json.dumps(last_status, ensure_ascii=False)}")
+    raise RuntimeError("dai 服务状态检查超时")
+
+
+def recognition_runtime_status() -> dict:
+    local = fetch_local_detections()
+    runtime = _dai_runtime_status()
+    runtime["sender"] = local.get("detector") if isinstance(local.get("detector"), dict) else {}
+    runtime["detections"] = local.get("detections") or []
+    runtime["video_preserved"] = True
+    return runtime
+
+
+def control_dai_inference(enabled: bool) -> dict:
+    with DAI_SERVICE_LOCK:
+        if enabled:
+            try:
+                _dai_systemctl("start")
+                runtime = _wait_dai_runtime(True)
+            except Exception:
+                try:
+                    _dai_systemctl("disable")
+                    _dai_systemctl("stop")
+                except Exception:
+                    pass
+                raise
+            try:
+                sender = control_local_detections(True)
+            except Exception:
+                try:
+                    control_local_detections(False)
+                except Exception:
+                    pass
+                try:
+                    _dai_systemctl("disable")
+                    _dai_systemctl("stop")
+                except Exception:
+                    pass
+                raise
+            runtime["sender"] = sender
+            runtime["enabled"] = True
+            runtime["video_preserved"] = True
+            return runtime
+
+        sender_error = ""
+        try:
+            sender = control_local_detections(False)
+        except Exception as exc:
+            sender = {}
+            sender_error = str(exc)
+        _dai_systemctl("disable")
+        _dai_systemctl("stop")
+        runtime = _wait_dai_runtime(False)
+        runtime["sender"] = sender
+        runtime["enabled"] = False
+        runtime["video_preserved"] = True
+        if sender_error:
+            runtime["sender_error"] = sender_error
+        return runtime
+
+
 async def control_session(url: str, token: str) -> None:
     headers = {"X-Device-Token": token}
     async with websockets.connect(
@@ -2124,38 +2393,57 @@ async def control_session(url: str, token: str) -> None:
         max_size=1024 * 1024,
     ) as websocket:
         log.info("控制通道已连接")
+        loop = asyncio.get_running_loop()
+        last_heartbeat_at = time.time()
+        last_detections_at = 0.0
+        last_detect_warn_at = 0.0
         try:
             while not rospy.is_shutdown():
+                raw_message = None
                 try:
-                    raw_message = await asyncio.wait_for(websocket.recv(), timeout=10)
+                    raw_message = await asyncio.wait_for(websocket.recv(), timeout=1)
                 except asyncio.TimeoutError:
-                    await websocket.send(json.dumps({"type": "heartbeat", "ts": int(time.time())}))
-                    continue
-                if not isinstance(raw_message, str):
-                    continue
-                message = json.loads(raw_message)
-                if message.get("type") != "command" or not isinstance(message.get("id"), int):
-                    continue
-                command_id = message["id"]
-                try:
-                    response = execute_command(message.get("command") or {})
-                    result = {
-                        "type": "result",
-                        "id": command_id,
-                        "ok": bool(response.get("ok")),
-                        "response": response,
-                    }
-                    if not response.get("ok"):
-                        result["error"] = response.get("error") or "command_failed"
-                except Exception as exc:
-                    hard_stop()
-                    result = {
-                        "type": "result",
-                        "id": command_id,
-                        "ok": False,
-                        "error": str(exc),
-                    }
-                await websocket.send(json.dumps(result, separators=(",", ":")))
+                    pass
+                now = time.time()
+                if isinstance(raw_message, str):
+                    message = json.loads(raw_message)
+                    if message.get("type") == "command" and isinstance(message.get("id"), int):
+                        command_id = message["id"]
+                        command = message.get("command") or {}
+                        try:
+                            response = await loop.run_in_executor(None, execute_command, command)
+                            result = {
+                                "type": "result",
+                                "id": command_id,
+                                "ok": bool(response.get("ok")),
+                                "response": response,
+                            }
+                            if not response.get("ok"):
+                                result["error"] = response.get("error") or "command_failed"
+                        except Exception as exc:
+                            if command.get("type") not in {"recognition_control", "recognition_status", "ping"}:
+                                hard_stop()
+                            result = {
+                                "type": "result",
+                                "id": command_id,
+                                "ok": False,
+                                "error": str(exc),
+                            }
+                        await websocket.send(json.dumps(result, separators=(",", ":")))
+                if now - last_detections_at >= 1.0:
+                    try:
+                        detections = await loop.run_in_executor(None, fetch_local_detections)
+                        detections["type"] = "detections"
+                        detections["ts"] = int(now)
+                        await websocket.send(json.dumps(detections, separators=(",", ":")))
+                    except Exception as exc:
+                        if now - last_detect_warn_at >= 15:
+                            log.warning("本地识别结果读取失败: %s", exc)
+                            last_detect_warn_at = now
+                    last_detections_at = now
+                if now - last_heartbeat_at >= 10:
+                    await websocket.send(json.dumps({"type": "heartbeat", "ts": int(now)}))
+                    last_heartbeat_at = now
         finally:
             hard_stop()
             log.warning("控制通道已断开，车辆已停车")
@@ -2192,6 +2480,7 @@ def media_stream_worker(
     loop: asyncio.AbstractEventLoop,
     websocket,
     send_lock: asyncio.Lock,
+    send_gate: threading.Lock,
 ) -> None:
     while not stop_event.is_set():
         try:
@@ -2222,15 +2511,23 @@ def media_stream_worker(
                         end += 2
                         jpeg = bytes(buffer[start:end])
                         del buffer[:end]
-                        future = asyncio.run_coroutine_threadsafe(
-                            send_media_frame(websocket, send_lock, view, jpeg),
-                            loop,
-                        )
+                        # 网络发送慢时丢弃当前帧，避免旧帧在事件循环里排队，
+                        # 让恢复后的画面始终尽量接近实时。
+                        if not send_gate.acquire(blocking=False):
+                            continue
                         try:
-                            future.result(timeout=5)
+                            future = asyncio.run_coroutine_threadsafe(
+                                send_media_frame(websocket, send_lock, view, jpeg),
+                                loop,
+                            )
                         except Exception:
-                            future.cancel()
+                            send_gate.release()
                             raise
+
+                        def release_gate(_future) -> None:
+                            send_gate.release()
+
+                        future.add_done_callback(release_gate)
         except Exception as exc:
             if stop_event.is_set():
                 break
@@ -2243,6 +2540,7 @@ async def media_session(url: str, token: str) -> None:
     workers: Dict[str, Tuple[threading.Thread, threading.Event]] = {}
     loop = asyncio.get_running_loop()
     send_lock = asyncio.Lock()
+    send_gate = threading.Lock()
 
     async with websockets.connect(
         url,
@@ -2269,7 +2567,7 @@ async def media_session(url: str, token: str) -> None:
                     stop_event = threading.Event()
                     worker = threading.Thread(
                         target=media_stream_worker,
-                        args=(view, stop_event, loop, websocket, send_lock),
+                        args=(view, stop_event, loop, websocket, send_lock, send_gate),
                         name=f"media-{view}",
                         daemon=True,
                     )

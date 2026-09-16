@@ -30,6 +30,21 @@ DEVICE_ONLINE_TIMEOUT_SECONDS = int(os.getenv("DEVICE_ONLINE_TIMEOUT_SECONDS", "
 # 视频录制结束处理超时。FFmpeg 由 imageio-ffmpeg 提供和解析。
 CAMERA_RECORD_FINALIZE_TIMEOUT_SECONDS = int(os.getenv("CAMERA_RECORD_FINALIZE_TIMEOUT_SECONDS", "300"))
 
+# Outdoor target recognition: YOLO on dai over ZeroTier. Do not default to LAN.
+DETECTOR_URL = os.getenv("DETECTOR_URL", "http://10.139.91.78:9100").rstrip("/")
+DETECTOR_URLS = [
+    item.strip().rstrip("/")
+    for item in os.getenv(
+        "DETECTOR_URLS",
+        "http://10.139.91.78:9100,http://127.0.0.1:9100",
+    ).split(",")
+    if item.strip()
+]
+DETECTOR_TIMEOUT = float(os.getenv("DETECTOR_TIMEOUT", "3"))
+DETECTOR_STATUS_TIMEOUT = float(os.getenv("DETECTOR_STATUS_TIMEOUT", "2"))
+RECOGNITION_REQUEST_TIMEOUT = float(os.getenv("RECOGNITION_REQUEST_TIMEOUT", "10"))
+GUN_DETECT_INTERVAL_SECONDS = float(os.getenv("GUN_DETECT_INTERVAL_SECONDS", "1.0"))
+
 # 平台地图默认中心对应的 WGS-84 GPS 坐标。新设备尚未上报定位时，
 # 使用该位置附近的历史坐标作为初始位置。
 PLATFORM_DEFAULT_GPS_LNG = float(os.getenv("PLATFORM_DEFAULT_GPS_LNG", "113.5790599"))

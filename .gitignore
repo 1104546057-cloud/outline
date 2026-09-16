@@ -32,6 +32,8 @@ chat_files
 
 .chroma
 
+data/recognition_events.json
+
 # Logs
 logs
 *.log

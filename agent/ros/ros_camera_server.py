@@ -2,13 +2,16 @@
 """Expose Gemini camera frames and a rendered ROS lidar view as HTTP streams."""
 
 import argparse
+import base64
 import json
 import math
+import os
 import shutil
 import subprocess
 import sys
 import threading
 import time
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Dict, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
@@ -42,14 +45,24 @@ class FrameStore:
             "color": None,
             "depth": None,
             "lidar": None,
+            "gun": None,
         }
         self._updated_at: Dict[str, Optional[float]] = {
             "color": None,
             "depth": None,
             "lidar": None,
+            "gun": None,
         }
-        self._clients = {"color": 0, "depth": 0, "lidar": 0}
-        self._versions = {"color": 0, "depth": 0, "lidar": 0}
+        self._clients = {"color": 0, "depth": 0, "lidar": 0, "gun": 0}
+        self._versions = {"color": 0, "depth": 0, "lidar": 0, "gun": 0}
+        self._detections: Dict[str, object] = {
+            "detections": [],
+            "detection": None,
+            "source": "camera",
+            "camera": "gun",
+            "updated_at": 0.0,
+            "error": "",
+        }
 
     def update(self, kind: str, jpeg: bytes) -> None:
         with self._condition:
@@ -97,10 +110,28 @@ class FrameStore:
                 self._condition.wait(remaining)
             return self._frames[kind], self._versions[kind]
 
+    def set_detections(self, detections, detection=None, error="", extra=None) -> None:
+        with self._condition:
+            payload = {
+                "detections": detections or [],
+                "detection": detection,
+                "source": "camera",
+                "camera": "gun",
+                "updated_at": time.time(),
+                "error": error or "",
+            }
+            if extra:
+                payload.update(extra)
+            self._detections = payload
+
+    def get_detections(self) -> Dict[str, object]:
+        with self._condition:
+            return dict(self._detections)
+
     def status(self) -> Dict[str, object]:
         now = time.time()
         with self._condition:
-            return {
+            payload = {
                 kind: {
                     "ready": frame is not None,
                     "age": None if self._updated_at[kind] is None else round(now - self._updated_at[kind], 2),
@@ -108,6 +139,16 @@ class FrameStore:
                 }
                 for kind, frame in self._frames.items()
             }
+            payload["detections"] = {
+                "count": len(self._detections.get("detections") or []),
+                "age": None
+                if not self._detections.get("updated_at")
+                else round(now - float(self._detections["updated_at"]), 2),
+                "error": self._detections.get("error") or "",
+                "source_width": self._detections.get("source_width"),
+                "source_height": self._detections.get("source_height"),
+            }
+            return payload
 
 
 class DepthRenderer:
@@ -548,6 +589,294 @@ class NativeMjpegCapture:
             return
 
 
+class RtspCapture:
+    """Decode the dedicated H.265 gun camera with Jetson's GStreamer stack."""
+
+    def __init__(
+        self,
+        store: FrameStore,
+        url: str,
+        jpeg_quality: int,
+        max_fps: float,
+        width: int = 0,
+        height: int = 0,
+    ) -> None:
+        self.store = store
+        self.url = url
+        self.jpeg_quality = jpeg_quality
+        self.frame_interval = 1.0 / max_fps
+        self.width = width
+        self.height = height
+        self.stop_event = threading.Event()
+        self.thread = threading.Thread(target=self._run, name="gun-rtsp", daemon=True)
+
+    def start(self) -> None:
+        self.thread.start()
+
+    def stop(self) -> None:
+        self.stop_event.set()
+        if self.thread.is_alive() and self.thread is not threading.current_thread():
+            self.thread.join(timeout=3.0)
+
+    def _run(self) -> None:
+        import gi
+
+        gi.require_version("Gst", "1.0")
+        from gi.repository import Gst
+
+        Gst.init(None)
+        retry_delay = 1.0
+        while not self.stop_event.is_set() and not rospy.is_shutdown():
+            pipeline = None
+            try:
+                escaped_url = self.url.replace("\\", "\\\\").replace('"', '\\"')
+                scale_caps = (
+                    "video/x-raw,format=BGRx,width=%d,height=%d" % (self.width, self.height)
+                    if self.width > 0 and self.height > 0
+                    else "video/x-raw,format=BGRx"
+                )
+                pipeline = Gst.parse_launch(
+                    f'rtspsrc location="{escaped_url}" protocols=tcp latency=100 ! '
+                    "rtph265depay ! h265parse ! nvv4l2decoder ! nvvidconv ! "
+                    f"{scale_caps} ! videoconvert ! video/x-raw,format=BGR ! "
+                    "appsink name=gun_sink sync=false drop=true max-buffers=1"
+                )
+                sink = pipeline.get_by_name("gun_sink")
+                bus = pipeline.get_bus()
+                pipeline.set_state(Gst.State.PLAYING)
+                state_result, state, _pending = pipeline.get_state(10 * Gst.SECOND)
+                if state_result == Gst.StateChangeReturn.FAILURE or state != Gst.State.PLAYING:
+                    raise RuntimeError("GStreamer pipeline did not enter PLAYING state")
+
+                retry_delay = 1.0
+                last_frame_at = 0.0
+                while not self.stop_event.is_set() and not rospy.is_shutdown():
+                    sample = sink.emit("try-pull-sample", Gst.SECOND)
+                    if sample is None:
+                        message = bus.timed_pop_filtered(0, Gst.MessageType.ERROR | Gst.MessageType.EOS)
+                        if message is not None:
+                            if message.type == Gst.MessageType.ERROR:
+                                error, _debug = message.parse_error()
+                                raise RuntimeError(str(error))
+                            raise RuntimeError("Gun camera RTSP stream ended")
+                        continue
+
+                    now = time.monotonic()
+                    if now - last_frame_at < self.frame_interval:
+                        continue
+                    caps = sample.get_caps().get_structure(0)
+                    width = caps.get_value("width")
+                    height = caps.get_value("height")
+                    buffer = sample.get_buffer()
+                    mapped, map_info = buffer.map(Gst.MapFlags.READ)
+                    if not mapped:
+                        continue
+                    try:
+                        frame = np.frombuffer(map_info.data, dtype=np.uint8).reshape((height, width, 3))
+                        encoded, jpeg = cv2.imencode(
+                            ".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), self.jpeg_quality]
+                        )
+                    finally:
+                        buffer.unmap(map_info)
+                    if encoded:
+                        last_frame_at = now
+                        self.store.update("gun", jpeg.tobytes())
+            except Exception as exc:
+                rospy.logwarn_throttle(10, "Gun camera RTSP connection failed: %s", exc)
+            finally:
+                if pipeline is not None:
+                    pipeline.set_state(Gst.State.NULL)
+            self.stop_event.wait(retry_delay)
+            retry_delay = min(10.0, retry_delay * 2)
+
+
+class GunRemoteDetector:
+    """Send gun frames to dai over ZeroTier, same protocol as indoor RemoteDetector."""
+
+    def __init__(
+        self,
+        store: FrameStore,
+        url: str,
+        width: int = 640,
+        jpeg_quality: int = 80,
+        timeout: float = 8.0,
+        interval: float = 0.5,
+    ) -> None:
+        self.store = store
+        self.url = (url or "").strip()
+        self.width = max(160, int(width))
+        self.jpeg_quality = int(jpeg_quality)
+        self.timeout = float(timeout)
+        self.interval = float(interval)
+        self.enabled = False
+        self.error = ""
+        self.online = False
+        self.last_latency_ms = None
+        self.stop_event = threading.Event()
+        self.thread = None
+        self._state_lock = threading.Lock()
+
+    def start(self) -> None:
+        # Inference is explicitly enabled by the web control; booting the
+        # camera service must not reserve the dai GPU on its own.
+        return
+
+    def set_enabled(self, enabled: bool) -> Dict[str, object]:
+        enabled = bool(enabled) and bool(self.url)
+        thread_to_join = None
+        with self._state_lock:
+            if enabled:
+                if self.thread is None or not self.thread.is_alive():
+                    self.stop_event = threading.Event()
+                    self.thread = threading.Thread(target=self._run, name="gun-detect", daemon=True)
+                    self.enabled = True
+                    self.thread.start()
+            else:
+                self.enabled = False
+                self.stop_event.set()
+                thread_to_join = self.thread
+        if thread_to_join is not None and thread_to_join is not threading.current_thread():
+            thread_to_join.join(timeout=3.0)
+        if not enabled:
+            self.online = False
+            self.error = ""
+            self.store.set_detections(
+                [],
+                error="",
+                extra={"detector": {"online": False, "enabled": False, "url": self.url, "error": ""}},
+            )
+        return self.status()
+
+    def stop(self) -> None:
+        self.set_enabled(False)
+
+    def status(self) -> Dict[str, object]:
+        return {
+            "online": self.online,
+            "enabled": self.enabled,
+            "url": self.url,
+            "error": self.error,
+            "latency_ms": self.last_latency_ms,
+        }
+
+    @staticmethod
+    def _scale_detections(detections, source_width, source_height, detect_width, detect_height):
+        if not detections or not detect_width or not detect_height:
+            return detections or []
+        if source_width == detect_width and source_height == detect_height:
+            return detections
+        max_right = 0.0
+        for item in detections:
+            box = item.get("bbox") or {}
+            max_right = max(max_right, float(box.get("x") or 0) + float(box.get("width") or 0))
+        if max_right > detect_width * 1.15:
+            return detections
+        x_scale = float(source_width) / float(detect_width)
+        y_scale = float(source_height) / float(detect_height)
+        scaled = []
+        for item in detections:
+            payload = dict(item)
+            box = dict(payload.get("bbox") or {})
+            box["x"] = int(float(box.get("x") or 0) * x_scale)
+            box["y"] = int(float(box.get("y") or 0) * y_scale)
+            box["width"] = int(float(box.get("width") or 0) * x_scale)
+            box["height"] = int(float(box.get("height") or 0) * y_scale)
+            payload["bbox"] = box
+            scaled.append(payload)
+        return scaled
+
+    def _detect_jpeg(self, jpeg: bytes) -> Tuple[list, Dict[str, object]]:
+        frame = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if frame is None:
+            raise RuntimeError("gun jpeg decode failed")
+        source_height, source_width = frame.shape[:2]
+        detect_image = frame
+        if source_width > self.width:
+            detect_height = max(1, int(round(source_height * self.width / float(source_width))))
+            detect_image = cv2.resize(frame, (self.width, detect_height))
+        detect_height, detect_width = detect_image.shape[:2]
+        ok, encoded = cv2.imencode(
+            ".jpg",
+            detect_image,
+            [int(cv2.IMWRITE_JPEG_QUALITY), self.jpeg_quality],
+        )
+        if not ok:
+            raise RuntimeError("gun detect jpeg encode failed")
+        body = json.dumps(
+            {
+                "image_b64": base64.b64encode(encoded.tobytes()).decode("ascii"),
+                "width": int(detect_width),
+                "height": int(detect_height),
+                "source_width": int(source_width),
+                "source_height": int(source_height),
+                "timestamp": time.time(),
+            }
+        ).encode("utf-8")
+        request = urllib.request.Request(
+            self.url,
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        started = time.monotonic()
+        with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            payload = json.loads(response.read().decode("utf-8") or "{}")
+        self.last_latency_ms = round((time.monotonic() - started) * 1000, 1)
+        detections = self._scale_detections(
+            payload.get("detections") or [],
+            source_width,
+            source_height,
+            detect_width,
+            detect_height,
+        )
+        extra = {
+            "source_width": int(source_width),
+            "source_height": int(source_height),
+            "detect_width": int(detect_width),
+            "detect_height": int(detect_height),
+            "latency_ms": self.last_latency_ms,
+            "detector": {
+                "online": True,
+                "enabled": True,
+                "url": self.url,
+                "error": "",
+                "latency_ms": self.last_latency_ms,
+            },
+        }
+        return detections, extra
+
+    def _run(self) -> None:
+        version = 0
+        while not self.stop_event.is_set() and not rospy.is_shutdown():
+            jpeg, next_version = self.store.wait_for_update("gun", version, timeout=1.0)
+            if self.stop_event.is_set() or rospy.is_shutdown():
+                return
+            if jpeg is None:
+                continue
+            version = next_version
+            last_started = time.monotonic()
+            try:
+                detections, extra = self._detect_jpeg(jpeg)
+            except Exception as exc:
+                self.online = False
+                self.error = str(exc)
+                self.store.set_detections(
+                    [],
+                    error=self.error,
+                    extra={"detector": {"online": False, "enabled": self.enabled, "url": self.url, "error": self.error}},
+                )
+                rospy.logwarn_throttle(10, "Gun remote detect failed: %s", exc)
+                remaining = self.interval - (time.monotonic() - last_started)
+                self.stop_event.wait(remaining if remaining > 0 else 0.2)
+                continue
+            self.online = True
+            self.error = ""
+            self.store.set_detections(detections, extra=extra)
+            remaining = self.interval - (time.monotonic() - last_started)
+            if remaining > 0:
+                self.stop_event.wait(remaining)
+
+
 class CameraHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -569,8 +898,21 @@ class CameraRequestHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
 
-        if parsed.path == "/health":
-            body = json.dumps(self.server.store.status()).encode("utf-8")
+        if parsed.path in ("/health", "/status"):
+            payload = self.server.store.status()
+            detector = getattr(self.server, "detector", None)
+            if detector is not None:
+                payload["detector"] = detector.status()
+            body = json.dumps(payload).encode("utf-8")
+            self._send_bytes(body, "application/json; charset=utf-8")
+            return
+        if parsed.path == "/detections":
+            payload = self.server.store.get_detections()
+            detector = getattr(self.server, "detector", None)
+            if detector is not None:
+                payload = dict(payload)
+                payload["detector"] = detector.status()
+            body = json.dumps(payload).encode("utf-8")
             self._send_bytes(body, "application/json; charset=utf-8")
             return
 
@@ -589,6 +931,24 @@ class CameraRequestHandler(BaseHTTPRequestHandler):
 
         self.send_error(404, "unknown camera action")
 
+    def do_POST(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path != "/detections/control":
+            self.send_error(404, "unknown camera action")
+            return
+        detector = getattr(self.server, "detector", None)
+        if detector is None:
+            self.send_error(409, "gun detector is not configured")
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+            enabled = bool(payload.get("enabled"))
+            result = detector.set_enabled(enabled)
+            self._send_bytes(json.dumps(result).encode("utf-8"), "application/json; charset=utf-8")
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            self.send_error(400, str(exc))
+
     @staticmethod
     def _resolve_kind(path: str, query: Dict[str, list]) -> Optional[str]:
         if path in ("/stream/rgb", "/stream/color", "/snapshot/rgb", "/snapshot/color"):
@@ -597,6 +957,8 @@ class CameraRequestHandler(BaseHTTPRequestHandler):
             return "depth"
         if path in ("/stream/lidar", "/snapshot/lidar"):
             return "lidar"
+        if path in ("/stream/gun", "/snapshot/gun"):
+            return "gun"
         if path != "/":
             return None
 
@@ -607,6 +969,8 @@ class CameraRequestHandler(BaseHTTPRequestHandler):
             return "depth"
         if view in ("lidar", "radar", "pointcloud"):
             return "lidar"
+        if view in ("gun", "bullet", "ipc"):
+            return "gun"
         return None
 
     def _send_bytes(self, body: bytes, content_type: str, status: int = 200) -> None:
@@ -653,17 +1017,23 @@ class CameraRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
             version = -1
+            last_sent = 0.0
             while not self.server.stop_event.is_set() and not rospy.is_shutdown():
                 frame, version = self.server.store.wait_for_update(kind, version, timeout=1.0)
                 if frame is None:
                     continue
+                remaining = self.server.stream_interval - (time.monotonic() - last_sent)
+                if remaining > 0:
+                    self.server.stop_event.wait(remaining)
+                    if self.server.stop_event.is_set() or rospy.is_shutdown():
+                        break
                 self.wfile.write(b"--" + BOUNDARY + b"\r\n")
                 self.wfile.write(b"Content-Type: image/jpeg\r\n")
                 self.wfile.write(f"Content-Length: {len(frame)}\r\n\r\n".encode("ascii"))
                 self.wfile.write(frame)
                 self.wfile.write(b"\r\n")
                 self.wfile.flush()
-                self.server.stop_event.wait(self.server.stream_interval)
+                last_sent = time.monotonic()
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             return
         finally:
@@ -693,6 +1063,34 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lidar-range-m", type=float, default=20.0)
     parser.add_argument("--lidar-min-height-m", type=float, default=-2.5)
     parser.add_argument("--lidar-max-height-m", type=float, default=3.0)
+    parser.add_argument("--gun-camera-max-fps", type=float, default=10.0)
+    parser.add_argument("--gun-width", type=int, default=0)
+    parser.add_argument("--gun-height", type=int, default=0)
+    parser.add_argument("--gun-jpeg-quality", type=int, default=0)
+    parser.add_argument(
+        "--remote-detect-url",
+        default=os.environ.get("VEHICLE_REMOTE_DETECT_URL", "http://10.139.91.78:9100/detect"),
+    )
+    parser.add_argument(
+        "--remote-detect-width",
+        type=int,
+        default=int(os.environ.get("VEHICLE_REMOTE_DETECT_WIDTH", "640")),
+    )
+    parser.add_argument(
+        "--remote-detect-jpeg-quality",
+        type=int,
+        default=int(os.environ.get("VEHICLE_REMOTE_DETECT_JPEG_QUALITY", "80")),
+    )
+    parser.add_argument(
+        "--remote-detect-timeout",
+        type=float,
+        default=float(os.environ.get("VEHICLE_REMOTE_DETECT_TIMEOUT", "8")),
+    )
+    parser.add_argument(
+        "--remote-detect-interval",
+        type=float,
+        default=float(os.environ.get("VEHICLE_REMOTE_DETECT_INTERVAL", "1")),
+    )
     return parser.parse_args(rospy.myargv(argv=sys.argv)[1:])
 
 
@@ -715,6 +1113,23 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("lidar-range-m must be greater than zero")
     if args.lidar_max_height_m <= args.lidar_min_height_m:
         raise ValueError("lidar height range must satisfy min < max")
+    if not math.isfinite(args.gun_camera_max_fps) or args.gun_camera_max_fps <= 0:
+        raise ValueError("gun-camera-max-fps must be greater than zero")
+    if args.gun_width < 0 or args.gun_height < 0:
+        raise ValueError("gun dimensions must be zero or positive")
+    if (args.gun_width == 0) != (args.gun_height == 0):
+        raise ValueError("gun-width and gun-height must both be set or both left at 0")
+    if args.gun_jpeg_quality and not 1 <= args.gun_jpeg_quality <= 100:
+        raise ValueError("gun-jpeg-quality must be between 1 and 100")
+    if args.remote_detect_url.strip():
+        if args.remote_detect_width <= 0:
+            raise ValueError("remote-detect-width must be greater than zero")
+        if not 1 <= args.remote_detect_jpeg_quality <= 100:
+            raise ValueError("remote-detect-jpeg-quality must be between 1 and 100")
+        if not math.isfinite(args.remote_detect_timeout) or args.remote_detect_timeout <= 0:
+            raise ValueError("remote-detect-timeout must be greater than zero")
+        if not math.isfinite(args.remote_detect_interval) or args.remote_detect_interval <= 0:
+            raise ValueError("remote-detect-interval must be greater than zero")
 
 
 def main() -> None:
@@ -762,13 +1177,31 @@ def main() -> None:
         fps=args.camera_fps,
         frame_id=args.camera_frame_id,
     )
+    gun_camera_url = os.environ.get("DWC_GUN_CAMERA_RTSP_URL", "").strip()
+    gun_capture = RtspCapture(
+        store=store,
+        url=gun_camera_url,
+        jpeg_quality=args.gun_jpeg_quality or args.jpeg_quality,
+        max_fps=args.gun_camera_max_fps,
+        width=args.gun_width,
+        height=args.gun_height,
+    ) if gun_camera_url else None
 
+    detector = GunRemoteDetector(
+        store=store,
+        url=args.remote_detect_url,
+        width=args.remote_detect_width,
+        jpeg_quality=args.remote_detect_jpeg_quality,
+        timeout=args.remote_detect_timeout,
+        interval=args.remote_detect_interval,
+    ) if gun_capture is not None else None
     server = CameraHTTPServer(
         (args.host, args.port),
         CameraRequestHandler,
         store=store,
         stream_fps=args.stream_fps,
     )
+    server.detector = detector
     server_thread = threading.Thread(target=server.serve_forever, name="camera-http", daemon=True)
     server_thread.start()
 
@@ -776,25 +1209,38 @@ def main() -> None:
         server.stop_event.set()
         server.shutdown()
         capture.stop()
+        if gun_capture is not None:
+            gun_capture.stop()
+        if detector is not None:
+            detector.stop()
 
     rospy.on_shutdown(shutdown)
     try:
         capture.start()
+        if gun_capture is not None:
+            gun_capture.start()
+        if detector is not None:
+            detector.start()
     except Exception:
         capture.stop()
+        if gun_capture is not None:
+            gun_capture.stop()
+        if detector is not None:
+            detector.stop()
         server.stop_event.set()
         server.shutdown()
         server.server_close()
         server_thread.join(timeout=2.0)
         raise
     rospy.loginfo(
-        "Sensor server listening on http://%s:%s (device=%s compressed=%s depth=%s lidar=%s)",
+        "Sensor server listening on http://%s:%s (device=%s compressed=%s depth=%s lidar=%s detect=%s)",
         args.host,
         args.port,
         args.camera_device,
         args.rgb_compressed_topic,
         args.depth_topic,
         args.lidar_topic,
+        args.remote_detect_url if detector is not None else "",
     )
     try:
         rospy.spin()

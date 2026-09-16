@@ -1,0 +1,23 @@
+{
+  "default_device_id": "outdoor-recognition-cam",
+  "devices": [
+    {
+      "id": "outdoor-recognition-cam",
+      "name": "室外专用识别摄像头",
+      "role": "recognition_camera",
+      "camera_base_url": "",
+      "stream_path": "/stream",
+      "status_path": "/status",
+      "detections_path": "/detections",
+      "capture_path": "/capture",
+      "inference_node": {
+        "id": "dai",
+        "name": "dai YOLO 推理节点",
+        "base_url": "http://10.139.91.78:9100",
+        "status_path": "/status",
+        "detect_path": "/detect",
+        "report_target": "/api/recognition/results"
+      }
+    }
+  ]
+}

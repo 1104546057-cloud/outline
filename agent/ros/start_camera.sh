@@ -12,6 +12,13 @@ CAMERA_HTTP_PORT="${CAMERA_HTTP_PORT:-8080}"
 CAMERA_ROSCONSOLE_CONFIG="${CAMERA_ROSCONSOLE_CONFIG:-${SCRIPT_DIR}/rosconsole_camera.config}"
 LIDAR_TOPIC="${LIDAR_TOPIC:-/point_cloud_raw}"
 START_LIDAR_DRIVER="${START_LIDAR_DRIVER:-auto}"
+GUN_CAMERA_ENV_FILE="${GUN_CAMERA_ENV_FILE:-/etc/devices-web-control/gun-camera.env}"
+
+if [ -f "$GUN_CAMERA_ENV_FILE" ]; then
+  set -a
+  source "$GUN_CAMERA_ENV_FILE"
+  set +a
+fi
 
 if [ ! -f "$ROS_SETUP" ] || [ ! -f "$WHEELTEC_SETUP" ]; then
   echo "ROS 环境未找到: $ROS_SETUP / $WHEELTEC_SETUP" >&2
@@ -131,14 +138,23 @@ fi
   --host 127.0.0.1 \
   --port "$CAMERA_HTTP_PORT" \
   --camera-device "$CAMERA_DEVICE" \
-  --camera-fps 30 \
+  --camera-fps 15 \
   --rgb-compressed-topic /camera/rgb/image_raw/compressed \
   --depth-topic /camera/depth/image_raw \
-  --depth-max-fps 30 \
+  --depth-max-fps 10 \
   --lidar-topic "$LIDAR_TOPIC" \
-  --lidar-max-fps 10 \
+  --lidar-max-fps 5 \
   --lidar-range-m 20 \
-  --stream-fps 30 &
+  --gun-camera-max-fps 6 \
+  --gun-width 1920 \
+  --gun-height 1080 \
+  --gun-jpeg-quality 55 \
+  --stream-fps 15 \
+  --remote-detect-url "${DWC_REMOTE_DETECT_URL:-http://10.139.91.78:9100/detect}" \
+  --remote-detect-width "${DWC_REMOTE_DETECT_WIDTH:-640}" \
+  --remote-detect-jpeg-quality "${DWC_REMOTE_DETECT_JPEG_QUALITY:-80}" \
+  --remote-detect-timeout "${DWC_REMOTE_DETECT_TIMEOUT:-8}" \
+  --remote-detect-interval "${DWC_REMOTE_DETECT_INTERVAL:-0.5}" &
 children+=("$!")
 
 # 任一核心进程退出时，停止整组进程并交给 systemd 重启。

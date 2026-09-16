@@ -9,13 +9,15 @@ from fastapi.concurrency import run_in_threadpool
 
 from agent_gateway import agent_gateway
 from database import SessionLocal
+from detector_client import get_inference_control, ingest_detections
 from models import Device, DeviceToken
+from recognition_store import record_detections
 from remote_gateway import remote_access_gateway
 
 
 router = APIRouter(prefix="/api/agent/ws", tags=["车端 Agent"])
 MEDIA_HEADER = struct.Struct("!BQ")
-MEDIA_VIEW_BY_CODE = {1: "color", 2: "depth", 3: "lidar"}
+MEDIA_VIEW_BY_CODE = {1: "color", 2: "depth", 3: "lidar", 4: "gun"}
 MAX_MEDIA_FRAME_BYTES = 5 * 1024 * 1024
 
 
@@ -41,6 +43,36 @@ def _authenticate_agent(token: str | None) -> int | None:
         db.close()
 
 
+def _ingest_and_persist(message: dict, device_id: int) -> dict:
+    cached = ingest_detections(message, device_id)
+    detector = cached.get("detector") if isinstance(cached.get("detector"), dict) else {}
+    detections = cached.get("detections") or []
+    control = get_inference_control(device_id)
+    if not detections:
+        return cached
+    if control and not control.get("enabled"):
+        return cached
+    if not detector.get("enabled"):
+        return cached
+    db = SessionLocal()
+    try:
+        device = db.query(Device).filter(Device.id == device_id).first()
+        device_name = device.name if device else str(device_id)
+    finally:
+        db.close()
+    jpeg = agent_gateway.latest_jpeg(device_id, "gun")
+    record_detections(
+        detections,
+        source="camera",
+        device_id=device_id,
+        device_name=device_name,
+        jpeg_bytes=jpeg,
+        latency_ms=detector.get("latency_ms") or cached.get("latency_ms"),
+        recognized_at=cached.get("updated_at") or cached.get("last_detection_time"),
+    )
+    return cached
+
+
 async def _resolve_device_id(websocket: WebSocket) -> int | None:
     token = websocket.headers.get("x-device-token") or websocket.query_params.get("token")
     return await run_in_threadpool(_authenticate_agent, token)
@@ -60,6 +92,8 @@ async def agent_control_socket(websocket: WebSocket) -> None:
             message_type = message.get("type")
             if message_type == "result":
                 await agent_gateway.resolve_command(device_id, message)
+            elif message_type == "detections":
+                await run_in_threadpool(_ingest_and_persist, message, device_id)
     except (WebSocketDisconnect, RuntimeError, json.JSONDecodeError):
         pass
     finally:

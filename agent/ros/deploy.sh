@@ -163,6 +163,7 @@ Group=${RUN_USER}
 Environment="ROS_MASTER_URI=http://localhost:11311"
 Environment="ROS_IP=127.0.0.1"
 EnvironmentFile=-/etc/devices-web-control/rtk.env
+EnvironmentFile=-/etc/devices-web-control/dai-control.env
 
 [Install]
 WantedBy=multi-user.target

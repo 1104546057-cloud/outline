@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import HTTPException, WebSocket
 
 
-VALID_MEDIA_VIEWS = {"color", "depth", "lidar"}
+VALID_MEDIA_VIEWS = {"color", "depth", "lidar", "gun"}
 
 
 @dataclass(frozen=True)
@@ -112,6 +112,8 @@ class AgentGateway:
             async with send_lock:
                 await websocket.send_json({"type": "command", "id": command_id, "command": command})
             result = await asyncio.wait_for(future, timeout=timeout)
+        except HTTPException:
+            raise
         except asyncio.TimeoutError as exc:
             raise HTTPException(status_code=504, detail="无人车控制指令响应超时") from exc
         except Exception as exc:
@@ -211,6 +213,10 @@ class AgentGateway:
                 if not queues:
                     self._thread_frame_queues.pop((device_id, view), None)
         await self._release_stream(device_id, view)
+
+    def latest_jpeg(self, device_id: int, view: str = "gun") -> bytes | None:
+        frame = self._latest_frames.get((device_id, view))
+        return frame.data if frame is not None else None
 
     async def publish_frame(self, device_id: int, view: str, data: bytes, timestamp_ms: int) -> None:
         key = (device_id, view)
