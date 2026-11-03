@@ -1,0 +1,14 @@
+/* Component-local styles; imported selectors explicitly target shared components. */
+@layer components {
+
+
+.cockpit-map { position: relative; width: 100%; height: 100%; background: #031025; }
+.cockpit-map-state { position: absolute; z-index: 5; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: #56859c; background: radial-gradient(circle, rgba(12, 60, 96, .4), rgba(1, 8, 18, .94)); }
+.cockpit-map-state strong { color: #78aec5; font-size: 10px; }
+.cockpit-map-state small { font-size: 8px; }
+.cockpit-radar { width: 36px; height: 36px; border: 1px solid rgba(43, 210, 255, .55); border-radius: 50%; box-shadow: 0 0 13px rgba(43, 210, 255, .2), inset 0 0 13px rgba(43, 210, 255, .12); animation: cockpit-pulse 1.5s infinite; }
+.cockpit-route-point { width: 20px; height: 20px; display: grid; place-items: center; color: white; border: 2px solid white; border-radius: 50%; background: #2587ff; box-shadow: 0 0 8px rgba(37, 135, 255, .8); font: 700 9px/1 Arial, sans-serif; }
+.cockpit-current-marker { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid rgba(54, 239, 155, .6); border-radius: 50%; background: rgba(54, 239, 155, .2); box-shadow: 0 0 12px rgba(54, 239, 155, .75); }
+.cockpit-current-marker i { width: 9px; height: 9px; border: 2px solid white; border-radius: 50%; background: var(--cockpit-green); }
+@keyframes cockpit-pulse { 50% { transform: scale(.85); opacity: .45; } }
+}

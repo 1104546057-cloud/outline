@@ -1,5 +1,10 @@
+/* Explicit priority keeps lazy-loaded vendor CSS below components and theme. */
+@layer reset, vendor, components, theme;
+
 /* ===== CSS Reset & 全局变量（浅色系） ===== */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@layer reset {
 
 :root {
   /* 主色调 - 现代蓝 */
@@ -118,4 +123,6 @@ input {
   width: 1px !important;
   height: 1px !important;
   overflow: hidden !important;
+}
+
 }

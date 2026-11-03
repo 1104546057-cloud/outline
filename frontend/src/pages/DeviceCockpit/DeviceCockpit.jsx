@@ -1,0 +1,378 @@
+import styles from './DeviceCockpit.module.css'
+import controlsStyles from '../../components/RobotDirectionPad/DrivingControls.module.css'
+import sharedStyles from '../../components/DeviceCockpitMap/DeviceCockpitMap.module.css'
+import themeStyles from '../../styles/SubpageTheme.module.css'
+import { bindStyles } from '../../utils/bindStyles.js'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import DeviceCockpitMap from '../../components/DeviceCockpitMap/DeviceCockpitMap.jsx'
+import DeviceStatusCard from '../../components/DeviceStatusCard/DeviceStatusCard.jsx'
+import { CameraFeed, CockpitPanel } from '../../components/CockpitSensorFeed/CockpitSensorFeed.jsx'
+import RobotDirectionPad from '../../components/RobotDirectionPad/RobotDirectionPad.jsx'
+import { getRobotDirectionValues, ROBOT_DIRECTION_KEY_MAP } from '../../components/robotDirectionPadConfig'
+import { authFetch } from '../../utils/authFetch'
+
+const cx = bindStyles(styles, controlsStyles, sharedStyles, themeStyles)
+
+export default function DeviceCockpit() {
+  const { deviceId } = useParams()
+  const navigate = useNavigate()
+  const parsedDeviceId = Number(deviceId)
+  const [device, setDevice] = useState(null)
+  const [runningTask, setRunningTask] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [controlConfig, setControlConfig] = useState({ maxLinear: .4, maxAngular: 1.2 })
+  const [speedRatio, setSpeedRatio] = useState(0.1)
+  const [connectionStatus, setConnectionStatus] = useState('未检测')
+  const [controlMessage, setControlMessage] = useState('等待连接设备控制服务')
+  const [activeDirection, setActiveDirection] = useState(null)
+  const [mainCameraStatus, setMainCameraStatus] = useState('loading')
+  const [cameraRefreshKey, setCameraRefreshKey] = useState(0)
+  const sendIntervalRef = useRef(null)
+  const activeDirectionRef = useRef(null)
+  const commandBusyRef = useRef(false)
+  const refreshBusyRef = useRef(false)
+  const testedDeviceRef = useRef(null)
+
+  const stopSending = useCallback(() => {
+    if (sendIntervalRef.current) clearInterval(sendIntervalRef.current)
+    sendIntervalRef.current = null
+    activeDirectionRef.current = null
+    setActiveDirection(null)
+  }, [])
+
+  const sendStop = useCallback(async (silent = false) => {
+    if (!Number.isInteger(parsedDeviceId) || parsedDeviceId <= 0) return
+    try {
+      const response = await authFetch('/api/robot-control/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ robotId: parsedDeviceId }),
+      })
+      if (!response.ok) throw new Error((await response.json()).detail || '停车失败')
+      if (!silent) setControlMessage('停车指令已发送')
+    } catch (error) {
+      if (!silent) setControlMessage(`停车失败：${error.message}`)
+    }
+  }, [parsedDeviceId])
+
+  const testConnection = useCallback(async () => {
+    if (!device) return
+    if (device.status !== 'online') {
+      setConnectionStatus('不可达')
+      setControlMessage('设备离线，运动控制已禁用')
+      return
+    }
+    setConnectionStatus('连接中')
+    setControlMessage('正在检测设备控制服务')
+    try {
+      const response = await authFetch(`/api/robot-control/status?robotId=${parsedDeviceId}`)
+      const data = await response.json()
+      if (response.ok && data.ok) {
+        setConnectionStatus('已连接')
+        setControlMessage('车端 Agent WebSocket 控制通道已连接')
+      } else {
+        setConnectionStatus('不可达')
+        setControlMessage(data.detail || '设备控制服务不可达')
+      }
+    } catch (error) {
+      setConnectionStatus('不可达')
+      setControlMessage(`连接检测失败：${error.message}`)
+    }
+  }, [device, parsedDeviceId])
+
+  const fetchCockpitData = useCallback(async () => {
+    if (!Number.isInteger(parsedDeviceId) || parsedDeviceId <= 0) {
+      setLoading(false)
+      setLoadError('设备编号无效')
+      return
+    }
+    if (refreshBusyRef.current) return
+    refreshBusyRef.current = true
+    try {
+      const [deviceResponse, taskResponse] = await Promise.all([
+        authFetch('/api/devices'),
+        authFetch('/api/patrol/tasks'),
+      ])
+      if (!deviceResponse.ok || !taskResponse.ok) throw new Error('驾驶舱数据请求失败')
+      const [devices, tasks] = await Promise.all([deviceResponse.json(), taskResponse.json()])
+      const currentDevice = devices.find(item => item.id === parsedDeviceId)
+      if (!currentDevice) {
+        setDevice(null)
+        setRunningTask(null)
+        setLoadError('未找到指定设备，设备可能已被删除')
+        return
+      }
+      setDevice(currentDevice)
+      const taskSummary = tasks.find(task => task.device_id === parsedDeviceId && task.status === 'running')
+      if (taskSummary) {
+        const detailResponse = await authFetch(`/api/patrol/tasks/${taskSummary.id}`)
+        setRunningTask(detailResponse.ok ? await detailResponse.json() : taskSummary)
+      } else {
+        setRunningTask(null)
+      }
+      setLoadError('')
+    } catch (error) {
+      console.error(error)
+      setLoadError('驾驶舱实时数据暂时无法获取')
+    } finally {
+      refreshBusyRef.current = false
+      setLoading(false)
+    }
+  }, [parsedDeviceId])
+
+  useEffect(() => {
+    fetchCockpitData()
+    const timer = setInterval(fetchCockpitData, 5000)
+    return () => clearInterval(timer)
+  }, [fetchCockpitData])
+
+  useEffect(() => {
+    authFetch('/api/robot-control/config')
+      .then(response => response.ok ? response.json() : null)
+      .then(config => { if (config) setControlConfig(config) })
+      .catch(console.error)
+  }, [])
+
+  useEffect(() => {
+    const testKey = device ? `${device.id}:${device.status}` : null
+    if (!device || testedDeviceRef.current === testKey) return
+    testedDeviceRef.current = testKey
+    testConnection()
+  }, [device, testConnection])
+
+  useEffect(() => {
+    if (device?.status === 'online') return
+    if (activeDirectionRef.current) {
+      stopSending()
+      sendStop(true)
+    }
+  }, [device?.status, sendStop, stopSending])
+
+  useEffect(() => {
+    const stopOnExit = () => {
+      if (!Number.isInteger(parsedDeviceId) || parsedDeviceId <= 0) return
+      const body = JSON.stringify({ robotId: parsedDeviceId })
+      navigator.sendBeacon('/api/robot-control/stop', new Blob([body], { type: 'application/json' }))
+    }
+    window.addEventListener('beforeunload', stopOnExit)
+    return () => {
+      window.removeEventListener('beforeunload', stopOnExit)
+      stopSending()
+      if (Number.isInteger(parsedDeviceId) && parsedDeviceId > 0) {
+        fetch('/api/robot-control/stop', {
+          method: 'POST',
+          credentials: 'include',
+          keepalive: true,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ robotId: parsedDeviceId }),
+        }).catch(() => { })
+      }
+    }
+  }, [parsedDeviceId, stopSending])
+
+  const movementEnabled = device?.status === 'online' && connectionStatus === '已连接'
+
+  const getDirectionValues = useCallback(direction => {
+    const maxLinear = controlConfig.maxLinear * speedRatio
+    const maxAngular = controlConfig.maxAngular * speedRatio
+    return getRobotDirectionValues(direction, maxLinear, maxAngular)
+  }, [controlConfig, speedRatio])
+
+  const sendCmdVel = useCallback(async (linear, angular) => {
+    if (!movementEnabled || commandBusyRef.current) return
+    commandBusyRef.current = true
+    try {
+      const response = await authFetch('/api/robot-control/cmd_vel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ robotId: parsedDeviceId, linear, angular }),
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || '控制失败')
+      }
+      setControlMessage(`运动指令 v=${linear.toFixed(2)} m/s · w=${angular.toFixed(2)} rad/s`)
+    } catch (error) {
+      stopSending()
+      setConnectionStatus('不可达')
+      setControlMessage(`运动控制失败：${error.message}`)
+    } finally {
+      commandBusyRef.current = false
+    }
+  }, [movementEnabled, parsedDeviceId, stopSending])
+
+  const startDirection = useCallback(direction => {
+    if (!movementEnabled || direction === 'stop' || activeDirectionRef.current === direction) return
+    stopSending()
+    activeDirectionRef.current = direction
+    setActiveDirection(direction)
+    const values = getDirectionValues(direction)
+    sendCmdVel(values.linear, values.angular)
+    sendIntervalRef.current = setInterval(() => {
+      const nextValues = getDirectionValues(direction)
+      sendCmdVel(nextValues.linear, nextValues.angular)
+    }, 180)
+  }, [getDirectionValues, movementEnabled, sendCmdVel, stopSending])
+
+  const stopDirection = useCallback(() => {
+    if (!activeDirectionRef.current) return
+    stopSending()
+    sendStop()
+  }, [sendStop, stopSending])
+
+  const emergencyStop = useCallback(() => {
+    stopSending()
+    sendStop()
+  }, [sendStop, stopSending])
+
+  useEffect(() => {
+    const handleKeyDown = event => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName)) return
+      const direction = ROBOT_DIRECTION_KEY_MAP[event.code]
+      if (!direction) return
+      event.preventDefault()
+      if (direction === 'stop') emergencyStop()
+      else startDirection(direction)
+    }
+    const handleKeyUp = event => {
+      if (ROBOT_DIRECTION_KEY_MAP[event.code] === activeDirectionRef.current) stopDirection()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+    }
+  }, [emergencyStop, startDirection, stopDirection])
+
+  const captureSnapshot = async () => {
+    if (!device || mainCameraStatus !== 'streaming') return
+    try {
+      const response = await authFetch(`/api/devices/${device.id}/camera/snapshot`)
+      if (!response.ok) throw new Error('截图服务返回失败')
+      const url = URL.createObjectURL(await response.blob())
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `${device.name}_${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`
+      anchor.click()
+      URL.revokeObjectURL(url)
+      setControlMessage('摄像头截图已保存')
+    } catch (error) {
+      setControlMessage(`截图失败：${error.message}`)
+    }
+  }
+
+  const locationText = useMemo(() => {
+    if (!device?.lng || !device?.lat) return '暂无定位'
+    return `${Number(device.lng).toFixed(6)}, ${Number(device.lat).toFixed(6)}`
+  }, [device])
+
+  if (loading) {
+    return <div className={cx('cockpit-page-state')}><span className={cx('cockpit-radar')} /><strong>正在建立设备驾驶舱</strong><small>同步设备、视频和巡逻数据</small></div>
+  }
+
+  if (!device) {
+    return (
+      <div className={cx('cockpit-page-state error')}>
+        <strong>{loadError || '设备不存在'}</strong>
+        <small>无法打开该设备的专属驾驶舱</small>
+        <button type="button" onClick={() => navigate('/dashboard')}>返回主界面</button>
+      </div>
+    )
+  }
+
+  return (
+    <div className={cx('device-cockpit-page')}>
+      <div className={cx('cockpit-status-line')}>
+        <button type="button" onClick={() => navigate('/dashboard')}>← 返回主界面</button>
+        <span><i className={cx(device.status)} />{device.name}</span>
+        <span>坐标 <b>{locationText}</b></span>
+        <span>巡逻任务 <b>{runningTask?.name || '当前无执行中任务'}</b></span>
+        {loadError && <em>{loadError}</em>}
+      </div>
+
+      <div className={cx('cockpit-layout')}>
+        <aside className={cx('cockpit-left-column')}>
+          <CockpitPanel title="设备状态" code="DEVICE STATUS" meta={device.status === 'online' ? '实时' : '离线'} className={cx('cockpit-device-panel')}>
+            <DeviceStatusCard device={device} selected />
+          </CockpitPanel>
+          <CockpitPanel title="摄像头画面" code="CAMERA" meta="01">
+            <CameraFeed device={device} label="可见光摄像头" view="color" refreshKey={cameraRefreshKey} />
+          </CockpitPanel>
+          <CockpitPanel title="双目深度图" code="DEPTH" meta="02">
+            <CameraFeed device={device} label="双目深度图" view="depth" refreshKey={cameraRefreshKey} />
+          </CockpitPanel>
+          <CockpitPanel title="激光雷达" code="LIDAR" meta="03">
+            <CameraFeed device={device} label="C16 16线点云" view="lidar" refreshKey={cameraRefreshKey} />
+          </CockpitPanel>
+          <CockpitPanel title="巡逻路线" code="PATROL ROUTE" meta={runningTask ? '执行中' : '实时定位'} className={cx('cockpit-map-panel')}>
+            <DeviceCockpitMap device={device} task={runningTask} />
+            <div className={cx('cockpit-map-legend')}>
+              {runningTask && <><span><i className={cx('route')} />预设线路</span><span><i className={cx('track')} />实际轨迹</span></>}
+              <span><i className={cx('position')} />当前位置</span>
+            </div>
+          </CockpitPanel>
+        </aside>
+
+        <section className={cx('cockpit-right-column')}>
+          <CockpitPanel title={`${device.name} 主摄像头`} code="PRIMARY CAMERA STREAM" meta={mainCameraStatus === 'streaming' ? 'LIVE' : 'MONITORING'} className={cx('cockpit-main-video-panel')}>
+            <CameraFeed device={device} label="主摄像头" view="color" large refreshKey={cameraRefreshKey} onStatusChange={setMainCameraStatus} />
+            <div className={cx('cockpit-video-tools')}>
+              <button type="button" onClick={() => setCameraRefreshKey(key => key + 1)}>重新连接</button>
+              <button type="button" onClick={captureSnapshot} disabled={mainCameraStatus !== 'streaming'}>截图保存</button>
+            </div>
+          </CockpitPanel>
+
+          <CockpitPanel title="设备操作台" code="REMOTE CONTROL CONSOLE" meta={connectionStatus} className={cx('cockpit-console-panel')}>
+            <div className={cx('cockpit-console')}>
+              <div className={cx('cockpit-drive-block')}>
+                <div className={cx('cockpit-block-title')}><strong>行驶控制</strong><small>WASD / 方向键 / 数字键盘</small></div>
+                <RobotDirectionPad
+                  activeDirection={activeDirection}
+                  movementDisabled={!movementEnabled}
+                  stopDisabled={!device}
+                  onStart={startDirection}
+                  onStop={stopDirection}
+                  onEmergencyStop={emergencyStop}
+                />
+              </div>
+
+              <div className={cx('cockpit-speed-block')}>
+                <div className={cx('cockpit-block-title')}><strong>动力与连接</strong><small>{controlMessage}</small></div>
+                <div className={cx('cockpit-connection-row')}>
+                  <span className={cx(`cockpit-connection ${connectionStatus}`)}>{connectionStatus}</span>
+                  <button type="button" onClick={testConnection} disabled={connectionStatus === '连接中'}>检测连接</button>
+                </div>
+                <label className={cx('cockpit-speed-slider')}>
+                  <span>速度倍率 <b>{Math.round(speedRatio * 100)}%</b></span>
+                  <input type="range" min="0.01" max="1" step="0.01" value={speedRatio} onChange={event => setSpeedRatio(Number(event.target.value))} />
+                </label>
+                <div className={cx('cockpit-speed-values')}>
+                  <span>线速度<b>{(controlConfig.maxLinear * speedRatio).toFixed(2)} m/s</b></span>
+                  <span>角速度<b>{(controlConfig.maxAngular * speedRatio).toFixed(2)} rad/s</b></span>
+                </div>
+                <button type="button" className={cx('cockpit-emergency')} onClick={emergencyStop}>急停 EMERGENCY STOP</button>
+              </div>
+
+              <div className={cx('cockpit-aux-block')}>
+                <div className={cx('cockpit-block-title')}><strong>辅助设备</strong><small>界面预留 · 功能待接入</small></div>
+                <div className={cx('cockpit-speaker-control')}>
+                  <label>喊话器</label>
+                  <textarea disabled placeholder="输入喊话内容" />
+                  <div><button type="button" disabled>开始喊话</button><button type="button" disabled>停止喊话</button></div>
+                </div>
+                <div className={cx('cockpit-light-control')}>
+                  <div><label>探照灯</label><button type="button" disabled>关闭</button></div>
+                  <input type="range" min="0" max="100" value="70" disabled readOnly />
+                  <span>亮度 70% · 待接入</span>
+                </div>
+              </div>
+            </div>
+          </CockpitPanel>
+        </section>
+      </div>
+    </div>
+  )
+}

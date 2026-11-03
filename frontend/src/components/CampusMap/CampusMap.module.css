@@ -1,0 +1,19 @@
+/* Component-local styles; imported selectors explicitly target shared components. */
+@layer components {
+
+.campus-map { position: relative; width: 100%; height: 100%; background: #031025; }
+.campus-map.satellite::after { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 55px rgba(0, 9, 26, .85); }
+.campus-map-state { position: absolute; z-index: 2; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #5c8ba7; background: radial-gradient(circle, rgba(10, 63, 103, .3), rgba(2, 14, 34, .95)); }
+.campus-map-state strong { margin-top: 12px; color: #8bc6e1; font-size: 12px; }
+.campus-map-state small { margin-top: 4px; color: #426b84; font-size: 9px; }
+.map-state-radar { position: relative; width: 38px; height: 38px; border: 1px solid rgba(43, 210, 255, .55); border-radius: 50%; box-shadow: 0 0 13px rgba(43, 210, 255, .2), inset 0 0 13px rgba(43, 210, 255, .12); animation: radar-pulse 1.5s infinite; }
+.map-state-radar::before, .map-state-radar::after { content: ''; position: absolute; background: rgba(43, 210, 255, .35); }
+.campus-map-marker { position: relative; width: 34px; height: 34px; display: grid; place-items: center; color: #dffaff; border: 1px solid #2bd2ff; border-radius: 50%; background: rgba(6, 98, 151, .9); box-shadow: 0 0 10px rgba(43, 210, 255, .8), inset 0 0 8px rgba(255, 255, 255, .2); font-size: 9px; }
+.campus-map-marker::after { content: ''; position: absolute; right: -1px; bottom: -1px; width: 7px; height: 7px; border: 2px solid #071b35; border-radius: 50%; background: #687d8e; }
+.campus-map-marker.online::after { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.campus-map-marker.warning::after { background: var(--orange); box-shadow: 0 0 6px var(--orange); }
+.campus-map-marker.selected { transform: scale(1.2); border-color: #fff; z-index: 5; }
+.campus-map-marker.drone { color: #f0fbff; background: rgba(26, 105, 209, .9); }
+.campus-map-marker.ship { background: rgba(72, 65, 181, .9); }
+@keyframes radar-pulse { 50% { transform: scale(.8); opacity: .55; } }
+}

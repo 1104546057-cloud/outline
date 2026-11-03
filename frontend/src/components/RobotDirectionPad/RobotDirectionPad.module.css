@@ -1,0 +1,17 @@
+/* Component-local styles; imported selectors explicitly target shared components. */
+@layer components {
+
+.cockpit-direction-grid { height: 177px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.cockpit-direction-grid button { min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #82b8ce; border: 1px solid rgba(46, 143, 193, .32); background: linear-gradient(145deg, rgba(8, 54, 88, .75), rgba(3, 27, 55, .78)); user-select: none; touch-action: none; }
+.cockpit-direction-grid button span { font-size: 19px; line-height: 1; }
+.cockpit-direction-grid button small { margin-top: 3px; color: #568298; font-size: 7px; }
+.cockpit-direction-grid button:hover:not(:disabled), .cockpit-direction-grid button.active { color: white; border-color: var(--cockpit-cyan); background: rgba(10, 106, 158, .65); box-shadow: inset 0 0 13px rgba(43, 210, 255, .18), 0 0 7px rgba(43, 210, 255, .2); }
+.cockpit-direction-grid button.stop { color: #ff8392; border-color: rgba(255, 83, 107, .5); background: rgba(108, 20, 37, .38); }
+.cockpit-direction-grid button:disabled { opacity: .38; cursor: not-allowed; }
+@media (max-width: 1500px) {
+  .cockpit-direction-grid { height: 182px; }
+}
+@media (max-height: 820px) {
+  .cockpit-direction-grid { height: 176px; }
+}
+}

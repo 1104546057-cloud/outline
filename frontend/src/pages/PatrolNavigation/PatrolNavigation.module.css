@@ -1,0 +1,415 @@
+/* Component-local styles; imported selectors explicitly target shared components. */
+@value cockpit-panel from "../../components/CockpitSensorFeed/CockpitSensorFeed.module.css";
+@value patrol-btn, patrol-header-select, patrol-form-error from "../shared/Patrol.module.css";
+@value themed-select from "../../components/ThemedSelect/ThemedSelect.module.css";
+@layer components {
+.patrol-nav-layout {
+  min-height: 0;
+}
+
+.patrol-nav-sidebar {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  border-right: 1px solid var(--color-border);
+}
+
+.patrol-nav-map-section {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  padding: 0;
+  background: #031025;
+}
+
+.patrol-nav-sensors {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: repeat(3, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.patrol-nav-sensors .cockpit-panel {
+  border-color: rgba(43, 177, 228, .34);
+  background: linear-gradient(145deg, rgba(5, 35, 64, .95), rgba(2, 13, 31, .98));
+}
+
+.patrol-nav-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-width: 0;
+  margin: 0.5rem;
+  padding: 0.85rem;
+  background: var(--color-bg-white);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+}
+
+.patrol-nav-row,
+.patrol-nav-coordinate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.patrol-nav-row strong,
+.patrol-nav-coordinate span {
+  color: var(--color-text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.patrol-nav-coordinate {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.patrol-nav-coordinate span {
+  min-width: 0;
+  padding: 0.45rem 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+}
+
+.patrol-nav-label {
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.patrol-nav-range {
+  width: 100%;
+  accent-color: var(--color-primary);
+}
+
+.patrol-nav-heading-buttons,
+.patrol-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.patrol-nav-actions {
+  min-width: 0;
+  margin: 0.5rem;
+}
+
+.patrol-nav-actions .patrol-btn {
+  flex: 1 1 105px;
+  justify-content: center;
+}
+
+.patrol-nav-actions-primary,
+.patrol-nav-actions-route {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.patrol-nav-actions-primary .patrol-btn,
+.patrol-nav-actions-route .patrol-btn {
+  min-width: 0;
+  flex: none;
+}
+
+.patrol-nav-map-container {
+  min-height: 360px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: #07111f;
+}
+
+.patrol-nav-map-toolbar {
+  position: absolute;
+  z-index: 130;
+  top: 1rem;
+  left: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: calc(100% - 2rem);
+}
+
+.patrol-nav-map-status {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.65rem;
+  color: #85b9ce;
+  border: 1px solid rgba(43, 177, 228, .38);
+  border-radius: 3px;
+  background: rgba(3, 24, 49, .9);
+  box-shadow: 0 8px 22px rgba(0,0,0,.32);
+  font-size: 0.76rem;
+}
+
+.patrol-nav-map-status span,
+.patrol-nav-map-status b {
+  overflow: hidden;
+  max-width: 150px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.patrol-nav-map-status b {
+  color: #e4f8ff;
+  font-weight: 700;
+}
+
+.patrol-nav-map-status i {
+  flex: 0 0 auto;
+  color: #8fa9b8;
+  font-style: normal;
+}
+
+.patrol-nav-map-status i.running {
+  color: #31e3a1;
+}
+
+.patrol-nav-control-dock {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(210px, .9fr) minmax(330px, 1.35fr) minmax(240px, .85fr);
+  gap: 10px;
+}
+
+.patrol-nav-control-dock .patrol-form-error {
+  grid-column: 1 / -1;
+}
+
+.patrol-nav-target-panel {
+  gap: 0.55rem;
+}
+
+.patrol-nav-map-info {
+  top: auto;
+  right: 1rem;
+  bottom: 1rem;
+}
+
+.patrol-nav-target-badge {
+  top: 1rem;
+  right: 1rem;
+}
+
+.patrol-nav-map-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  box-sizing: border-box;
+  touch-action: none;
+  user-select: none;
+  image-rendering: pixelated;
+  background: #031025;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.42);
+  cursor: grab;
+}
+
+.patrol-nav-map-canvas:active {
+  cursor: grabbing;
+}
+
+.patrol-nav-legend {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  z-index: 120;
+}
+
+@media (max-width: 1200px) {
+
+  .patrol-nav-sensors {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: minmax(160px, 220px);
+  }
+}
+
+@media (max-width: 1200px) {
+
+  .patrol-nav-control-dock {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1200px) {
+
+  .patrol-nav-actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 768px) {
+  .patrol-nav-map-section,
+  .patrol-nav-control-dock,
+  .patrol-nav-sensors {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .patrol-nav-sensors {
+    grid-template-rows: repeat(3, 180px);
+  }
+}
+
+@media (max-width: 768px) {
+  .patrol-nav-map-container {
+    min-height: 320px;
+  }
+}
+
+@media (max-width: 768px) {
+  .patrol-nav-map-toolbar {
+    right: 0.75rem;
+    left: 0.75rem;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 768px) {
+}
+
+@media (max-width: 768px) {
+  .patrol-nav-map-status {
+    flex: 1 1 100%;
+  }
+}
+
+.patrol-waypoint-panel {
+  gap: 0.55rem;
+}
+
+.patrol-waypoint-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.patrol-waypoint-item {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+}
+
+.patrol-waypoint-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: 0 0 1.15rem;
+  border-radius: 50%;
+  color: #fff;
+  background: #ff4f64;
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.patrol-waypoint-item.active .patrol-waypoint-marker {
+  background: #f59e0b;
+}
+
+.patrol-waypoint-item.reached .patrol-waypoint-marker {
+  background: #22c55e;
+}
+
+.patrol-waypoint-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.patrol-waypoint-empty {
+  padding: 0.55rem 0.65rem;
+  color: var(--color-text-muted);
+  background: var(--color-bg-subtle);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+}
+
+.patrol-localization-state {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+}
+
+.patrol-localization-state.ready {
+  color: #16794f;
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.patrol-localization-state.waiting {
+  color: #9a6514;
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.patrol-localization-state span,
+.patrol-localization-panel p,
+.patrol-localization-hint {
+  line-height: 1.55;
+}
+
+.patrol-localization-panel p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.patrol-localization-actions {
+  margin: 0;
+}
+
+.patrol-localization-hint {
+  color: #9a6514;
+  font-size: 0.75rem;
+}
+}
+@layer theme{
+
+.patrol-nav-map-toolbar .themed-select,
+.patrol-nav-map-toolbar .patrol-header-select {
+  min-width: 230px;
+  max-width: 320px;
+}
+
+@media (max-width: 768px) {
+  .patrol-nav-map-toolbar .themed-select,
+  .patrol-nav-map-toolbar .patrol-header-select {
+    min-width: 0;
+    flex: 1 1 180px;
+  }
+}
+}
